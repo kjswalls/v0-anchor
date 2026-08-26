@@ -71,6 +71,7 @@ import { useViewStore } from '@/lib/view-store';
 import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
 import { toDateStr } from '@/lib/recurrence';
 import type { Habit, Task } from '@/lib/planner-types';
+import { enableGoalsAndOrganize } from './support/extensions';
 
 const TZ = 'UTC';
 /** A Thursday; the default week runs Sun 2026-08-09 → Sat 2026-08-15. */
@@ -101,6 +102,8 @@ const habit = (over: Partial<Habit>): Habit =>
   }) as Habit;
 
 function seedStore(over: Record<string, unknown>) {
+  // One case here groups by Goal, which rides an extension that ships off.
+  enableGoalsAndOrganize();
   usePlannerStore.setState({
     userId: 'user-1',
     userTimezone: TZ,

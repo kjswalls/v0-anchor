@@ -29,7 +29,7 @@ import { useFitHourPx, useResizeScrollCompensation } from '@/lib/use-fit-hour-px
 import { useWeekColumns } from '@/lib/use-week-columns';
 import { useScheduleResizeStore } from '@/lib/schedule-resize-store';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useViewStore } from '@/lib/view-store';
+import { useCanvasGroupBy } from '@/lib/extension-gates';
 import { groupRows } from '@/lib/grouping';
 import { planLanes, isReceded, type LanePlan } from '@/lib/schedule-lanes';
 import { useScheduleFocusStore } from '@/lib/schedule-focus-store';
@@ -146,7 +146,7 @@ function WeekScheduleColumn({
   const routines = usePlannerStore((s) => s.routines);
   const programs = usePlannerStore((s) => s.programs);
   const goals = usePlannerStore((s) => s.goals);
-  const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
+  const canvasGroupBy = useCanvasGroupBy();
   const focusedKey = useScheduleFocusStore((s) => s.focusedKey);
   const dragging = !!activeId;
   const { isOver, setNodeRef } = useDroppable({ id: `week:${col.dateStr}:anytime` });
@@ -418,7 +418,7 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
    * Focus costs zero pixels and answers the question a week grid otherwise
    * cannot — where does this group actually land across the week.
    */
-  const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
+  const canvasGroupBy = useCanvasGroupBy();
   const routines = usePlannerStore((s) => s.routines);
   const goals = usePlannerStore((s) => s.goals);
   const lanePlan = useMemo(

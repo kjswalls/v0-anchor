@@ -13,6 +13,7 @@ import { useDayItems } from '@/hooks/use-day-items';
 import { useWeekColumns } from '@/lib/use-week-columns';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore, type BucketStyle } from '@/lib/view-store';
+import { useCanvasGroupBy } from '@/lib/extension-gates';
 import { openEditFor } from '@/lib/ui-store';
 import { BUCKET_ORDER } from '@/lib/day-items';
 import { groupRows, type GroupableRow } from '@/lib/grouping';
@@ -49,7 +50,7 @@ function WeekBucketCell({
   const dateStr = format(date, 'yyyy-MM-dd');
   const { isOver, setNodeRef } = useDroppable({ id: `week:${dateStr}:${bucket}` });
   const { tasksByBucket, habitsByBucket, recurringProjects } = useDayItems(date);
-  const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
+  const canvasGroupBy = useCanvasGroupBy();
   const routines = usePlannerStore((s) => s.routines);
   const programs = usePlannerStore((s) => s.programs);
   const goals = usePlannerStore((s) => s.goals);

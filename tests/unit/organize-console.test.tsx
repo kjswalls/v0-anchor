@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
 import { CONSOLE_SECTIONS, isConsoleSection } from '@/components/planner/organize/console-rail';
+import { enableGoalsAndOrganize } from './support/extensions';
 
 /**
  * The Organize console's frame (memory/plans/organize-console.md, Phase 2).
@@ -35,6 +36,14 @@ const tick = async () =>
   act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
+
+/**
+ * The console and both its gated halves are switched ON for this file. Every
+ * test below is about the FRAME, not about the extension gate — the gate has
+ * its own file (extension-gates-organize.test.tsx), and defaulting it on here
+ * would make that file the only thing standing between a broken gate and green.
+ */
+beforeEach(enableGoalsAndOrganize);
 
 describe('the Organize console frame', () => {
   afterEach(cleanup);

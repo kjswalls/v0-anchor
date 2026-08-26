@@ -212,6 +212,14 @@ export function UserCard() {
               thing from the log it sits under: the log is this session, this is
               the last thirty days.
             */}
+            {/* NOT GATED, and that is deliberate rather than an oversight.
+                This is the only door to the trash, and the trash is the only
+                way back out of a delete — while deleting itself is not gated at
+                all. A recovery route that a default-off extension can close is
+                a way for the app's DEFAULT configuration to destroy work. So
+                `extension: null` in console-rail.tsx keeps the Trash section
+                alive whatever the toggles say, and this button stays live to
+                match. */}
             <div className="mt-2 border-t border-border pt-1.5">
               <button
                 type="button"

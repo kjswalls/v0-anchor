@@ -9,6 +9,7 @@ import { useDraggable } from '@dnd-kit/core';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
 import { goalRolesByItem } from '@/lib/goals';
+import { useGoalsForDisplay } from '@/lib/extension-gates';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { useSelectionStore, rangeIds } from '@/lib/selection-store';
@@ -155,9 +156,15 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   // is finished. Built per row rather than threaded down: the index is O(goals)
   // over a handful of containers, and threading it would mean touching every
   // one of this row's callers for a glyph.
+  //
+  // Handed the goals the DISPLAY may read, which is an empty list while the
+  // Goals extension is off — so the glyph disappears and the row itself is
+  // untouched. That asymmetry is the aspire contract: a goal may add a mark to
+  // a row and may never take the row away (lib/container-registry.ts).
+  const displayGoals = useGoalsForDisplay(goals);
   const roles = useMemo(
-    () => goalRolesByItem(goals).get(item.id)?.filter((r) => r.role !== 'member') ?? [],
-    [goals, item.id],
+    () => goalRolesByItem(displayGoals).get(item.id)?.filter((r) => r.role !== 'member') ?? [],
+    [displayGoals, item.id],
   );
 
   // Effective per-date status
