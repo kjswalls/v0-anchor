@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo } from 'react';
-import { format, startOfWeek, addDays, isSameDay, isToday } from 'date-fns';
+import { format, startOfWeek, addDays, isSameDay } from 'date-fns';
 import { useDroppable } from '@dnd-kit/core';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import { GroupSection } from '@/components/primitives/group-section';
@@ -203,7 +203,33 @@ function WeekScheduleColumn({
       data-date={col.dateStr}
       data-selected={selected ? 'true' : 'false'}
       data-today={today ? 'true' : 'false'}
-      className={cn('flex flex-none flex-col transition-opacity', !selected && 'opacity-60 hover:opacity-100')}
+      // Hover emphasis, and it is ADDITIVE: the hovered day picks up the
+      // standard hover wash, and its six neighbours are not touched at all.
+      //
+      // This used to be `!selected && 'opacity-60 hover:opacity-100'` — six of
+      // seven days faded whether or not the pointer was anywhere near the grid.
+      // The obvious repair (dim the SIBLINGS of the hovered column instead) is
+      // not available here, and not as a matter of taste: a column opacity
+      // composites everything inside it, and a week column is full of lime —
+      // the block accent rail and start bead of every project-less scheduled
+      // task, the completion checkbox of every done row, multi-select marks,
+      // and any project whose name happens to hash to --accent-8. Lime at 0.6
+      // over the dark ramp turns olive (see primitives/task-row.tsx, which
+      // names that exact number), and CLAUDE.md's accent rule forbids it.
+      // Excluding the selected and today columns does not save it: an ordinary
+      // Tuesday holds all of the above.
+      //
+      // So nothing recedes and the pointed-at day is what changes. `bg-accent`
+      // is the app's hover wash and this column is transparent at rest, which
+      // is the case globals.css's `hover-wash` note calls plain `hover:bg-accent`
+      // already correct for. A background paints BEHIND its element's content,
+      // so no accent mark is composited — the same reason task-row washes a
+      // hovered row instead of fading it.
+      //
+      // No pointer media guard is needed, unlike a dim: on a touch tablet wide
+      // enough for the desktop shell `:hover` sticks after a tap, and what
+      // sticks here is a wash on the column the user just tapped.
+      className="flex flex-none flex-col rounded-[10px] transition-colors hover:bg-accent"
       /*
        * `flex-none` + an explicit width, where this used to be `flex-1` +
        * minWidth. That reads like a bigger change than it is: under the old
@@ -544,11 +570,15 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
           nothing, and once the grid scrolls sideways the pinned gutter visibly
           jitters 40px and back on every navigation.
 
-          It has to be a wrapper rather than the class on each column. The
+          It has to be a wrapper rather than the class on each column, and it
+          still does even though no column carries an opacity any more. The
           keyframes animate opacity 0.5 → 1, and an animation overrides a normal
-          declaration, so a column carrying `opacity-60` would fade to 1 and then
-          SNAP back to 0.6 the instant the animation ended. On a parent the two
-          opacities multiply, which is what makes it smooth today.
+          declaration — so the moment anyone gives a column a resting opacity
+          again it would fade to 1 and then SNAP back the instant the animation
+          ended. On a parent the two opacities multiply, which is what makes it
+          smooth. (A resting column opacity is itself off the table now — see
+          the column's own note — but the wrapper is what keeps the week slide
+          from depending on that.)
 
           The key rides here too: it is what restarts the CSS animation on a week
           change, and keeping it off the row means the gutter — and the width
@@ -571,7 +601,14 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
               colPx={colPx}
               activeId={activeId}
               selected={isSameDay(col.date, selectedDate)}
-              today={isToday(col.date)}
+              // `col.dateStr === todayStr`, NOT date-fns `isToday`. isToday
+              // reads the machine's local calendar day; todayStr is
+              // `toDateStr(new Date(), timezone)` in the user's timezone, and
+              // `nowY` is gated on that. With the two disagreeing across a date
+              // boundary — a Tokyo user on a UTC machine at 21:00Z — the
+              // now-marker landed in a column flagged `data-today="false"`, and
+              // the header's lime date sat on the wrong day.
+              today={col.dateStr === todayStr}
               nowY={col.dateStr === todayStr ? nowY : null}
               showBoundaryRail={showBoundaryRail}
               lanePlan={lanePlan}

@@ -64,7 +64,15 @@ function BlockTask({ task, onClick, date }: { task: Task; onClick: () => void; d
       <button
         {...attributes}
         {...listeners}
-        className="flex cursor-grab touch-none items-center text-muted-foreground opacity-0 transition-opacity active:cursor-grabbing group-hover/blocktask:opacity-100"
+        // touch-manipulation, not touch-none — same rule as TaskRow
+        // (components/primitives/task-row.tsx). `touch-action: none` is a
+        // browser-level surrender of the gesture, so it applies no matter which
+        // sensor ends up claiming it: a finger landing here could neither scroll
+        // nor, for the TouchSensor's first 250ms, drag. And it lands here more
+        // often than the styling suggests — the grip is `opacity-0` until hover,
+        // which a phone has none of, but it still occupies layout and still
+        // hit-tests, and this block renders on mobile through DayBuckets.
+        className="flex cursor-grab touch-manipulation items-center text-muted-foreground opacity-0 transition-opacity active:cursor-grabbing group-hover/blocktask:opacity-100"
         onClick={(e) => e.stopPropagation()}
         tabIndex={-1}
       >
