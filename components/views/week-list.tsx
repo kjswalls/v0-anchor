@@ -8,8 +8,9 @@ import { TaskRow } from '@/components/primitives/task-row';
 import { useDayItems } from '@/hooks/use-day-items';
 import { usePlannerStore } from '@/lib/planner-store';
 import { flattenDayRows } from '@/lib/day-items';
+import { toDateStr } from '@/lib/recurrence';
 import { groupRows } from '@/lib/grouping';
-import { sortRows } from '@/lib/sort-rows';
+import { orderRows } from '@/lib/sort-rows';
 import { useViewStore } from '@/lib/view-store';
 import { cn } from '@/lib/utils';
 
@@ -20,7 +21,7 @@ import { cn } from '@/lib/utils';
 
 function DaySection({ date }: { date: Date }) {
   const day = useDayItems(date);
-  const { selectedDate, setSelectedDate, routines, programs } = usePlannerStore();
+  const { selectedDate, setSelectedDate, routines, programs, userTimezone } = usePlannerStore();
   const groupBy = useViewStore((s) => s.canvasGroupBy);
   const sortBy = useViewStore((s) => s.canvasSortBy);
   const selected = isSameDay(date, selectedDate);
@@ -34,10 +35,28 @@ function DaySection({ date }: { date: Date }) {
    * pulling the week into one partition. That is also why Week × List honours
    * ordering when Week × Schedule cannot — a day section has no time axis of its
    * own to contradict.
+   *
+   * The completed-sinks pass rides the same "seven independent lists" fact, and
+   * takes THIS section's date rather than the store's `selectedDate`: a
+   * recurring row's completion is per-date, so resolving all seven columns
+   * against the selected day would sink Tuesday's tick in every column of the
+   * week. Same rule TaskRow applies to its own per-date reads and writes below,
+   * where `date` is passed for exactly this reason.
+   *
+   * Memoized on the date's identity, which `weekDays` below keeps stable, for
+   * the reason Week × Buckets memoizes its own: `toDateStr` builds an uncached
+   * Intl.DateTimeFormat per call, and this is seven sections re-running it on
+   * every store change. Day × List and Day × Buckets resolve theirs unmemoized
+   * because each pays for exactly one call per render — Day × Buckets already
+   * threads one string down to all four cards rather than resolving per card.
    */
+  const dateStr = useMemo(
+    () => toDateStr(date, userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone),
+    [date, userTimezone]
+  );
   const groups = groupRows(flattenDayRows(day), groupBy, { routines, programs }).map((g) => ({
     ...g,
-    rows: sortRows(g.rows, sortBy),
+    rows: orderRows(g.rows, sortBy, dateStr),
   }));
 
   return (
