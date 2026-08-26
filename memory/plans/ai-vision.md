@@ -341,6 +341,39 @@ security audit lists that under *"fix immediately"*. Pull needs no ingress, no s
 credential, and no attack surface. The cost is pickup latency, which for "book the dentist"
 is not a cost. Funnel + hooks stays available as the upgrade if instant pickup ever matters.
 
+**Phase 2c — chat can end in a card. SHIPPED.**
+
+Pillar 3 said conversation reappears "wherever it has an anchor", and the omnibar `?` ask
+was meant to return *"an answer, or a proposal with accept/dismiss"*. Only half of that had
+ever been wired: `proposal-store.request('ask', …)` existed and nothing called it, so the
+`catch-up` button was the sole producer of a card. Beacon could describe a plan and then
+leave the user to go and enact it by hand.
+
+- **`components/ai/chat-conversation.tsx`** — a "Turn this into a plan" affordance under
+  the latest assistant reply. It hands over the EXCHANGE, not the raw question: what is
+  worth acting on is usually in the reply ("push the two writing ones to Thursday"), and a
+  proposer given only the question re-derives the answer and lands somewhere else. Both
+  shells already mount `ProposalCard` above the transcript, so the card arrives where a
+  decision belongs rather than at the bottom of scrollback.
+- **`lib/ai-openers.ts`** — three planner-derived openers instead of a blank box. A blank
+  input demands exactly the initiation this product exists to lend, and the audience
+  section above is the reason it is not a static list: "What can I let go of?" is an offer
+  on a day with things sitting past due and noise on a day without. Same copy contract as
+  `BarCopy` and the proposal card, pinned by a test that greps the strings.
+- **`/api/ai/propose` gained a gateway branch.** It had been refusing `provider ===
+  'openclaw'` outright while `ai-registry` advertised `canPropose: true` for the agent
+  tier — precisely the failure the registry's own header warns about ("a surface asks
+  `canPropose`, gets true, offers the action, and the route answers with an error
+  string"). It now asks the user's gateway through a non-streaming
+  `/v1/chat/completions`, on `proposeSessionKey` rather than the chat key, and recovers
+  JSON from fences and prose because an arbitrary agent will not honour
+  `response_format`. Still never reroutes to OpenAI: that would send an OpenClaw user's
+  planner to a provider they deliberately did not choose.
+
+Untested against a real gateway, like everything else in the transport — the propose branch
+shares `assertAllowedGatewayUrl` and the wire shape with chat, so the same first probe
+exercises both.
+
 ### Wiring it up (gateway side)
 
 Anchor's half is done; the agent needs a schedule. Roughly:

@@ -2,6 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { ProposalDraftSchema } from '@anchor-app/types'
 import { createClient } from '@/lib/supabase-server'
+import {
+  extractJsonObject,
+  gatewayCompletion,
+  getGatewayConfig,
+  proposeSessionKey,
+} from '@/lib/openclaw-gateway'
 
 /**
  * POST /api/ai/propose — turn a free-form ask into a planner diff.
@@ -17,11 +23,21 @@ import { createClient } from '@/lib/supabase-server'
  * there is nothing to show token by token.
  */
 
+/**
+ * Comfortably inside `maxDuration` so the deadline is OURS — a platform-killed
+ * function returns no body at all, and the card would have nothing to show.
+ */
+const GATEWAY_PROPOSE_TIMEOUT_MS = 45_000
+
+export const maxDuration = 60
+
 const SYSTEM_PROMPT = `You are Beacon, the planning assistant inside Anchor — a daily planner for neurodivergent people.
 
 You turn a request into a PROPOSAL: a small set of concrete changes the user accepts with one tap. You never make changes yourself.
 
-Reply with JSON only, in this exact shape:
+Reply with a JSON object and nothing else — no prose before or after it, no markdown fences.
+
+The shape, exactly:
 {
   "summary": "short headline, max ~8 words",
   "rationale": "one warm sentence explaining the thinking",
@@ -46,10 +62,17 @@ export async function POST(req: NextRequest) {
   // OPENAI_API_KEY, so leaving it open would let anyone on the internet spend
   // the owner's money by POSTing a prompt at it. The browser always has a
   // session here — the chat surfaces live inside the authenticated shell.
+  //
+  // The id is kept, not just checked: the gateway branch resolves the user's
+  // own gateway from it, and it must come from the session rather than the
+  // body — a userId a caller could name is a caller who can spend someone
+  // else's gateway.
+  let userId: string
   try {
     const supabase = await createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    userId = user.id
   } catch {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -77,15 +100,65 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // The agent tier has no proposal transport yet, and falling through to OpenAI
-  // would quietly send an OpenClaw user's planner to a provider they chose not
-  // to use. Refusing is the honest failure; routing it elsewhere is not a
-  // degraded mode, it is a broken promise about where their data goes.
+  const userTurn = [
+    `Today is ${todayStr ?? new Date().toISOString().slice(0, 10)}.`,
+    itemContext ?? '',
+    '',
+    prompt?.trim() || 'Suggest a realistic plan for today.',
+  ].join('\n')
+
+  // The agent tier proposes through the user's OWN gateway. Falling through to
+  // OpenAI here would quietly send an OpenClaw user's planner to a provider
+  // they deliberately did not choose — not a degraded mode, a broken promise
+  // about where their data goes. So this branch either works or fails; it never
+  // reroutes.
   if (provider === 'openclaw') {
-    return NextResponse.json(
-      { error: 'Asking your gateway for a plan is not wired up yet — the catch-up suggestion works without it.' },
-      { status: 400 }
-    )
+    const config = await getGatewayConfig(userId)
+    if (!config) {
+      return NextResponse.json(
+        { error: 'Connect your OpenClaw gateway in Settings → Beacon to ask it for a plan.' },
+        { status: 400 }
+      )
+    }
+
+    // A gateway is a machine on someone's tailnet, and this call is not
+    // streamed — a hung one is a spinner with no output and no end. Without a
+    // deadline the failure mode is a platform-level 504 with no body, which
+    // reaches the card as a blank error; with one it is a sentence.
+    const timeout = AbortSignal.timeout(GATEWAY_PROPOSE_TIMEOUT_MS)
+
+    try {
+      const raw = await gatewayCompletion({
+        config,
+        sessionKey: proposeSessionKey(userId),
+        signal: timeout,
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: userTurn },
+        ],
+      })
+
+      const parsed = extractJsonObject(raw)
+      if (!parsed) {
+        return NextResponse.json({ proposal: null, message: 'No suggestion came back.' })
+      }
+
+      const result = ProposalDraftSchema.safeParse(parsed)
+      if (!result.success || result.data.operations.length === 0) {
+        return NextResponse.json({ proposal: null, message: 'Nothing worth changing right now.' })
+      }
+
+      return NextResponse.json({ proposal: result.data })
+    } catch (err) {
+      if (timeout.aborted) {
+        return NextResponse.json(
+          { error: 'Your gateway did not answer in time. Is it reachable from the internet?' },
+          { status: 504 }
+        )
+      }
+      const message = err instanceof Error ? err.message : 'Unknown error'
+      return NextResponse.json({ error: message }, { status: 502 })
+    }
   }
 
   const key = apiKey || process.env.OPENAI_API_KEY
@@ -106,15 +179,7 @@ export async function POST(req: NextRequest) {
       response_format: { type: 'json_object' },
       messages: [
         { role: 'system', content: SYSTEM_PROMPT },
-        {
-          role: 'user',
-          content: [
-            `Today is ${todayStr ?? new Date().toISOString().slice(0, 10)}.`,
-            itemContext ?? '',
-            '',
-            prompt?.trim() || 'Suggest a realistic plan for today.',
-          ].join('\n'),
-        },
+        { role: 'user', content: userTurn },
       ],
     })
 

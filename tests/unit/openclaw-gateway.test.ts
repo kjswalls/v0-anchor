@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 
 // The module reaches user_secrets through the service client, which throws
 // without server env vars. Only the pure wire-format helpers are under test
@@ -13,8 +13,11 @@ import {
   assertAllowedGatewayUrl,
   chatSessionKey,
   deltaFromChunk,
+  extractJsonObject,
+  gatewayCompletion,
   gatewayTurnMessages,
   itemSessionKey,
+  proposeSessionKey,
   translateGatewayStream,
 } from '@/lib/openclaw-gateway';
 import { parseSseFrames } from '@/lib/sse';
@@ -120,6 +123,14 @@ describe('session keys', () => {
     expect(itemSessionKey('u1', 'abc-123')).toBe('anchor:u:u1:item:abc-123');
   });
 
+  it('keeps proposals off the conversation key', () => {
+    // A proposal turn is a system prompt demanding JSON. Splicing that into the
+    // user's own thread would leave the next thing they said being answered by
+    // a model that had just been told to reply in JSON only.
+    expect(proposeSessionKey('u1')).toBe('anchor:u:u1:propose');
+    expect(proposeSessionKey('u1')).not.toBe(chatSessionKey('u1'));
+  });
+
   it('is stable across calls, which is what makes a thread durable', () => {
     expect(itemSessionKey('u1', 'x')).toBe(itemSessionKey('u1', 'x'));
   });
@@ -135,6 +146,7 @@ describe('session keys', () => {
     for (const hostile of ['subagent:evil', 'cron:evil', 'acp:evil', '../../cron:evil']) {
       expect(chatSessionKey(hostile).startsWith('anchor:')).toBe(true);
       expect(itemSessionKey('u1', hostile).startsWith('anchor:')).toBe(true);
+      expect(proposeSessionKey(hostile).startsWith('anchor:')).toBe(true);
     }
   });
 });
@@ -222,5 +234,125 @@ describe('gatewayTurnMessages', () => {
 
   it('handles a first turn with no history', () => {
     expect(gatewayTurnMessages([messages[0], messages[1]])).toEqual([messages[0], messages[1]]);
+  });
+});
+
+describe('extractJsonObject', () => {
+  /**
+   * The OpenAI branch can demand `json_object` and get it. A gateway agent is
+   * whatever model the user put behind whatever system prompt, so the reply is
+   * only probably JSON — and every shape below reads to the user as "the
+   * assistant is broken" if it is not recovered.
+   */
+  const draft = { summary: 'Move three things', operations: [] };
+
+  it('parses a bare object', () => {
+    expect(extractJsonObject(JSON.stringify(draft))).toEqual(draft);
+  });
+
+  it('recovers JSON from a markdown fence', () => {
+    expect(extractJsonObject('```json\n' + JSON.stringify(draft) + '\n```')).toEqual(draft);
+  });
+
+  it('recovers JSON behind a preamble and a sign-off', () => {
+    const raw = `Sure! Here's the plan:\n${JSON.stringify(draft)}\nLet me know if that works.`;
+    expect(extractJsonObject(raw)).toEqual(draft);
+  });
+
+  it('tolerates surrounding whitespace', () => {
+    expect(extractJsonObject(`\n\n  ${JSON.stringify(draft)}  \n`)).toEqual(draft);
+  });
+
+  it('returns null rather than throwing on prose, emptiness or broken JSON', () => {
+    // Upstream treats "nothing to suggest" as a normal outcome, and an
+    // unparseable reply is indistinguishable from one.
+    expect(extractJsonObject('I could not think of anything.')).toBeNull();
+    expect(extractJsonObject('')).toBeNull();
+    expect(extractJsonObject('   ')).toBeNull();
+    expect(extractJsonObject('{ "summary": ')).toBeNull();
+    expect(extractJsonObject('}{')).toBeNull();
+  });
+
+  it('keeps nested braces intact', () => {
+    const nested = { summary: 's', operations: [{ kind: 'update', itemId: 'a' }] };
+    expect(extractJsonObject(`text ${JSON.stringify(nested)} text`)).toEqual(nested);
+  });
+});
+
+describe('gatewayCompletion', () => {
+  // vitest is not configured with `unstubGlobals`, so a stubbed fetch would
+  // outlive this block and silently answer anything added after it.
+  afterEach(() => vi.unstubAllGlobals());
+
+  const config = { baseUrl: 'https://gw.example.com', token: 'tok', agentId: 'anchor' };
+  const messages = [{ role: 'user' as const, content: 'hi' }];
+
+  function mockFetch(impl: (url: string, init: RequestInit) => unknown) {
+    const spy = vi.fn(async (url: string, init: RequestInit) => impl(url, init));
+    vi.stubGlobal('fetch', spy);
+    return spy;
+  }
+
+  const ok = (content: unknown) => ({
+    ok: true,
+    status: 200,
+    json: async () => ({ choices: [{ message: { content } }] }),
+  });
+
+  it('posts a non-streaming turn to the completions endpoint with the session key', async () => {
+    const spy = mockFetch(() => ok('{}'));
+    await gatewayCompletion({ config, messages, sessionKey: 'anchor:u:u1:propose' });
+
+    const [url, init] = spy.mock.calls[0];
+    expect(url).toBe('https://gw.example.com/v1/chat/completions');
+    const headers = init.headers as Record<string, string>;
+    expect(headers.Authorization).toBe('Bearer tok');
+    expect(headers['x-openclaw-session-key']).toBe('anchor:u:u1:propose');
+    // A redirect would bounce this authenticated request — bearer token and all
+    // — at a host the URL guard never saw.
+    expect(init.redirect).toBe('error');
+    const body = JSON.parse(init.body as string);
+    expect(body.stream).toBe(false);
+    expect(body.model).toBe('anchor');
+    // `response_format` is an OpenAI parameter an arbitrary agent may reject
+    // outright, and a rejected request yields nothing at all to recover from.
+    expect(body).not.toHaveProperty('response_format');
+  });
+
+  it('returns the assistant text', async () => {
+    mockFetch(() => ok('{"summary":"ok"}'));
+    await expect(
+      gatewayCompletion({ config, messages, sessionKey: 'k' })
+    ).resolves.toBe('{"summary":"ok"}');
+  });
+
+  it('refuses a gateway URL the guard rejects, before any request goes out', async () => {
+    const spy = mockFetch(() => ok('{}'));
+    await expect(
+      gatewayCompletion({
+        config: { ...config, baseUrl: 'http://169.254.169.254' },
+        messages,
+        sessionKey: 'k',
+      })
+    ).rejects.toThrow(/not allowed/i);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('reports status only — the upstream body can carry gateway config detail', async () => {
+    mockFetch(() => ({
+      ok: false,
+      status: 502,
+      json: async () => ({ error: 'agent "secret-internal-name" is down' }),
+    }));
+    await expect(
+      gatewayCompletion({ config, messages, sessionKey: 'k' })
+    ).rejects.toThrow('Gateway responded 502');
+  });
+
+  it('degrades to empty text on a shape it does not recognise', async () => {
+    for (const payload of [{}, { choices: [] }, { choices: [{ message: {} }] }, { choices: [{ message: { content: 42 } }] }]) {
+      vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => payload })));
+      await expect(gatewayCompletion({ config, messages, sessionKey: 'k' })).resolves.toBe('');
+    }
   });
 });

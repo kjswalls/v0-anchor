@@ -89,6 +89,25 @@ export function itemSessionKey(userId: string, itemId: string): string {
 }
 
 /**
+ * The key proposals are asked on — deliberately NOT the user's chat key.
+ *
+ * A proposal request is a one-shot machine exchange: a system prompt demanding
+ * JSON, the whole planner as context, and a JSON object back. Putting that on
+ * `chatSessionKey` would splice it into the middle of the conversation the user
+ * is actually having, and the next thing they said would be answered by a model
+ * that had just been told to reply in JSON only.
+ *
+ * The honest cost: this session accumulates too, and there is no documented way
+ * to ask the gateway for a stateless turn. It grows slowly (one short exchange
+ * per proposal) and it grows somewhere harmless. If it ever becomes a problem
+ * the fix is a gateway-side session cap, not a per-request key — minting a
+ * fresh key each time would leave an unbounded trail of sessions behind.
+ */
+export function proposeSessionKey(userId: string): string {
+  return `anchor:u:${userId}:propose`
+}
+
+/**
  * Guard for the one place Anchor fetches a URL the user typed.
  *
  * Deliberately does NOT block RFC1918 or CGNAT 100.64/10: a Tailscale address
@@ -305,5 +324,89 @@ function framesIn(line: string, isTail: boolean): string[] {
     return [deltaFromChunk(JSON.parse(payload))]
   } catch {
     return []
+  }
+}
+
+/**
+ * One non-streaming turn against the gateway, returning the raw assistant text.
+ *
+ * Proposals are the caller: there is nothing to show token by token, because a
+ * diff is worthless until it is complete and validated.
+ *
+ * `response_format` is deliberately NOT sent. It is an OpenAI parameter that an
+ * arbitrary agent behind an OpenAI-compatible facade may ignore or reject, and
+ * a rejected request produces nothing at all — whereas an unconstrained one
+ * produces text that `extractJsonObject` can usually still recover. Tolerance
+ * beats brittleness here for the same reason the OpenAI branch chose
+ * `json_object` over a strict schema.
+ */
+export async function gatewayCompletion({
+  config,
+  messages,
+  sessionKey,
+  signal,
+}: GatewayChatRequest): Promise<string> {
+  const allowed = assertAllowedGatewayUrl(config.baseUrl)
+  if (!allowed.ok) throw new Error(allowed.reason)
+
+  const res = await fetch(`${allowed.url}/v1/chat/completions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${config.token}`,
+      'x-openclaw-session-key': sessionKey,
+    },
+    signal,
+    redirect: 'error',
+    body: JSON.stringify({
+      model: config.agentId ?? 'default',
+      messages,
+      stream: false,
+    }),
+  })
+
+  // Status only — the upstream body can carry gateway configuration detail, and
+  // this message reaches the browser.
+  if (!res.ok) throw new Error(`Gateway responded ${res.status}`)
+
+  const payload: unknown = await res.json()
+  const choices = (payload as { choices?: unknown })?.choices
+  if (!Array.isArray(choices) || choices.length === 0) return ''
+  const content = (choices[0] as { message?: { content?: unknown } })?.message?.content
+  return typeof content === 'string' ? content : ''
+}
+
+/**
+ * Best-effort JSON object out of whatever a model actually said.
+ *
+ * The OpenAI branch can demand `json_object` and get it. A gateway agent is
+ * some model behind some system prompt the user configured, and it may fence
+ * the JSON, preface it ("Sure! Here's the plan:"), or append a sign-off. All
+ * three are recoverable and all three would otherwise read to the user as "the
+ * assistant is broken".
+ *
+ * Returns null rather than throwing: upstream treats "nothing to suggest" as a
+ * normal outcome, and an unparseable reply is indistinguishable from one.
+ */
+export function extractJsonObject(raw: string): unknown | null {
+  const text = raw.trim()
+  if (!text) return null
+
+  try {
+    return JSON.parse(text)
+  } catch {
+    // Fall through to the substring attempt.
+  }
+
+  // Widest span that could be an object. Slicing to the LAST brace rather than
+  // scanning for a balanced one keeps this to a few lines, and a trailing
+  // sign-off after the JSON is far more common than a second object after it.
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start === -1 || end <= start) return null
+  try {
+    return JSON.parse(text.slice(start, end + 1))
+  } catch {
+    return null
   }
 }

@@ -1,16 +1,21 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { ArrowUp, Sparkles, MessageSquarePlus, Copy, Check, Plus, Mic, User } from 'lucide-react';
+import { ArrowUp, Sparkles, MessageSquarePlus, Copy, Check, Plus, Mic, User, Wand2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { OnboardingChat } from '@/components/ai/onboarding-chat';
 import { TypingIndicator } from '@/components/ui/typing-indicator';
 import { useChatStore } from '@/lib/chat-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { useProposalStore } from '@/lib/proposal-store';
 import { usePlannerStore } from '@/lib/planner-store';
+import { resolveAICapabilities } from '@/lib/ai-registry';
+import { buildChatOpeners } from '@/lib/ai-openers';
+import { inactiveItemIdsOn } from '@/lib/active';
+import { toDateStr } from '@/lib/recurrence';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { formatChatTimestamp } from '@/lib/format-chat-timestamp';
 import { stripReasoningTags } from '@/lib/chat-utils';
@@ -41,7 +46,17 @@ export function ChatConversation({ variant, onOpenSettings, focusSignal, hideHea
   const aiProvider = useAISettingsStore((s) => s.provider);
   const aiApiKey = useAISettingsStore((s) => s.apiKey);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
+  const items = usePlannerStore((s) => s.items);
+  const routines = usePlannerStore((s) => s.routines);
+  const programs = usePlannerStore((s) => s.programs);
+  const requestProposal = useProposalStore((s) => s.request);
+  const proposalStatus = useProposalStore((s) => s.status);
   const timeFormatStr = useTimeFormat();
+
+  // 'unknown' connection: this component has no reachability probe, and the
+  // registry treats unknown optimistically on purpose so capabilities do not
+  // flicker off and back on during hydration.
+  const canPropose = resolveAICapabilities(aiProvider).canPropose;
 
   const [input, setInput] = useState('');
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
@@ -105,6 +120,55 @@ export function ChatConversation({ variant, onOpenSettings, focusSignal, hideHea
     setInput('');
     send(text);
   };
+
+  // Only read when the transcript is empty, but hooks cannot be conditional —
+  // the guard is the cheap `messages.length` check inside.
+  const openers = useMemo(() => {
+    if (messages.length > 0 || !canPropose) return [];
+    const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const todayStr = toDateStr(new Date(), tz);
+    return buildChatOpeners({
+      items,
+      todayStr,
+      userTimezone: tz,
+      inactiveIds: inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines, programs }),
+    });
+  }, [messages.length, canPropose, items, routines, programs, userTimezone]);
+
+  /**
+   * Hand the exchange to the proposal path, so a conversation can end in
+   * something you tap rather than something you then go and do by hand.
+   *
+   * Sends the EXCHANGE, not the raw question: what makes a plan worth proposing
+   * is usually in Beacon's reply ("push the two writing ones to Thursday"), and
+   * a proposer given only "what should I do about this week" has to re-derive
+   * the whole answer and will land somewhere else. The card is rendered by the
+   * parent shell above the transcript — a decision waiting on you does not
+   * belong at the bottom of scrollback.
+   */
+  const askForPlan = useCallback(
+    (index: number) => {
+      const reply = stripReasoningTags(messages[index]?.content ?? '');
+      let ask = '';
+      for (let i = index - 1; i >= 0; i--) {
+        if (messages[i].role === 'user') {
+          ask = messages[i].content;
+          break;
+        }
+      }
+      requestProposal(
+        'ask',
+        [
+          'Turn this conversation into concrete planner changes.',
+          '',
+          `I asked: ${clip(ask)}`,
+          '',
+          `You answered: ${clip(reply)}`,
+        ].join('\n')
+      );
+    },
+    [messages, requestProposal]
+  );
 
   if (showOnboarding && userId) {
     return (
@@ -179,6 +243,26 @@ export function ChatConversation({ variant, onOpenSettings, focusSignal, hideHea
                     'Ask me to break down tasks, plan your day, or think through what to tackle next.'
                   )}
                 </p>
+
+                {/* Something to say, so the first move is a tap rather than a
+                    blank box. Derived from the planner — see lib/ai-openers.ts
+                    for why these are not a static list, and for the copy rule. */}
+                {openers.length > 0 && (
+                  <div
+                    data-testid="chat-openers"
+                    className="flex flex-col items-stretch gap-1.5 pt-2"
+                  >
+                    {openers.map((opener) => (
+                      <button
+                        key={opener.id}
+                        onClick={() => send(opener.prompt)}
+                        className="rounded-full border border-border bg-surface-2 px-3 py-1.5 text-xs text-foreground transition-colors hover:border-ai/40 hover:bg-muted"
+                      >
+                        {opener.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -256,6 +340,24 @@ export function ChatConversation({ variant, onOpenSettings, focusSignal, hideHea
                         </button>
                       )}
                     </div>
+
+                    {/* Latest reply only: one offer at the foot of the thread,
+                        not a button under every paragraph ever said. Outside the
+                        hover-faded actions row above deliberately — this is the
+                        one affordance that has to be findable without knowing it
+                        is there, and the lime accent must never be dimmed by a
+                        parent's opacity. */}
+                    {canPropose && msg.content && i === messages.length - 1 && !isLoading && (
+                      <button
+                        onClick={() => askForPlan(i)}
+                        disabled={proposalStatus === 'loading'}
+                        data-testid="chat-make-plan"
+                        className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-2xs font-medium text-muted-foreground transition-colors hover:border-ai/40 hover:text-foreground disabled:opacity-50"
+                      >
+                        <Wand2 className="h-3 w-3 text-ai" />
+                        Turn this into a plan
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
@@ -323,6 +425,19 @@ export function ChatConversation({ variant, onOpenSettings, focusSignal, hideHea
       </div>
     </>
   );
+}
+
+/**
+ * Caps one side of the excerpt handed to the proposer.
+ *
+ * The whole planner already travels with a proposal request; a long reply on
+ * top of it is the part that pushes the prompt somewhere it starts losing the
+ * item list off the front. The tail is what gets cut because the conclusion —
+ * the part worth acting on — is at the end of an answer, not the start.
+ */
+function clip(text: string, max = 2000): string {
+  const trimmed = text.trim();
+  return trimmed.length <= max ? trimmed : `…${trimmed.slice(-max)}`;
 }
 
 function LoadingDots() {
