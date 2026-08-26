@@ -89,12 +89,11 @@ describe('the resting omnibar placeholder', () => {
     expect(placeholder).toMatch(/search/i);
     expect(placeholder).toMatch(/chat/i);
 
-    // The sidebar resizes down to SIDEBAR_MIN_WIDTH (280px), leaving ~216px of
-    // text column once the dock well and the pill padding are paid for; the
-    // phone's row is tighter still beside the 44px mode card. A character
-    // budget is a crude proxy for a width jsdom cannot measure, but it is the
-    // one that catches someone pasting the launcher's line in here.
-    expect(placeholder.length).toBeLessThanOrEqual(32);
+    // A crude proxy for a width jsdom cannot measure. Note this cannot fail
+    // independently — the exact match above already pins the string — so it is
+    // documentation of the budget, not a second guard. The budget itself: 184px
+    // of text column at 320pt (the tightest phone), and ~162px for this string
+    // at the app's 12px --text-sm. 32 chars is about where that runs out.
   });
 
   it('keeps the launcher a command surface, and the two shells distinct', () => {
@@ -104,10 +103,26 @@ describe('the resting omnibar placeholder', () => {
     expect(launcher).toBe('Search, add a task, run a command, or ask Beacon…');
 
     // The launcher is summoned to run things, so it leads with search and is the
-    // shell that names commands at rest. If the dock ever grows to say this too,
-    // the two shells have stopped being two shells.
-    expect(launcher).not.toBe('Add a task, search, or chat…');
+    // shell that names commands at rest.
     expect(launcher).toMatch(/command/i);
+  });
+
+  it('never lets the two shells collapse onto one string', () => {
+    // Both shells rendered in ONE test and compared to EACH OTHER. The previous
+    // shape of this check compared the launcher against a hardcoded literal,
+    // which meant the collapse it claimed to guard — the dock growing into the
+    // launcher's line — would have passed it. Only an exact-match assertion
+    // elsewhere caught that, transitively.
+    const { unmount } = render(<Omnibar variant="dock" />);
+    const dock = placeholderOf('dock');
+    unmount();
+
+    render(<Omnibar variant="launcher" />);
+    const launcher = placeholderOf('launcher');
+
+    expect(dock).not.toBe('');
+    expect(launcher).not.toBe('');
+    expect(dock).not.toBe(launcher);
   });
 
   it('survives focus, where the hint row takes over the advertising', () => {

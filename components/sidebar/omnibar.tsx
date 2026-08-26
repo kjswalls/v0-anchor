@@ -1038,12 +1038,18 @@ export function Omnibar({
                       // below still advertises the + / command / ? prefixes the
                       // moment this bar is focused.
                       //
-                      // Width is the other constraint, and it is tight: the sidebar
-                      // resizes down to SIDEBAR_MIN_WIDTH (280px), which after the
-                      // dock's px-[10px] well and the pill's px-[22px] leaves ~216px
-                      // of text column — and the phone's row gives up another ~30px
-                      // to the 44px mode card. At 14px Inter this string measures
-                      // ~188px, so it fits both without a responsive fallback. A
+                      // Width is the other constraint. Measure with the app's OWN
+                      // ramp, not Tailwind's: this input is `text-sm`, and
+                      // app/globals.css redefines --text-sm to 12px (not 16, not
+                      // 14). At 12px Inter this string is ~162px.
+                      //
+                      // Desktop: SIDEBAR_MIN_WIDTH is 280px, less the dock's
+                      // px-[10px] well and the pill's px-[22px] = 216px of text
+                      // column. Phone: the row pays px-[10px] outside, p-[10px]
+                      // inside, the 44px mode card and its gap-2, then the pill's
+                      // own px-[22px] — viewport − 136, so 254px on a 390pt phone
+                      // and 184px at 320pt. 320pt is the tightest case and still
+                      // leaves ~22px. Fits everywhere without a fallback. A
                       // longer line does not break the layout (a placeholder clips
                       // rather than overflows) but it does get truncated mid-word,
                       // which is worse copy than a shorter honest one. Measure
