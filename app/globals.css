@@ -1229,6 +1229,48 @@ body {
   }
 }
 
+/* Week day-column emphasis — the recede is a HOVER answer, never a resting one.
+   Both column views (Week × Schedule, Week × Buckets) mark their column row
+   `data-week-cols` and each column `data-week-col`, and this one rule is the
+   whole behaviour: with the pointer nowhere near the grid every day sits at full
+   strength, and only once you are actually pointing at a column do its siblings
+   step back so the one under the cursor reads. It replaces week-schedule's old
+   `!selected && 'opacity-60'`, which dimmed six days out of seven permanently —
+   a week you have to un-dim by selecting is a week you can't read at a glance.
+
+   The `:has()` is scoped to a COLUMN hover rather than hung off the row's own
+   `:hover`, because the row's flex gaps are part of the row: hovering a gap
+   would otherwise recede all seven at once and emphasise nothing.
+
+   Two columns opt out, and that is the accent rule (CLAUDE.md), not taste.
+   Opacity on the column composites everything inside it, and lime is the one
+   colour that must never fade through a parent:
+     - `[data-selected]` carries the lime day-header pill;
+     - `[data-today]` carries lime wherever it lives — the now-marker and the
+       success-text date in Schedule, the current-bucket spine segment in
+       Buckets (week-buckets passes `currentBucket` only for today, which is
+       exactly why that view had to refuse `opacity-75` before this rule
+       existed; with today excluded it can share the mechanism).
+   Everything else in a column is surfaces, ink and rows, which composite fine.
+
+   Keeping today un-dimmed also keeps tests/unit/week-columns.test.ts's premise
+   true: opacity below 1 makes a stacking context, and the now-marker's z has to
+   stay in the root layer to lose to WEEK_GUTTER_Z honestly.
+
+   Gated on a hover-capable, fine pointer rather than a width query or
+   `useIsMobile`: the phone shell never mounts a week view at all (it is
+   day-scope only), so what this actually guards is a touch TABLET wide enough
+   for the desktop shell, where `:hover` sticks after a tap and would strand six
+   columns dimmed with nothing to un-dim them. Unlayered plain CSS, like the
+   `[data-wide]` rule above, so it is not reordered against Tailwind's opacity
+   utilities. */
+@media (hover: hover) and (pointer: fine) {
+  [data-week-cols]:has([data-week-col]:hover)
+    [data-week-col]:not(:hover):not([data-selected='true']):not([data-today='true']) {
+    opacity: 0.6;
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;

@@ -202,7 +202,16 @@ function WeekScheduleColumn({
       data-date={col.dateStr}
       data-selected={selected ? 'true' : 'false'}
       data-today={today ? 'true' : 'false'}
-      className={cn('flex flex-none flex-col transition-opacity', !selected && 'opacity-60 hover:opacity-100')}
+      // The hover-emphasis hook. Nothing here decides the recede — one rule in
+      // app/globals.css does, keyed on this attribute and on the row's
+      // `data-week-cols`, so Schedule and Buckets recede identically and the
+      // accent opt-outs (`data-selected` / `data-today`, both already above)
+      // live in one place. This used to be `!selected && 'opacity-60
+      // hover:opacity-100'`: six of seven days dimmed at rest, whether or not
+      // the pointer was anywhere near the grid. `transition-opacity` stays —
+      // it is what makes the sibling recede a fade rather than a flicker.
+      data-week-col=""
+      className="flex flex-none flex-col transition-opacity"
       /*
        * `flex-none` + an explicit width, where this used to be `flex-1` +
        * minWidth. That reads like a bigger change than it is: under the old
@@ -542,11 +551,14 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
           nothing, and once the grid scrolls sideways the pinned gutter visibly
           jitters 40px and back on every navigation.
 
-          It has to be a wrapper rather than the class on each column. The
-          keyframes animate opacity 0.5 → 1, and an animation overrides a normal
-          declaration, so a column carrying `opacity-60` would fade to 1 and then
-          SNAP back to 0.6 the instant the animation ended. On a parent the two
-          opacities multiply, which is what makes it smooth today.
+          It has to be a wrapper rather than the class on each column, and that
+          still holds now the column opacity is hover-driven. The keyframes are
+          transform-ONLY today — the `opacity: 0.5 → 1` they used to carry was
+          taken out for the accent rule (see globals.css) — but an animation
+          overrides a normal declaration, so if that fade were ever put back on
+          the columns themselves, a receding sibling would fade to 1 and then
+          SNAP to 0.6 the instant the animation ended. On a parent the two
+          opacities multiply instead.
 
           The key rides here too: it is what restarts the CSS animation on a week
           change, and keeping it off the row means the gutter — and the width
@@ -554,6 +566,9 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
         */}
         <div
           key={`${weekDays[0].toDateString()}-${navDirection ?? 'none'}`}
+          // The row the hover-emphasis rule scopes its `:has()` to; every
+          // `data-week-col` below is a child of it. See app/globals.css.
+          data-week-cols=""
           className={cn(
             'flex flex-none gap-2',
             navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
