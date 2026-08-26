@@ -20,6 +20,7 @@ import { ProposalCard } from '@/components/ai/proposal-card';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { EXT_HABIT_HEATMAP, resolveEnabled } from '@/lib/extension-registry';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
+import { AGENT_QUIET_AFTER_MS, agentStatusView } from '@/lib/agent-status';
 import { isBulkPaste, MAX_BULK_ITEMS, splitBulkLinesWithMeta } from '@/lib/bulk-add';
 import { toast } from 'sonner';
 import type { Item, TaskItem } from '@/lib/planner-types';
@@ -192,6 +193,26 @@ function AgentSection({ item }: { item: Item }) {
   const live = (items.find((i) => i.id === item.id) ?? item) as TaskItem;
   const agentName = provider === 'openclaw' ? 'OpenClaw' : 'Beacon';
 
+  /**
+   * A ticking clock, because "has this run gone quiet" is a question about
+   * elapsed time and `Date.now()` may not be read during render.
+   *
+   * Coarser than the row's minute tick: nothing here changes until the quiet
+   * threshold is crossed, so checking a few times an hour is plenty, and only
+   * one detail panel is ever open. Hooks run before the unassigned early
+   * return below — they cannot be conditional — which costs an idle interval
+   * on a panel with no agent on it. One timer, while a panel is open.
+   */
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), AGENT_QUIET_AFTER_MS / 6);
+    return () => clearInterval(id);
+  }, []);
+
+  // One evaluation, read twice below — and the two must agree, or the layout
+  // anchor and the button that needs it disagree about whether it is there.
+  const stalled = agentStatusView(live, now)?.stalled || live.aiStatus === 'failed';
+
   // No type test here on purpose: the call site gates on the registry's
   // `agentAssignable`, which is the single answer to "may this be delegated"
   // (habit: no, custom: no while the agent write API cannot address it). A
@@ -237,12 +258,36 @@ function AgentSection({ item }: { item: Item }) {
             {live.aiStatus}
           </span>
         )}
+        {/* The LIGHT recovery, offered only once a run has actually gone quiet
+            or failed.
+            
+            Unassign was the only way out, and it throws the delegation away —
+            "this run died, have another go" is the far commoner want, and it
+            keeps the assignee. Deliberately manual and deliberately gated:
+            nothing claims work atomically, so a button that re-queued a run
+            which was merely slow would put two workers on one task and let the
+            second overwrite the first's report. The user seeing "Gone quiet" is
+            the evidence that makes it safe. */}
+        {stalled && (
+          <button
+            type="button"
+            onClick={() => updateTask(item.id, { aiStatus: 'queued', aiResult: undefined })}
+            data-testid="agent-requeue"
+            className="text-warning-text hover:text-foreground ml-auto text-[10px] font-medium"
+          >
+            Try again
+          </button>
+        )}
         <button
           type="button"
           onClick={() =>
             updateTask(item.id, { assignee: undefined, aiStatus: undefined, aiResult: undefined })
           }
-          className="text-muted-foreground hover:text-foreground ml-auto text-[10px]"
+          className={cn(
+            'text-muted-foreground hover:text-foreground text-[10px]',
+            // Keeps its right-hand anchor when it is the only control.
+            !stalled && 'ml-auto'
+          )}
         >
           Unassign
         </button>

@@ -26,11 +26,32 @@ export interface AgentStatusView {
   needsUser: boolean
   /** Whether the work is still live — a spinner is honest only while it is. */
   active: boolean
+  /**
+   * The run has said nothing for long enough that it has probably died.
+   *
+   * A DISPLAY heuristic, never a trigger: it marks the row and offers the user
+   * a manual re-queue, and nothing automatic reads it. An automatic requeue
+   * would be a double-run generator — nothing claims work atomically, so a
+   * timer that re-queued a run which was merely slow would put two workers on
+   * one task, and the second would overwrite the first's report.
+   */
+  stalled: boolean
   /** "4m", "3h", "2d" — absent when the item carries no stamp. */
   elapsed?: string
   /** Full sentence for the tooltip and for screen readers. */
   detail: string
 }
+
+/**
+ * How long a live state may go without an update before it reads as dead.
+ *
+ * An hour is deliberately generous. A gateway agent doing real research can run
+ * for many minutes, and calling a slow run dead invites the user to re-queue
+ * work that is still happening — which, with no atomic claim anywhere, is how
+ * two workers end up on one task. An hour is several missed cycles on any
+ * sensible schedule, so it is past "slow" and into "gone".
+ */
+export const AGENT_QUIET_AFTER_MS = 60 * 60 * 1000
 
 const LABELS: Record<AgentState, string> = {
   queued: 'Queued',
@@ -103,21 +124,33 @@ export function agentStatusView(
 
   const state = item.aiStatus as AgentState
   const elapsed = item.aiStatusAt ? formatElapsed(item.aiStatusAt, now) : undefined
-  const label = LABELS[state]
+  const active = state === 'queued' || state === 'working'
 
-  const detail =
-    state === 'blocked'
+  // Only a LIVE state can go quiet. `blocked` waiting three days is not stalled
+  // — it is waiting on the user exactly as designed, and calling that a
+  // malfunction would blame them for it. And with no stamp there is no
+  // evidence either way, so the honest answer is no.
+  const since = item.aiStatusAt ? Date.parse(item.aiStatusAt) : NaN
+  const stalled =
+    active && Number.isFinite(since) && now - since >= AGENT_QUIET_AFTER_MS
+
+  const label = stalled ? 'Gone quiet' : LABELS[state]
+
+  const detail = stalled
+    ? `No update for ${elapsed} — that run has probably stopped`
+    : state === 'blocked'
       ? elapsed
         ? `Waiting on your answer — asked ${elapsed === 'just now' ? 'just now' : `${elapsed} ago`}`
         : 'Waiting on your answer'
       : elapsed
-        ? `${label} — ${elapsed === 'just now' ? 'since just now' : `for ${elapsed}`}`
-        : label
+        ? `${LABELS[state]} — ${elapsed === 'just now' ? 'since just now' : `for ${elapsed}`}`
+        : LABELS[state]
 
   return {
     label,
     needsUser: state === 'blocked',
-    active: state === 'queued' || state === 'working',
+    active,
+    stalled,
     elapsed,
     detail,
   }

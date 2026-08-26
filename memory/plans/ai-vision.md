@@ -661,6 +661,40 @@ Also refuted, usefully: `updatesToRow` really is presence-keyed on all five clea
 and `diffItem`'s `JSON.stringify` comparison does capture a value→undefined transition, so
 undo round-trips for the right reason rather than by luck.
 
+**Phase 2i — a run that dies without saying so. SHIPPED.**
+
+Named as a known gap twice, and only solvable once `aiStatusAt` existed: a worker can die
+mid-task (crash, reclaimed container, gateway switched off) and nothing cleans that up.
+
+**Half of it turned out already to work**, which is worth recording because the gap was
+being described wrongly. `working` is in `OPEN_AI_STATUSES`, so `anchor_my_work` never
+stopped offering a stuck item; and `AgentSection`'s Unassign already cleared the state. What
+was missing was narrower and more specific:
+
+- **The worker had no way to tell a live run from a dead one.** `selectAssignedWork` omitted
+  `aiStatusAt` — exactly the blindness the item row had before migration 038. It now travels,
+  against the response's own `fetchedAt`, and `anchor_my_work` explains the reading: minutes
+  old means leave it alone, hours old means that run died and you should finish it. A worker
+  treating every `working` item as somebody else's leaves the user work they handed over and
+  never got back; one treating every `working` item as abandoned double-runs whatever is
+  genuinely in flight.
+- **The user had no proportionate signal.** "Working 3h" looked like "Working 3m" apart from
+  the digits. `agentStatusView` gains `stalled` past `AGENT_QUIET_AFTER_MS` (one hour,
+  deliberately generous — a real research run takes many minutes, and calling a slow run dead
+  invites re-queueing work that is still happening). The pill drops the spinner and takes the
+  honey: a stopped run now wants something too.
+- **Unassign was the only recovery, and it throws the delegation away.** "That run died, have
+  another go" is the commoner want, so a stalled or failed item gets **Try again** —
+  re-queues, keeps the assignee.
+
+**Nothing automatic reads `stalled`, and that is the load-bearing part.** Nothing claims work
+atomically, so a timer that re-queued a merely-slow run would put two workers on one task and
+let the second overwrite the first's report. The user seeing "Gone quiet" is the evidence
+that makes the manual button safe. An atomic claim is still the real fix and is still open.
+
+`blocked` is never stalled however long it waits — it is waiting on the USER, exactly as
+designed, and calling that a malfunction would blame them for it.
+
 ### Wiring it up (gateway side)
 
 Anchor's half is done; the agent needs a schedule. Roughly:

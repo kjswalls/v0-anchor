@@ -458,3 +458,65 @@ describe('anchor_ask_user — a question with answers', () => {
     expect(toolByName('anchor_ask_user')!.description).toMatch(/exhaustive/i);
   });
 });
+
+describe('resuming a run that died', () => {
+  /**
+   * `working` is already in the open set, so the queue re-offers a stuck item —
+   * what was missing is the evidence to tell a live run from a dead one. A
+   * worker that treats every `working` item as somebody else's leaves the user
+   * work they handed over and never got back; one that treats every `working`
+   * item as abandoned double-runs whatever is genuinely in flight.
+   */
+  const working = (id: string, title: string, aiStatusAt?: string) => ({
+    type: 'task',
+    status: 'pending',
+    isScheduled: false,
+    order: 0,
+    completedDates: [],
+    id,
+    title,
+    assignee: 'openclaw',
+    aiStatus: 'working',
+    ...(aiStatusAt ? { aiStatusAt } : {}),
+  });
+
+  const root = {
+    fetchedAt: '2026-08-26T12:00:00.000Z',
+    userTimezone: 'UTC',
+    items: [
+      working('live-1', 'Still going', '2026-08-26T11:56:00.000Z'),
+      working('dead-1', 'Died hours ago', '2026-08-26T06:00:00.000Z'),
+    ],
+  };
+
+  it('carries the stamp, so elapsed is computable against fetchedAt', () => {
+    const { assigned, fetchedAt } = selectAssignedWork(root, {});
+    expect(fetchedAt).toBe('2026-08-26T12:00:00.000Z');
+    expect(assigned.map((a) => a.aiStatusAt)).toEqual([
+      '2026-08-26T11:56:00.000Z',
+      '2026-08-26T06:00:00.000Z',
+    ]);
+  });
+
+  it('still returns a stuck working item — the queue never dropped it', () => {
+    const { assigned } = selectAssignedWork(root, {});
+    expect(assigned.map((a) => a.id)).toContain('dead-1');
+  });
+
+  it('omits the stamp cleanly when there is none', () => {
+    const { assigned } = selectAssignedWork(
+      { ...root, items: [working('nostamp-1', 'No stamp')] },
+      {}
+    );
+    expect(assigned[0]).not.toHaveProperty('aiStatusAt');
+  });
+
+  it('tells the worker what a working item means and what to do about it', () => {
+    // A rule the model cannot see is a rule it cannot follow — the mistake
+    // already made once with "not available for repeating items".
+    const description = toolByName('anchor_my_work')!.description;
+    expect(description).toContain('aiStatusAt');
+    expect(description).toContain('fetchedAt');
+    expect(description).toMatch(/died without/i);
+  });
+});

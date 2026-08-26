@@ -164,6 +164,16 @@ interface AssignedItem {
   assignee?: string
   aiStatus?: string
   aiResult?: string
+  /**
+   * When `aiStatus` last changed (migration 038), against the response's
+   * `fetchedAt` so elapsed is computable.
+   *
+   * Without it a worker finding one of its own items at 'working' cannot tell a
+   * four-minute run from a four-hour one — the same blindness the item row had
+   * before this column existed, and the difference between "another pass is
+   * still going" and "that run died and nobody noticed".
+   */
+  aiStatusAt?: string
   /** The item's own status, so the worker can see it was not just un-queued. */
   status?: string
   startDate?: string
@@ -262,7 +272,7 @@ export function selectAssignedWork(
       // due, how urgent, and whatever the user wrote down. Deliberately NOT the
       // whole row — the point of this tool is to be small.
       for (const key of [
-        'assignee', 'aiStatus', 'aiResult', 'status',
+        'assignee', 'aiStatus', 'aiResult', 'aiStatusAt', 'status',
         'startDate', 'startTime', 'timeBucket', 'priority', 'notes',
       ] as const) {
         if (typeof item[key] === 'string') picked[key] = item[key] as string
@@ -284,7 +294,14 @@ export const MCP_TOOLS: McpTool[] = [
       'The loop is: take a queued item, mark it working so a second run does not double it, ' +
       'do the work, then report with anchor_report_progress. An item already sitting at ' +
       "'blocked' may have been answered — read anchor_item_activity before assuming it is " +
-      'still stuck. If nothing comes back, there is nothing to do — stop, do not go looking ' +
+      'still stuck. ' +
+      "An item sitting at 'working' is NOT necessarily someone else's: compare its " +
+      "aiStatusAt against the response's fetchedAt. Minutes old means a run is genuinely " +
+      'in flight and you should leave it alone. Hours old means that run died without ' +
+      'reporting — nothing cleans those up, so pick it up and finish it, saying so in your ' +
+      'first progress report. An item nobody resumes is one the user handed over and never ' +
+      'got back. ' +
+      'If nothing comes back, there is nothing to do — stop, do not go looking ' +
       'for work in the rest of the planner.',
     inputSchema: obj({
       includeFinished: {

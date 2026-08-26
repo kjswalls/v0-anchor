@@ -692,17 +692,25 @@ function AgentClock({
       <span
         data-testid="item-agent-status"
         data-agent-state={item.aiStatus}
+        data-agent-stalled={view.stalled || undefined}
         className={cn(
           'flex flex-shrink-0 items-center gap-1 text-[10px] font-medium',
           // Honey is reserved for the ONE state that wants something from the
           // user. Everything else is the agent's business and stays muted —
           // a row that shouts about work proceeding normally is a row that
           // teaches you to stop reading it.
-          view.needsUser ? 'text-warning-text' : 'text-muted-foreground/70',
+          // Honey for the one state that wants something from the user, and
+          // for a run that has stopped — because that one now wants something
+          // too. Everything else is progress they are free to ignore.
+          view.needsUser || view.stalled ? 'text-warning-text' : 'text-muted-foreground/70',
           className
         )}
       >
-        {view.active ? (
+        {view.stalled ? (
+          // No spinner on a run that has stopped — a spinner is a claim that
+          // something is happening, and this is the row saying it is not.
+          <Bot aria-hidden className="size-3 flex-shrink-0" />
+        ) : view.active ? (
           <Loader2
             aria-hidden
             className={cn('size-3 flex-shrink-0', item.aiStatus === 'working' && 'animate-spin')}

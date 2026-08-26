@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { agentStatusView, formatElapsed, hasAgentState, isAgentState } from '@/lib/agent-status';
+import {
+  AGENT_QUIET_AFTER_MS,
+  agentStatusView,
+  formatElapsed,
+  hasAgentState,
+  isAgentState,
+} from '@/lib/agent-status';
 
 /**
  * What a delegated item says on a row.
@@ -106,8 +112,10 @@ describe('what the row says', () => {
   });
 
   it('phrases the detail as a sentence a reader can hear', () => {
-    expect(view({ aiStatus: 'working', aiStatusAt: ago(3 * HOUR) })!.detail).toBe(
-      'Working — for 3h'
+    // Inside the quiet threshold — past it the wording changes on purpose, see
+    // the gone-quiet block at the foot of this file.
+    expect(view({ aiStatus: 'working', aiStatusAt: ago(45 * MINUTE) })!.detail).toBe(
+      'Working — for 45m'
     );
     expect(view({ aiStatus: 'blocked', aiStatusAt: ago(2 * HOUR) })!.detail).toBe(
       'Waiting on your answer — asked 2h ago'
@@ -178,5 +186,73 @@ describe('hasAgentState — the clockless half', () => {
     expect(hasAgentState(item)).toBe(true);
     // No stamp at all, and none needed — the decision is about state.
     expect(hasAgentState({ ...item, aiStatusAt: undefined } as never)).toBe(true);
+  });
+});
+
+describe('a run that has gone quiet', () => {
+  /**
+   * A worker can die mid-task — a crash, a reclaimed container, a gateway
+   * switched off — and nothing cleans that up. The item sits at `working`
+   * indefinitely, looking exactly like a healthy run apart from the digits.
+   *
+   * This is a DISPLAY heuristic and nothing automatic reads it. An automatic
+   * requeue would be a double-run generator: nothing claims work atomically, so
+   * re-queueing a run that was merely slow puts two workers on one task and the
+   * second overwrites the first's report.
+   */
+  const quiet = (over: Record<string, unknown> = {}) =>
+    view({ aiStatusAt: ago(AGENT_QUIET_AFTER_MS + MINUTE), ...over })!;
+
+  it('marks a working run that has said nothing for over an hour', () => {
+    expect(quiet().stalled).toBe(true);
+    expect(quiet().label).toBe('Gone quiet');
+  });
+
+  it('leaves a run inside the threshold alone', () => {
+    expect(view({ aiStatusAt: ago(AGENT_QUIET_AFTER_MS - MINUTE) })!.stalled).toBe(false);
+    expect(view()!.stalled).toBe(false);
+  });
+
+  it('marks a queued item nothing ever picked up', () => {
+    // Same failure, earlier: the schedule is off, or no worker is running.
+    expect(quiet({ aiStatus: 'queued' }).stalled).toBe(true);
+  });
+
+  it('never calls a blocked item stalled, however long it waits', () => {
+    // It is waiting on the USER, exactly as designed. Calling that a
+    // malfunction would blame them for not having answered yet — the precise
+    // thing the copy contract forbids.
+    const waiting = view({ aiStatus: 'blocked', aiStatusAt: ago(3 * DAY) })!;
+    expect(waiting.stalled).toBe(false);
+    expect(waiting.label).toBe('Needs you');
+  });
+
+  it('never calls a failed run stalled — it already reported', () => {
+    expect(view({ aiStatus: 'failed', aiStatusAt: ago(3 * DAY) })!.stalled).toBe(false);
+  });
+
+  it('says nothing without a stamp, having no evidence either way', () => {
+    // Rows predating migration 038. Guessing would be the confident wrong
+    // number this whole column exists to avoid.
+    expect(view({ aiStatusAt: undefined })!.stalled).toBe(false);
+    expect(view({ aiStatusAt: 'not a date' })!.stalled).toBe(false);
+  });
+
+  it('drops the live claim, so no spinner promises work that stopped', () => {
+    // `active` stays true — it IS still in a live state — and `stalled` is what
+    // the pill reads to withhold the spinner.
+    expect(quiet().active).toBe(true);
+    expect(quiet().stalled).toBe(true);
+  });
+
+  it('explains itself rather than just relabelling', () => {
+    expect(quiet().detail).toMatch(/no update for/i);
+    expect(quiet().detail).toContain('1h');
+  });
+
+  it('blames the run, never the user', () => {
+    const forbidden = /you |your |should have|forgot|ignored/i;
+    expect(quiet().label).not.toMatch(forbidden);
+    expect(quiet().detail).not.toMatch(forbidden);
   });
 });
