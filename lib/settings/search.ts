@@ -5,10 +5,12 @@ import {
   displayValue,
   valueLabels,
   isModified,
+  subPanesOf,
   type SettingRecord,
   type DestinationRecord,
   type SettingCtx,
   type PaneId,
+  type RootPaneId,
 } from './manifest';
 
 /**
@@ -338,6 +340,24 @@ export function searchSettings(
   }
 
   return { settings: final, destinations, didYouMean, counts, total: final.length };
+}
+
+/**
+ * What the rail should show against one of its entries.
+ *
+ * `counts` is keyed by the pane a record actually lives in, and it stays that
+ * way — the sum of its values is the result total, and the results list groups
+ * by exactly those keys. But the rail has no row for `extensions/beeminder`,
+ * so a hit inside a sub-pane would show as a zero on Extensions and dim the one
+ * rail entry that leads to it. This rolls a parent's sub-panes up into it, and
+ * is the ONLY place that rollup happens.
+ */
+export function paneMatchCount(result: SearchResult, pane: PaneId): number {
+  const own = result.counts[pane] ?? 0;
+  return subPanesOf(pane as RootPaneId).reduce(
+    (total, sub) => total + (result.counts[sub.id] ?? 0),
+    own
+  );
 }
 
 /** Rows of the active pane, with the same platform and advanced rules applied. */

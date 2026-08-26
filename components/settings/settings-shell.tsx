@@ -9,8 +9,10 @@ import { Button } from '@/components/ui/button';
 import { SettingRow } from './setting-row';
 import { LookPreview } from './look-preview';
 import {
+  ALL_PANES,
   PANES,
   paneById,
+  railPaneFor,
   settingById,
   displayValue,
   type PaneId,
@@ -18,7 +20,8 @@ import {
   type SettingRecord,
   type DestinationRecord,
 } from '@/lib/settings/manifest';
-import { searchSettings, paneRows, highlightRuns } from '@/lib/settings/search';
+import { searchSettings, paneRows, paneMatchCount, highlightRuns } from '@/lib/settings/search';
+import { ExtensionIndex } from './extension-index';
 
 /**
  * The settings surface: a rail that is a map, and a content column that is
@@ -27,6 +30,14 @@ import { searchSettings, paneRows, highlightRuns } from '@/lib/settings/search';
  * The pane scrolls the DOCUMENT, not an inner box — no overflow-y-auto and no
  * <ScrollArea> (which silently drops height caps anyway). That is what retires
  * the skipped desktop-scroll test for issue #92 rather than re-fixing it.
+ *
+ * The rail is ONE level and stays that way. Extensions have panes of their own
+ * (/settings/extensions/<slug>) but they do not get rail entries — seven map
+ * entries plus one per extension is not a map. A sub-pane instead lights its
+ * parent's rail row, rolls its search hits up into that row's count, and puts
+ * the way back in the breadcrumb. Search itself is NOT scoped to a pane, here
+ * or anywhere: a query still crosses every pane, sub-panes included, which is
+ * why the results list groups by ALL_PANES rather than by the rail.
  */
 
 const ADV_KEY = 'anchor-settings-advanced';
@@ -137,6 +148,9 @@ export function SettingsShell({
   const noticeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const activePane = paneById(pane)!;
+  const parentPane = activePane.parent ? paneById(activePane.parent) : undefined;
+  // The rail row this pane belongs to — itself, or its parent inside a sub-pane.
+  const railPane = railPaneFor(pane);
 
   /* ── Advanced disclosure state is per-pane and deliberately NOT a setting ──
      An effect, not a lazy initialiser: this is a client component but it still
@@ -350,6 +364,11 @@ export function SettingsShell({
 
   return (
     <main className="mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-8">
+      {/* Three crumbs inside an extension, two everywhere else. The rail's
+          Extensions row does navigate back up, but from inside a sub-pane it
+          renders as the CURRENT row — a lit row does not read as a way out. So
+          the parent crumb is the way back that looks like one, and it has to be
+          a real link rather than the plain label the last crumb is. */}
       <nav className="text-muted-foreground flex items-center gap-1.5 text-xs">
         <Link
           href="/"
@@ -358,6 +377,14 @@ export function SettingsShell({
           <ChevronLeft className="size-3.5" aria-hidden />
           Anchor
         </Link>
+        {parentPane && (
+          <>
+            <span aria-hidden>/</span>
+            <Link href={`/settings/${parentPane.id}`} className="hover:text-foreground transition-colors">
+              {parentPane.name}
+            </Link>
+          </>
+        )}
         <span aria-hidden>/</span>
         <span className="text-foreground font-medium">{activePane.name}</span>
       </nav>
@@ -381,8 +408,12 @@ export function SettingsShell({
           )}
         >
           {PANES.map((p) => {
-            const count = searching ? (results.counts[p.id] ?? 0) : null;
-            const active = !searching && p.id === pane;
+            // paneMatchCount, not counts[p.id]: a hit inside an extension's own
+            // pane belongs to the Extensions rail row, which has no key of its
+            // own in `counts` and would otherwise dim at zero while holding the
+            // only route to the result.
+            const count = searching ? paneMatchCount(results, p.id) : null;
+            const active = !searching && p.id === railPane;
             const Icon = p.icon;
             return (
               <button
@@ -493,18 +524,30 @@ export function SettingsShell({
                 <Eyebrow>Did you mean</Eyebrow>
               )}
 
-              {PANES.map((p) => {
+              {/* ALL_PANES, not PANES. Every extension field lives in a
+                  sub-pane now, so grouping by the rail would silently drop
+                  every one of them from the results while still counting them
+                  — the exact shape of "search stopped finding my Twilio
+                  token". ALL_PANES is ordered parent-then-children, so the
+                  groups still read down the rail. */}
+              {ALL_PANES.map((p) => {
                 const hits = results.settings.filter((h) => h.record.pane === p.id);
                 if (!hits.length) return null;
+                // A sub-pane names its parent too: "Beeminder" alone doesn't
+                // say where to go, and the group header is the only place the
+                // result list explains where a row actually lives.
+                const groupName = p.parent
+                  ? `${paneById(p.parent)?.name ?? p.parent} · ${p.name}`
+                  : p.name;
                 return (
                   <section key={p.id} aria-labelledby={`results-${p.id}`}>
                     <Eyebrow as="h2" id={`results-${p.id}`} icon={p.icon}>
-                      {p.name}
+                      {groupName}
                     </Eyebrow>
                     <div className="divide-border divide-y">
                       {hits.map((hit) =>
                         rowFor(hit.record, {
-                          paneName: p.name,
+                          paneName: groupName,
                           ranges: hit.ranges,
                           matchedValue: hit.matchedValue,
                         })
@@ -561,7 +604,19 @@ export function SettingsShell({
               {pane === 'look' && <LookPreview />}
 
               <Eyebrow icon={activePane.icon}>{activePane.name}</Eyebrow>
-              <p className="text-muted-foreground -mt-0.5 mb-2 text-xs">{activePane.blurb}</p>
+              {/* An extension pane's blurb IS its catalog description, and the
+                  toggle directly below carries that same sentence as its own
+                  description — printing it twice, one line apart, reads as a
+                  bug. The header keeps the name; the row keeps the sentence. */}
+              {!activePane.parent && (
+                <p className="text-muted-foreground -mt-0.5 mb-2 text-xs">{activePane.blurb}</p>
+              )}
+
+              {/* The one pane whose body is a catalog rather than rows. It has
+                  no records of its own by design — every extension switch moved
+                  into the extension's own pane, so a row here would be a second
+                  copy of a control that already has a permanent home. */}
+              {pane === 'extensions' && <ExtensionIndex />}
 
               <div className="divide-border divide-y">{rows.map((record) => rowFor(record))}</div>
 
