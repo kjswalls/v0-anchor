@@ -415,7 +415,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
       className={cn(
         // No transition on the hover bg — highlights land instantly, like the
         // omnibar's CommandItem. touch-manipulation (not touch-none) keeps
-        // touch scrolling alive; TouchSensor's 250ms delay handles drags.
+        // touch scrolling alive; TouchSensor's 250ms hold handles drags — which
+        // is only true since the shell stopped letting PointerSensor claim touch
+        // first (lib/dnd/sensors.ts). `touch-none` here would hand dnd-kit the
+        // whole gesture again and take the scroll back off the user.
         // Hover cover: flat wash, Linear-style — no edge, no shadow. --accent is
         // the token defined for exactly this (a light gray in light mode, a
         // white 6% overlay in dark) so the highlight lifts off the card in dark
