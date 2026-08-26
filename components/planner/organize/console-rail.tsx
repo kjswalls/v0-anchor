@@ -35,18 +35,35 @@ export type ConsoleSection =
   | 'trash';
 
 /**
- * EVERY SECTION NAMES THE EXTENSION IT RIDES, and six of the seven name the
- * console itself.
+ * EVERY SECTION NAMES THE EXTENSION IT RIDES — or names none, which is a third
+ * answer rather than a missing one.
  *
- * Goals is the odd one out, and deliberately: this is where a goal is CREATED,
- * so if it rode EXT_ORGANIZE then switching Goals on with the console off would
- * buy a filter, a grouping and a page for goals you have no way to make. The
- * one section that is somebody else's feature says so here, and the console
- * opens whenever at least one of its sections does.
+ * Five of the seven ride the console itself. The other two are the whole reason
+ * this is a field instead of a branch in the rail:
  *
- * Declaring it per-section rather than branching in the rail is the registry
- * bargain the rest of the app makes (lib/item-registry.ts, lib/container-
- * registry.ts): the next gated section is a field, not a code path.
+ *   GOALS rides EXT_GOALS. This is where a goal is CREATED, so if it rode the
+ *     console then switching Goals on with the console off would buy a filter,
+ *     a grouping and a page for goals you have no way to make.
+ *
+ *   TRASH rides NOTHING — `extension: null`, ungatable by construction. It is
+ *     the only way back out of a delete (see sections/trash.tsx), and DELETION
+ *     IS NOT GATED: items, projects, routines, programs, habit groups and goals
+ *     all still delete freely with the console off. Gating only the recovery
+ *     half means the app's DEFAULT configuration — both extensions off, which
+ *     is what every new account gets — can destroy work with no cross-session
+ *     route back. ⌘Z is session-scoped and fifty deep; it is not the answer.
+ *     Gating the bin because of the room it happens to stand in is gating by
+ *     HOUSING rather than by MEANING, which is the exact mistake "The Weight of
+ *     Anchor" exists to correct — and the rail already says so, pinning trash
+ *     below a rule as a lifecycle surface rather than a peer of either group.
+ *
+ * So with both extensions off the console still opens, holding one row: Trash.
+ * That is the same shape as the Goals-only case, and both are pinned in
+ * tests/unit/extension-gates-organize.test.tsx.
+ *
+ * Declaring it per-section is the registry bargain the rest of the app makes
+ * (lib/item-registry.ts, lib/container-registry.ts): the next gated section is
+ * a field, not a code path.
  */
 export const CONSOLE_SECTIONS = [
   { id: 'routines', label: 'Routines', group: 'CONTAINERS', eyebrow: 'ROUTINES', extension: EXT_ORGANIZE },
@@ -62,14 +79,16 @@ export const CONSOLE_SECTIONS = [
   { id: 'types', label: 'Item types', group: null, eyebrow: 'ITEM TYPES', extension: EXT_ORGANIZE },
   { id: 'groups', label: 'Habit groups', group: null, eyebrow: 'HABIT GROUPS', extension: EXT_ORGANIZE },
   // Behind a rule, pinned to the foot, the way a bin is pinned to the foot of a
-  // dock. Trash is a lifecycle surface, not a peer of either group.
-  { id: 'trash', label: 'Trash', group: 'RULE', eyebrow: 'TRASH', extension: EXT_ORGANIZE },
+  // dock. Trash is a lifecycle surface, not a peer of either group — and
+  // `extension: null` is that same sentence said to the gate. See the header.
+  { id: 'trash', label: 'Trash', group: 'RULE', eyebrow: 'TRASH', extension: null },
 ] as const satisfies readonly {
   id: ConsoleSection;
   label: string;
   group: string | null;
   eyebrow: string;
-  extension: string;
+  /** The slug this section rides, or `null` for one that may never be gated. */
+  extension: string | null;
 }[];
 
 export type ConsoleSectionSpec = (typeof CONSOLE_SECTIONS)[number];
@@ -80,22 +99,36 @@ export type ConsoleSectionSpec = (typeof CONSOLE_SECTIONS)[number];
  * Pure and store-free so the four on/off combinations are one table in a unit
  * test rather than four renders. Order is CONSOLE_SECTIONS' order, so a gated
  * console reads as the full one with rows removed — the rail never reshuffles.
+ *
+ * A `null` extension is kept unconditionally and is never passed to `isOn` —
+ * the predicate is never asked a question about a section that has no switch.
  */
 export function consoleSectionsFor(
   isOn: (slug: string) => boolean
 ): readonly ConsoleSectionSpec[] {
-  return CONSOLE_SECTIONS.filter((section) => isOn(section.extension));
+  return CONSOLE_SECTIONS.filter(
+    (section) => section.extension === null || isOn(section.extension)
+  );
 }
 
 /**
  * Which extension one section rides — for the callers that hold a section id
  * and need the SLUG rather than the row (the settings destinations, which
  * redirect to an extension's own pane rather than opening a console that will
- * immediately close). Unknown ids answer EXT_ORGANIZE, which is the console's
- * own switch and the right default for anything the rail can show.
+ * immediately close).
+ *
+ * THREE ANSWERS, and the caller has to tell two of them apart:
+ *   a slug   — this section rides that extension.
+ *   `null`   — a KNOWN section that may never be gated (trash). The caller
+ *              proceeds; there is no switch to send anyone to.
+ *   fallback — an id the rail does not have (a stale bookmark, a typo'd deep
+ *              link) answers EXT_ORGANIZE, the console's own switch, which is
+ *              the safe default for anything that claims to be a console
+ *              section and is not.
  */
-export function consoleSectionExtension(id: string | undefined): string {
-  return CONSOLE_SECTIONS.find((section) => section.id === id)?.extension ?? EXT_ORGANIZE;
+export function consoleSectionExtension(id: string | undefined): string | null {
+  const section = CONSOLE_SECTIONS.find((s) => s.id === id);
+  return section ? section.extension : EXT_ORGANIZE;
 }
 
 export function sectionMeta(id: ConsoleSection) {

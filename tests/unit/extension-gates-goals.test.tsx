@@ -73,8 +73,18 @@ vi.mock('next/navigation', () => ({
 
 import GoalPage from '@/app/goal/[id]/page';
 import { DisplayMenu } from '@/components/primitives/display-menu';
+import { TaskRow, type RowItem } from '@/components/primitives/task-row';
+import { createChatStore } from '@/lib/chat-store';
+import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { useDayItemsForDates } from '@/hooks/use-day-items';
-import { useCanvasGroupBy, useGoalFilterIds } from '@/lib/extension-gates';
+import {
+  extensionEnabled,
+  groupByOptionsFor,
+  resolvedCanvasGroupBy,
+  useCanvasGroupBy,
+  useGoalFilterIds,
+} from '@/lib/extension-gates';
+import { CANVAS_GROUP_BY_OPTIONS } from '@/lib/view-options';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
@@ -94,6 +104,7 @@ import {
 } from '@/lib/settings/manifest';
 import {
   STATIC_COMMANDS,
+  findCommand,
   isAvailable,
   resolveCommands,
   type CommandContext,
@@ -346,6 +357,208 @@ describe('Goals switched off — no item disappears', () => {
       'data-active',
       'false'
     );
+  });
+});
+
+/* ── the reads that must NEVER be gated ────────────────────────────────────*/
+
+describe('Goals switched off — the milestone protection stays on', () => {
+  /**
+   * The most important test on the branch, and the one whose absence is
+   * invisible: gating `milestoneItemIds` leaves the entire suite green.
+   *
+   * Eight reads subtract that set (listed in lib/extension-gates.ts); the three
+   * in planner-store are the ENFORCEMENT — the last line before the write. A
+   * milestone's `startDate` is the goal's TARGET date, and a bulk verb that
+   * overwrites it has destroyed something switching the extension back on
+   * cannot restore. So "off" must never reach these, and this is what says so.
+   */
+  const milestone = (): Item =>
+    ({
+      type: 'task',
+      id: 't-milestone',
+      title: 'HSK 3 exam',
+      status: 'pending',
+      isScheduled: false,
+      order: 0,
+      startDate: '2026-09-01',
+      timeBucket: 'morning',
+    }) as unknown as Item;
+
+  function seedMilestone() {
+    const items = [milestone(), OUTSIDER];
+    usePlannerStore.setState({
+      userId: 'user-1',
+      userTimezone: 'UTC',
+      items,
+      tasks: items as never,
+      habits: [] as never,
+      goals: [
+        { ...GOAL, memberIds: [], milestoneIds: ['t-milestone'] } as unknown as Goal,
+      ],
+      goalsAvailable: true,
+    } as never);
+  }
+
+  /** `startDate` lives on the task half of the Item union; these fixtures are tasks. */
+  const startDateOf = (id: string) =>
+    (usePlannerStore.getState().items.find((i) => i.id === id) as { startDate?: string })
+      ?.startDate;
+
+  beforeEach(() => {
+    disableExtensions(EXT_GOALS);
+    seedMilestone();
+  });
+
+  it('refuses to bulk-move a milestone, and still moves everything else', () => {
+    usePlannerStore
+      .getState()
+      .moveTasksToDate(['t-milestone', 't-outsider'], '2026-07-20');
+
+    expect(startDateOf('t-milestone')).toBe('2026-09-01');
+    expect(startDateOf('t-outsider')).toBe('2026-07-20');
+  });
+
+  it('refuses to bulk-unschedule a milestone', () => {
+    usePlannerStore.getState().unscheduleTasks(['t-milestone', 't-outsider']);
+
+    expect(startDateOf('t-milestone')).toBe('2026-09-01');
+    expect(startDateOf('t-outsider')).toBeUndefined();
+  });
+
+  it('refuses to give a milestone a clock time on a drop', () => {
+    usePlannerStore
+      .getState()
+      .scheduleItemsAt(['t-milestone', 't-outsider'], 'morning', '09:00', '2026-07-20');
+
+    expect(startDateOf('t-milestone')).toBe('2026-09-01');
+    expect(startDateOf('t-outsider')).toBe('2026-07-20');
+  });
+});
+
+/* ── the surfaces the first pass left unpinned ─────────────────────────────*/
+
+describe('Goals switched off — the remaining surfaces', () => {
+  const row = (): RowItem => ({
+    itemType: 'task',
+    item: usePlannerStore.getState().items.find((i) => i.id === 't-member') as never,
+  }) as unknown as RowItem;
+
+  it('drops the goal role glyph from a row, and nothing else about the row', () => {
+    usePlannerStore.setState({
+      goals: [{ ...GOAL, memberIds: [], milestoneIds: ['t-member'] } as unknown as Goal],
+    } as never);
+
+    enableExtensions(EXT_GOALS);
+    render(<TaskRow row={row()} />);
+    expect(screen.getByTestId('item-goal-role')).toHaveAttribute(
+      'data-goal-role',
+      'milestone'
+    );
+    cleanup();
+
+    disableExtensions(EXT_GOALS);
+    render(<TaskRow row={row()} />);
+    // The GLYPH goes; the ROW stays. That asymmetry is the aspire contract — a
+    // goal may add a mark to a row and may never take the row away.
+    expect(screen.queryByTestId('item-goal-role')).toBeNull();
+    expect(screen.getByText('Study characters')).toBeInTheDocument();
+  });
+
+  it('stops telling Beacon about goals', async () => {
+    const posted: string[] = [];
+    const original = globalThis.fetch;
+    globalThis.fetch = vi.fn(async (_url: unknown, init: { body?: string } = {}) => {
+      posted.push(JSON.parse(init.body ?? '{}').context ?? '');
+      return { json: async () => ({ content: 'ok' }) } as never;
+    }) as never;
+    useAISettingsStore.setState({ provider: 'openclaw' } as never);
+
+    const chat = createChatStore({ historyKey: 'k', sessionKey: 's' });
+    chat.setState({ openclawChatUrl: 'https://example.test/chat', hydrated: true });
+
+    enableExtensions(EXT_GOALS);
+    await chat.getState().send('how am I doing');
+
+    disableExtensions(EXT_GOALS);
+    await chat.getState().send('how am I doing');
+
+    globalThis.fetch = original;
+    // The heading is emitted only when the goals array is non-empty, so its
+    // presence and absence is the whole assertion. The rest of the context is
+    // byte-identical either way — this removes a section, it does not reshape
+    // the prompt.
+    expect(posted[0]).toContain('### Long-term goals');
+    expect(posted[1]).not.toContain('### Long-term goals');
+  });
+
+  it('does not offer Goal in the ⌘K palette, nor tick a stored one', () => {
+    useViewStore.setState({ canvasGroupBy: 'goal' });
+
+    disableExtensions(EXT_GOALS);
+    // The palette used to be the ONE place that disagreed with the canvas about
+    // what the canvas was doing: it offered Goal and marked it active while
+    // every surface — and the Display menu beside it — reported 'none'.
+    expect(groupByOptionsFor(CANVAS_GROUP_BY_OPTIONS).map((o) => o.value)).not.toContain(
+      'goal'
+    );
+    expect(resolvedCanvasGroupBy()).toBe('none');
+    const options = findCommand('view.groupBy', ctx)!.argument as {
+      options: (c: CommandContext) => { value: string; active?: boolean }[];
+    };
+    expect(options.options(ctx).map((o) => o.value)).not.toContain('goal');
+    expect(options.options(ctx).find((o) => o.active)?.value).toBe('none');
+
+    enableExtensions(EXT_GOALS);
+    expect(options.options(ctx).map((o) => o.value)).toContain('goal');
+    expect(options.options(ctx).find((o) => o.active)?.value).toBe('goal');
+  });
+
+  it('does not let Reset display destroy a clause it is not showing', async () => {
+    // Reset clears what the menu OWNS. While Goals is off the menu renders no
+    // goal row and the trigger does not count one — so clearing it here would
+    // silently destroy a selection the user cannot see, and switching Goals
+    // back on would return an empty filter instead of the one they left.
+    seed({ goalFilter: true });
+    useViewStore.setState({
+      canvasGroupBy: 'goal',
+      canvasFilters: { ...EMPTY_VIEW_FILTERS, goals: ['g1'], priorities: ['high'] },
+    });
+
+    disableExtensions(EXT_GOALS);
+    render(<DisplayMenu surface="canvas" />);
+    openMenu();
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Reset display/ }));
+
+    // The clauses the menu DOES show are cleared…
+    expect(useViewStore.getState().canvasFilters.priorities).toEqual([]);
+    // …and the ones it does not are left exactly where the user left them.
+    expect(useViewStore.getState().canvasFilters.goals).toEqual(['g1']);
+    expect(useViewStore.getState().canvasGroupBy).toBe('goal');
+  });
+});
+
+/* ── a gate may never throw ────────────────────────────────────────────────*/
+
+describe('a gate read that throws', () => {
+  it('falls back to the manifest default instead of taking the surface down', () => {
+    // These run inside the canvas render, so a gate that threw would take down
+    // the surface it was protecting — strictly worse than the feature it gates.
+    const hostile = new Proxy({} as Record<string, boolean>, {
+      get() {
+        throw new Error('store read exploded');
+      },
+    });
+    useExtensionsStore.setState({ enabled: hostile });
+
+    let answer: boolean | undefined;
+    expect(() => {
+      answer = extensionEnabled(EXT_GOALS);
+    }).not.toThrow();
+    // Asserted against the MANIFEST rather than against a literal false, so the
+    // day an extension ships defaultEnabled: true this tracks it instead of
+    // quietly switching that account's feature off on a transient read.
+    expect(answer).toBe(extensionManifest(EXT_GOALS)!.defaultEnabled);
   });
 });
 

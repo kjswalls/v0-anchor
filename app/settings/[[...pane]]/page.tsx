@@ -435,8 +435,13 @@ export default function SettingsPage() {
       // to the switch instead, which is both the truthful answer and the one
       // click that makes the destination work. The ROW stays in the search
       // index either way: off is findable.
+      //
+      // `null` is a section that rides nothing and may never be gated — today
+      // that is Trash, which someone reaches for from a different emotional
+      // place than the rest of this list and must never be redirected to a
+      // settings switch on the way. It falls straight through to the open below.
       const slug = consoleSectionExtension(record.section);
-      if (!extensionEnabled(slug)) {
+      if (slug !== null && !extensionEnabled(slug)) {
         router.push(`/settings/${extensionPaneId(slug)}`);
         return;
       }

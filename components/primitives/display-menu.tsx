@@ -564,13 +564,24 @@ export function DisplayMenu({
    * change what the other five show.
    */
   const reset = () => {
-    setFilters(EMPTY_VIEW_FILTERS);
+    // RESET CLEARS WHAT THE MENU IS SHOWING, and a gated clause is not showing.
+    //
+    // While Goals is off this menu renders no row for the goal filter and no
+    // Goal value under Grouping, and the trigger deliberately does not count
+    // either — the argument being that the menu does not own them. Clearing
+    // them here would contradict that in the most annoying possible way:
+    // Reset would silently destroy a selection the user cannot see, so
+    // switching Goals back on would return an empty filter rather than the one
+    // they left. Off has to be lossless, and this is the one path where it
+    // nearly was not.
+    setFilters({ ...EMPTY_VIEW_FILTERS, goals: goalsOn ? [] : filters.goals });
+    const keepGroupBy = (stored: string) => !goalsOn && stored === 'goal';
     if (isCanvas) {
-      view.setCanvasGroupBy('none');
+      if (!keepGroupBy(view.canvasGroupBy)) view.setCanvasGroupBy('none');
       view.setCanvasSortBy('default');
       view.setTypeFilter('all');
     } else {
-      view.setBraindumpGroupBy('none');
+      if (!keepGroupBy(view.braindumpGroupBy)) view.setBraindumpGroupBy('none');
       view.setBraindumpSortBy('default');
     }
   };

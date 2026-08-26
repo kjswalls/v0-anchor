@@ -177,10 +177,15 @@ export function OrganizeConsole({
    *
    * ui-store holds ONE activeDialog. Returning null while `open` is true would
    * leave that slot armed at a dialog nobody can see or Escape out of, and the
-   * next ⌘K would be the only way to clear it. This is the guard of last
-   * resort: every door to the console is already inert (the braindump button,
-   * the item dialog's rows, the palette's commands), so reaching it means a
-   * deep link or a stale ui-store request.
+   * next ⌘K would be the only way to clear it.
+   *
+   * UNREACHABLE TODAY, AND KEPT ANYWAY. Trash declares `extension: null`
+   * (console-rail.tsx), so `consoleSectionsFor` always returns at least one row
+   * and this branch cannot fire — which is the point: the bin must never be
+   * behind a switch. The guard stays because "every section is gated" is one
+   * config edit away, and deleting the guard is how the blank-plate bug comes
+   * back. It is covered by a test that mocks the section list empty rather than
+   * by a toggle combination, because no toggle combination can produce it.
    */
   useEffect(() => {
     if (open && unavailable) onOpenChange(false);

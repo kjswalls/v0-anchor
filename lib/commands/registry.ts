@@ -57,7 +57,12 @@ import { useViewStore } from '../view-store';
 import { EMPTY_VIEW_FILTERS, isEmptyFilters } from '../filters';
 import { containerRef, namesOfKind } from '../container-registry';
 import { useUIStore, openAddDialog, openBulkAdd } from '../ui-store';
-import { goalsEnabled, organizeEnabled } from '../extension-gates';
+import {
+  goalsEnabled,
+  groupByOptionsFor,
+  organizeEnabled,
+  resolvedCanvasGroupBy,
+} from '../extension-gates';
 import { useSidebarStore } from '../sidebar-store';
 import { useSelectionStore, selectableIdsInDom } from '../selection-store';
 import { useMobileNavStore } from '../mobile-nav-store';
@@ -566,7 +571,12 @@ export const STATIC_COMMANDS: Command[] = [
       kind: 'enum',
       placeholder: 'Group by',
       flatten: true,
-      options: () => optionsFrom(CANVAS_GROUP_BY_OPTIONS, view().canvasGroupBy),
+      // Both halves resolved against what is switched on, not read raw. A
+      // gated value is not offered, and a STORED gated value does not draw a
+      // checkmark — every surface and the Display menu report 'none' for it, and
+      // the palette is the one place that used to say otherwise.
+      options: () =>
+        optionsFrom(groupByOptionsFor(CANVAS_GROUP_BY_OPTIONS), resolvedCanvasGroupBy()),
     },
     run: (_ctx, arg) => view().setCanvasGroupBy(arg as GroupBy),
   },
