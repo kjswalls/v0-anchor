@@ -38,6 +38,12 @@ interface ExtensionsStore {
    * built from what the store holds — so a keystroke during that window (or
    * after a failed hydrate) would upsert a one-key object over a server row
    * holding four, silently destroying the rest.
+   *
+   * It is also what the settings surface renders its extension rows `pending`
+   * off (lib/settings/manifest.ts). Same question, asked before the write
+   * rather than after: a row whose store cannot answer for it must not draw a
+   * control at all, because the value it would draw is the manifest default
+   * and a click would write that default into the user's row.
    */
   configsLoaded: boolean;
   /** Sparse: only slugs the user has actually toggled have entries. */
@@ -142,9 +148,21 @@ export const useExtensionsStore = create<ExtensionsStore>((set, get) => ({
       return;
     }
     // The write is whole-object, so writing before the server's copy has landed
-    // would replace it with whatever fragment is in memory. The settings page
-    // gates its whole render on hydration, so in practice this only fires when
-    // a hydrate FAILED — exactly the case where the in-memory copy is empty.
+    // would replace it with whatever fragment is in memory.
+    //
+    // THIS IS THE LAST LINE, NOT THE ONLY ONE, and it used to be described as
+    // if it were unreachable: "the settings page gates its whole render on
+    // hydration". That was true only while that gate waited on planner-store's
+    // seven-table load, which this store's two queries always beat. The gate is
+    // now the single-row settings read (lib/settings/hydration.ts) and the two
+    // race, so every extension row states its own readiness instead — see
+    // `pending` / `extPending` in lib/settings/manifest.ts, which renders the
+    // row as loading rather than as an editable control. With that in place a
+    // keystroke can only reach here after a hydrate FAILED (the store is
+    // un-stamped and retries on the next auth event), which is exactly the case
+    // where the in-memory copy is empty and dropping the write is the only safe
+    // answer. Silent by design: this is a guard behind a UI that already says
+    // the row is not ready, not an error the user can act on.
     if (!get().configsLoaded) {
       console.warn('[extensions] setConfigValue ignored — config has not loaded yet.');
       return;

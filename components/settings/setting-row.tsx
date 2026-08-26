@@ -95,6 +95,30 @@ function LabelTag({
   );
 }
 
+/**
+ * What stands in the control slot while the row's store is still fetching.
+ *
+ * NOT the control, disabled. A disabled Switch still draws a position, and the
+ * position it would draw is `read()`'s fallback — the manifest default, which
+ * is not this account's answer and may be its opposite. Drawing nothing that
+ * looks like a value is the only honest option: the row keeps its label, its
+ * description and its place in the column, and says it is still loading.
+ *
+ * `animate-pulse` for the same reason SettingsSkeleton uses it — globals.css
+ * clamps every animation to nothing under [data-reduce-motion], which the
+ * animations setting stamps, so this respects it without knowing about it.
+ */
+function PendingControl({ label }: { label: string }) {
+  return (
+    <span
+      role="status"
+      aria-label={`${label} — still loading`}
+      data-setting-pending="true"
+      className="bg-secondary h-5 w-[52px] animate-pulse rounded-full"
+    />
+  );
+}
+
 function ControlFor({
   record,
   ctx,
@@ -320,8 +344,19 @@ export function SettingRow({
   const controlId = `set-${record.id}-${uid}`;
   const descId = record.description ? `${controlId}-desc` : undefined;
 
-  const unavailableReason = record.unavailable?.(ctx) ?? null;
-  const disabled = Boolean(inactive) || unavailableReason !== null;
+  // A store that cannot answer yet outranks every other reason a row might be
+  // disabled: until it answers, "unavailable", "inactive" and the value itself
+  // are all being computed from defaults. Read behind a try/catch for the same
+  // reason settings-shell reads `read()` that way — one extension must never
+  // cost the others their row.
+  let pending = false;
+  try {
+    pending = record.pending?.(ctx) ?? false;
+  } catch {
+    pending = false;
+  }
+  const unavailableReason = pending ? null : (record.unavailable?.(ctx) ?? null);
+  const disabled = pending || Boolean(inactive) || unavailableReason !== null;
   const modified = isModified(record, ctx) && !disabled;
   // Must agree with the variant switch above: only the textarea goes full width.
   const wide = record.control === 'text' && (record.textVariant ?? 'multiline') === 'multiline';
@@ -353,9 +388,10 @@ export function SettingRow({
       <div className="min-w-0">
         <div className="flex items-center gap-2">
           {/* An 'info' row has no control to label — a <label htmlFor> pointing
-              at a <span> is a dangling association, not a helpful one. */}
+              at a <span> is a dangling association, not a helpful one. A
+              pending row has no control either, for the same window. */}
           <LabelTag
-            asLabel={record.control !== 'info'}
+            asLabel={record.control !== 'info' && !pending}
             htmlFor={controlId}
             className={cn(
               'text-sm font-medium',
@@ -405,6 +441,13 @@ export function SettingRow({
             Unavailable — {unavailableReason}
           </p>
         )}
+
+        {/* Said in words as well as in the placeholder: the difference between
+            "off" and "not known yet" is invisible if you only look at a
+            control, and this row's whole failure mode was being read as off. */}
+        {pending && (
+          <p className="text-muted-foreground mt-[3px] text-[10px]">Still loading…</p>
+        )}
       </div>
 
       {/* Right-packed, with reset rendered BEFORE the control. Because the row
@@ -421,15 +464,19 @@ export function SettingRow({
         {!wide && modified && (
           <ResetButton record={record} onReset={onReset} className="static translate-y-0" />
         )}
-        <ControlFor
-          record={record}
-          ctx={ctx}
-          value={value}
-          disabled={disabled}
-          controlId={controlId}
-          describedBy={descId}
-          onWrite={onWrite}
-        />
+        {pending ? (
+          <PendingControl label={record.label} />
+        ) : (
+          <ControlFor
+            record={record}
+            ctx={ctx}
+            value={value}
+            disabled={disabled}
+            controlId={controlId}
+            describedBy={descId}
+            onWrite={onWrite}
+          />
+        )}
       </div>
 
       {/* On a wide row the control is a full-width textarea below the label, so

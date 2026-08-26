@@ -33,6 +33,13 @@ function stateOf(slug: string): { label: string; on: boolean } {
   try {
     const store = useExtensionsStore.getState();
     if (!store.available) return { label: 'Unavailable', on: false };
+    // Before the fetch resolves, isEnabled() answers with the MANIFEST default,
+    // which for an account that has toggled anything is a guess and can be the
+    // opposite of the truth. This page cannot write, so nothing is at risk here
+    // — but printing "Off" beside an extension the server has on is the same
+    // lie the toggle inside used to tell, and it is the one a user checks this
+    // index to avoid. Say what is actually known.
+    if (!store.configsLoaded) return { label: 'Loading', on: false };
     return store.isEnabled(slug) ? { label: 'On', on: true } : { label: 'Off', on: false };
   } catch {
     return { label: 'Off', on: false };

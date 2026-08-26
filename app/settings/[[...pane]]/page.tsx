@@ -76,10 +76,18 @@ function fallbackPane(path: string | undefined): PaneId {
 
 /* ── The two modals this page opens by name, deferred ──────────────────────
    Both are reached only from a row the user clicks: Help → Keyboard shortcuts,
-   Help → Report a bug. Statically imported they were 43.9 kB gzip of this
-   route's first load — measured off the script tags of a production build,
-   369.5 kB before and 325.6 kB after — spent on two surfaces most visits
-   never open.
+   Help → Report a bug. Deferring them takes 40.6 kB gzip off this route's first
+   load (395,310 → 354,678 bytes: clean production builds of both commits, the
+   route's own script tags, shared chunks deduped, gzip -9) — spent on two
+   surfaces most visits never open. Deltas rather than absolutes on purpose: the
+   absolutes move with every dependency bump, the delta is the split.
+
+   THE SPLIT IS NOT FREE EVERYWHERE. `/` mounts both of these eagerly through
+   AppShell, and across this PR's two splits it grew 1,460 bytes (597,440 →
+   598,900) — the extra chunk boundaries, charged to the one route that always
+   loads them. /ledger, which this PR does not touch, moved +210 bytes over the
+   same builds: that is the noise floor, so the 1.46 kB is real and the trade is
+   deliberate.
 
    `ssr: false` because neither has anything to say before hydration, and both
    are already client-only (one reads the shortcut registry, the other captures
@@ -309,10 +317,17 @@ export default function SettingsPage() {
   // JSON.stringify because `enabled` is an object; `available` rides along so
   // the unavailable() reason appears without a reload once hydration settles.
   const extensionsTick = useExtensionsStore(
+    // `configsLoaded` is NOT redundant with the two objects beside it: an
+    // account that has never toggled an extension resolves to `{}` and `{}`,
+    // which is exactly what the store started at — so without it the rows that
+    // render `pending` off this flag would sit at "Still loading…" for the rest
+    // of the session on precisely the accounts with nothing to load.
+    //
     // configs rides along VERBATIM, for the aiTick reason: the text controls
     // commit on blur by comparing their draft against the last RENDERED value,
     // so a stale value prop silently drops the next edit.
-    (s) => `${s.available}|${JSON.stringify(s.enabled)}|${JSON.stringify(s.configs)}`
+    (s) =>
+      `${s.available}|${s.configsLoaded}|${JSON.stringify(s.enabled)}|${JSON.stringify(s.configs)}`
   );
   // Only which keys are set — the store cannot hold a value to leak.
   const channelSecretsTick = useChannelSecretsStore(
