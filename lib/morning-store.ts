@@ -124,8 +124,13 @@ interface MorningStore {
   setMorningAutoAgeDays: (days: number) => void;
   /** Adopt server settings and record whose they are, in one set(). */
   applyServerSettings: (userId: string, settings: MorningServerSettings) => void;
-  /** Drop the previous account's settings on sign-out / account switch. */
-  clearUserScopedState: () => void;
+  /**
+   * Drop the previous account's settings on sign-out / account switch.
+   *
+   * Takes the INCOMING account (null on a sign-out) because one field is not
+   * dropped but pruned to it — see the note on the implementation.
+   */
+  clearUserScopedState: (incomingUserId: string | null) => void;
   getAutoAgeLastRunDate: (userId: string) => string | null;
   setAutoAgeLastRunDate: (userId: string, date: string) => void;
   /** Today's receipt, or null once it has been acted on or the day has turned. */
@@ -233,12 +238,35 @@ export const useMorningStore = create<MorningStore>()(
        * userId at module-evaluation time, which is exactly when we do not have
        * one: the store is created before any auth call resolves.
        *
-       * `morningAutoAgeLastRunByUser` is deliberately NOT cleared — it is
-       * already keyed by account, so it is safe across a sign-out, and keeping
-       * it means signing back in on the same device the same day does not
-       * re-run the sweep.
+       * `morningAutoAgeReceiptByUser` is cleared outright. It is keyed by
+       * account, but KEYING DECIDES WHO A VALUE IS APPLIED TO, NOT WHO CAN READ
+       * IT — and a receipt holds the TITLES of the rows the sweep touched. On a
+       * shared browser that is one account's task list sitting in the next
+       * account's devtools. The cost is the "Put them back" line, which is only
+       * ever offered on the day of the sweep anyway.
+       *
+       * `morningAutoAgeLastRunByUser` is PRUNED to the incoming account rather
+       * than dropped or kept whole, and the same sentence explains why. Its
+       * values are dates and disclose nothing; its KEYS are Supabase user ids,
+       * and nothing here ever pruned them, so on a shared or kiosk browser the
+       * map accumulates a roster — how many accounts have used this machine,
+       * their stable ids, and when each last did. Keeping only
+       * `[incomingUserId]` preserves the entire stated benefit (sign back in on
+       * the same device the same day and the sweep does not re-run) and drops
+       * everyone else. A sign-out passes null, which empties it: the sweep is
+       * idempotent, so the worst case is one extra run that finds nothing left
+       * to unschedule.
        */
-      clearUserScopedState: () => set({ ...USER_SCOPED_DEFAULTS }),
+      clearUserScopedState: (incomingUserId) =>
+        set((state) => {
+          const kept = incomingUserId ? state.morningAutoAgeLastRunByUser[incomingUserId] : undefined;
+          return {
+            ...USER_SCOPED_DEFAULTS,
+            morningAutoAgeReceiptByUser: {},
+            morningAutoAgeLastRunByUser:
+              incomingUserId && kept ? { [incomingUserId]: kept } : {},
+          };
+        }),
 
       getAutoAgeLastRunDate: (userId) => get().morningAutoAgeLastRunByUser[userId] ?? null,
 

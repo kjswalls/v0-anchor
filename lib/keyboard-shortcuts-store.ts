@@ -5,6 +5,9 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { STATIC_COMMANDS, SHELL_SHORTCUTS } from './commands/registry';
 import { COMMAND_GROUPS } from './commands/types';
+// Type-only, so it is erased at compile time and lib/local-state.ts importing
+// this store back does not make a runtime cycle.
+import type { ClearScope } from './local-state';
 
 export interface ShortcutBinding {
   id: string;
@@ -60,6 +63,27 @@ interface KeyboardShortcutsStore {
   overrides: Record<string, string[]>;
   updateShortcut: (id: string, keys: string[]) => void;
   resetShortcuts: () => void;
+  /**
+   * Drop this account's rebindings — see lib/local-state.ts.
+   *
+   * The same assignment as `resetShortcuts`, kept as its own action because it
+   * answers a different question. `resetShortcuts` is a button in the shortcuts
+   * modal; this is the registry's entry point, and the registry has to be able
+   * to ask every store the same thing by the same name.
+   *
+   * `anchor-keyboard-shortcuts` is browser-global and never synced, so on a
+   * shared browser one person's ⌘K lands somewhere the next person never put
+   * it. That is worth clearing on a known change of user.
+   *
+   * It is INERT in lib/local-state.ts' sense, though, and that decides the
+   * unstamped case: the payload is an id→keys map — registry ids on one side,
+   * key names on the other — with no free text and nothing drawn from the
+   * account's own rows, so it cannot identify or describe whoever set it. Since
+   * there is no server copy to restore from, wiping it on a browser whose owner
+   * we merely cannot VOUCH for would be permanent loss for no privacy gain. So
+   * it clears under scope 'all' only.
+   */
+  clearUserScopedState: (scope: ClearScope) => void;
 }
 
 export const useKeyboardShortcutsStore = create<KeyboardShortcutsStore>()(
@@ -71,6 +95,11 @@ export const useKeyboardShortcutsStore = create<KeyboardShortcutsStore>()(
         set((state) => ({ overrides: { ...state.overrides, [id]: keys } })),
 
       resetShortcuts: () => set({ overrides: {} }),
+
+      clearUserScopedState: (scope) => {
+        if (scope !== 'all') return;
+        set({ overrides: {} });
+      },
     }),
     {
       name: 'anchor-keyboard-shortcuts',

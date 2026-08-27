@@ -95,7 +95,17 @@ export function releasedOn(itemId: string): string | undefined {
   return read()[itemId];
 }
 
-/** Test seam — the suite has no localStorage isolation between cases. */
+/**
+ * Drop the whole map.
+ *
+ * Two callers. The suite, which has no localStorage isolation between cases;
+ * and the sign-out / account-switch clear (lib/local-state.ts), because the
+ * entries are keyed by ITEM ID — one account's row ids, sitting under a
+ * browser-global key where the next account can read them, and where a
+ * (vanishingly unlikely) id collision would hand them a grace they never
+ * earned. Losing the map costs at most one early unschedule, which is visible
+ * and undoable; that is the same fail direction the reads above already take.
+ */
 export function clearReleased(): void {
   if (typeof window === 'undefined') return;
   try {

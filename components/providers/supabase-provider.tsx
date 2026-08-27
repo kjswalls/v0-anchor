@@ -12,6 +12,7 @@ import { usePaletteStore } from '@/lib/palette-store';
 import { PALETTE_STORAGE_KEY, isThemePalette, paletteDef } from '@/lib/theme-palettes';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
+import { adoptLocalState, clearUserScopedLocalState } from '@/lib/local-state';
 import { fetchContainersSeeded, fetchTrashedNames, markContainersSeeded } from '@/lib/db';
 import { runFirstRunSeed } from '@/lib/seed-containers';
 import { useTheme } from 'next-themes';
@@ -95,26 +96,30 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // Skip if we've already hydrated for this user — prevents Supabase auth events
       // (TOKEN_REFRESHED, duplicate SIGNED_IN) from overwriting user's in-session theme changes
       if (hydratedUserId.current === userId) return;
-      const previousUserId = hydratedUserId.current;
       hydratedUserId.current = userId;
 
-      // Account switch with no intervening SIGNED_OUT (Supabase can deliver a
-      // bare SIGNED_IN for a different user). Drop the previous account's
-      // morning settings NOW, synchronously, so the window we are about to
-      // spend awaiting is spent at fail-closed defaults instead of on someone
-      // else's `morningAutoAgeEnabled: true` — the auto-age sweep is an
-      // unattended data mutation and that window is long enough for the
-      // planner load to finish inside it.
+      // The account-switch clear that used to live here has moved UP, into
+      // `adoptUser` below, and widened from morning-store to every store that
+      // persists per-user state (lib/local-state.ts). It still happens NOW,
+      // synchronously, before the `loadSettings` await on the line below —
+      // which is the property this comment was originally defending: THAT
+      // window is spent at fail-closed defaults instead of on someone else's
+      // `morningAutoAgeEnabled: true`, and the auto-age sweep is an unattended
+      // data mutation with time to run inside it.
       //
-      // Note this deliberately does NOT fire on a plain page load
-      // (previousUserId === null): the persisted values there are the same
-      // user's own, and wiping them would flash the morning banner before
-      // settings land. The sweep is protected in that case by
-      // `settingsHydratedUserId`, which is not persisted and so starts null.
-      if (previousUserId !== null && previousUserId !== userId) {
-        useMorningStore.getState().clearUserScopedState();
-      }
-
+      // Only that window. The earlier one — mount until `getSession()` resolves
+      // — is not covered by anything here and never was: nothing knows who is
+      // signed in yet, so the stores hold whatever localStorage rehydrated. The
+      // sweep is protected across it by `settingsHydratedUserId`, which is not
+      // persisted and so starts null on every load.
+      //
+      // What changed is the TEST for "is this someone else's". This used to
+      // compare against the previous user in memory and deliberately did
+      // nothing on a plain page load, because "the persisted values there are
+      // the same user's own" — an assumption a shared browser makes false, and
+      // one nothing in memory can check after a reload. The persisted owner
+      // stamp can, so the plain-page-load case is now decided rather than
+      // assumed, and a returning user still gets no wipe and no banner flash.
       const settings = await loadSettings(userId);
 
       // A slower response for a PREVIOUS account must never land on the current
@@ -292,41 +297,61 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       );
     };
 
+    /**
+     * Everything that happens for an established session, in the one order that
+     * is safe.
+     *
+     * `adoptLocalState` IS FIRST, and that is the whole ordering constraint.
+     * Every localStorage-persisted store is browser-global, so until this line
+     * runs the app may be holding the last person to use this browser — see
+     * lib/local-state.ts for the four ways that happens, two of which deliver
+     * no event at all and are only reachable through its persisted owner stamp.
+     * It clears synchronously and it is a no-op when this account already owns
+     * the state, which is the common case: Supabase re-emits SIGNED_IN on every
+     * hidden→visible transition, and a clear on one of those would throw away
+     * preferences set this session.
+     *
+     * Then the loads, which must NOT precede it — a clear landing on top of a
+     * freshly hydrated store would reset the values that just arrived.
+     */
+    const adoptUser = (userId: string) => {
+      adoptLocalState(userId);
+      loadPlanner(userId);
+      hydrateSettings(userId);
+      // Deliberately NOT part of planner-store's Promise.all: that batch
+      // gates the overdue sweep, and extensions must never be able to fail
+      // the data load.
+      useExtensionsStore.getState().hydrate(userId);
+      // Which channel credentials are SET — never their values. Same
+      // fire-and-forget posture: a settings page that cannot say "saved" is a
+      // cosmetic loss; a planner that failed to load is not.
+      useChannelSecretsStore.getState().hydrate(userId);
+    };
+
     // Check current session on mount
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        loadPlanner(session.user.id);
-        hydrateSettings(session.user.id);
-        // Deliberately NOT part of planner-store's Promise.all: that batch
-        // gates the overdue sweep, and extensions must never be able to fail
-        // the data load.
-        useExtensionsStore.getState().hydrate(session.user.id);
-        // Which channel credentials are SET — never their values. Same
-        // fire-and-forget posture: a settings page that cannot say "saved" is a
-        // cosmetic loss; a planner that failed to load is not.
-        useChannelSecretsStore.getState().hydrate(session.user.id);
-      }
+      if (session?.user) adoptUser(session.user.id);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
-        loadPlanner(session.user.id);
-        hydrateSettings(session.user.id);
-        useExtensionsStore.getState().hydrate(session.user.id);
-        useChannelSecretsStore.getState().hydrate(session.user.id);
+        adoptUser(session.user.id);
       } else if (event === 'SIGNED_OUT') {
         hydratedUserId.current = null;
         loadedUserId.current = null;
         clearStore();
+        // Not persisted, and each already re-clears itself on a bare account
+        // switch through its own hydratedUserId guard — so they stay here,
+        // where the only gap they have (a sign-out with no sign-in after it) is.
         useExtensionsStore.getState().reset();
         useChannelSecretsStore.getState().reset();
-        // clearStore only resets the planner. The morning store holds
-        // account-owned settings too — including the auto-age switch, which
-        // drives an unattended mutation — and it persists them to a
-        // browser-global localStorage key, so leaving them behind hands the
-        // next person to sign in on this browser the previous person's decay
-        // policy.
-        useMorningStore.getState().clearUserScopedState();
+        // clearStore only resets the planner's DATA. Everything this browser
+        // has persisted ABOUT the account — the Beacon API key and its
+        // transcripts, the canvas filters, the morning decay policy, the
+        // planner preference slice — is dropped here, and the ownership stamp
+        // with it. Sign-out is not the only path this runs on (see
+        // lib/local-state.ts), but it is the one the user asked for.
+        clearUserScopedLocalState();
       }
     });
 

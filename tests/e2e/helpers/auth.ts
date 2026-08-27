@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { gotoApp } from './app';
 import { testEnv } from './env';
-import { passwordGrant, sessionCookies, seededViewState } from './session';
+import { passwordGrant, sessionCookies, seededLocalStorage } from './session';
 
 /**
  * Bring up the app already signed in.
@@ -41,11 +41,17 @@ export async function injectFreshSession(page: Page): Promise<void> {
   await context.clearCookies();
   await context.addCookies(sessionCookies(env.supabaseUrl, session));
 
-  // Re-seed the view prefs storageState would have carried, so a fresh-session
-  // spec still starts in Day × Buckets.
-  const seed = seededViewState();
+  // Re-seed what storageState would have carried, so a fresh-session spec still
+  // starts in Day × Buckets — AND still looks like a browser this account has
+  // used before. Without the ownership stamp in that list, lib/local-state.ts
+  // reads the freshly-injected browser as unattributed and clears the prefs
+  // this very block just wrote.
+  const userId = session.user?.id;
+  if (!userId) throw new Error('password grant returned a session with no user id');
   await page.addInitScript(
-    ([name, value]) => window.localStorage.setItem(name, value),
-    [seed.name, seed.value] as const
+    (entries: Array<{ name: string; value: string }>) => {
+      for (const entry of entries) window.localStorage.setItem(entry.name, entry.value);
+    },
+    seededLocalStorage(userId)
   );
 }

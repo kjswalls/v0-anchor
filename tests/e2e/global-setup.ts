@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { testEnv, STORAGE_STATE, SETUP_ARTIFACT, TEST_TITLE_PREFIX, BASE_URL } from './helpers/env';
-import { passwordGrant, sessionCookies, seededViewState } from './helpers/session';
+import { passwordGrant, sessionCookies, seededLocalStorage } from './helpers/session';
 
 /**
  * Runs ONCE before the whole suite.
@@ -192,7 +192,10 @@ export default async function globalSetup() {
         // test starts on default view prefs instead of the seeded ones and the
         // failures read as view bugs.
         origin: BASE_URL,
-        localStorage: [seededViewState()],
+        // Includes the ownership stamp, without which lib/local-state.ts reads
+        // this browser as unattributed and clears what it can — see
+        // seededOwnerState().
+        localStorage: seededLocalStorage(userId),
       },
     ],
   };
