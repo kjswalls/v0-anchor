@@ -35,12 +35,14 @@ adapters — growth is a presentation, not a fork.
    plugin safeParses and throws on drift; CI gates dist-matches-src). New webhook event
    names silently never deliver — agent progress rides `tasks.updated` or extends the
    plugin registration *and* `AnchorChangeEventSchema` in lockstep.
-
 7. **The layout is a registry question too (locked 2026-08-27, Phase 10).** Which
    container bands exist, their order and their labels are derived from
    `CONTAINER_KINDS` — role for the order and the gating, kind for the noun. A band
    list written out by hand is the defect this replaces, and the fifth kind is the
-   test of it: it must arrive as a row with no edit to a component.
+   test of it: it must arrive as a row with no edit to a component. Its CONTROL is
+   the one thing that cannot be derived, so `bandControls` in item-dialog.tsx is a
+   full `Record<ContainerKind, …>` — the compile error that stops a new kind
+   rendering as a band with nothing in it.
 8. **An empty band renders; a missing capability does not (locked 2026-08-27).**
    Content never decides whether a band exists — capability does. The single
    exception is a gate with nothing to join and no console to open, which is a door
