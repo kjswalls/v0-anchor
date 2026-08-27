@@ -63,6 +63,12 @@ export function BandLabel({
  * a ragged one is what makes a stack of short rows read as debris. Labels come
  * from the registry and are one word today; a longer one wraps rather than
  * truncating, because a clipped noun is worse than a taller row.
+ *
+ * NOT a `<label htmlFor>`, and PropertyChip does support one (`id`). A band may
+ * hold several controls — When holds up to five — so an association could only
+ * ever be right for the single-control bands, and a rule that holds for some
+ * rows is worse than none. Each control carries its own `ariaLabel` with the
+ * noun in it instead, which is the same information without the arbitrary half.
  */
 export function ItemBand({
   label,
@@ -281,8 +287,6 @@ export function useItemBands(item: Item): ResolvedBand[] {
     }
   });
 }
-
-export { bandTestId };
 
 /**
  * The container bands as a READOUT — /item/[id]'s half of the grammar.

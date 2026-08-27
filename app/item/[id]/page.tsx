@@ -233,7 +233,9 @@ export default function ItemPage() {
             the empty ones render: a band you have never used is still a band
             you can find, and pressing its "+ Add" opens the editor rather than
             growing a second write path onto this surface. */}
-        <ItemBandGroup className="max-w-prose">
+        {/* Its own testid: the edit panel renders the same band ids, and on
+            THIS route both are on screen at once. */}
+        <ItemBandGroup className="max-w-prose" testId="item-page-bands">
           {(whenDate || item.timeBucket || repeats) && (
             <ItemBand label="When" testId="item-band-when">
               {whenDate && <StaticChip>{whenDate}</StaticChip>}

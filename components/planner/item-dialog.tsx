@@ -86,12 +86,8 @@ import {
   classifyKindForItemType,
   type ContainerKind,
 } from '@/lib/container-registry';
-import { membershipSummary, visibleContainerBands } from '@/lib/item-bands';
-import {
-  ItemBand,
-  ItemBandGroup,
-  bandTestId,
-} from '@/components/planner/item-bands';
+import { bandTestId, membershipSummary, visibleContainerBands } from '@/lib/item-bands';
+import { ItemBand, ItemBandGroup } from '@/components/planner/item-bands';
 import { currentDayOfWeek, toDateStr } from '@/lib/recurrence';
 import { isPausedOn, suppressionReason, suppressionLabel } from '@/lib/active';
 import { makeIconToken } from '@/lib/category-icons';
@@ -2015,7 +2011,15 @@ export function ItemDialog({
         goal: goals.length,
       },
     });
-    const bandControls: Partial<Record<ContainerKind, ReactNode>> = {
+    /**
+     * NOT `Partial`. container-registry.ts warns that widening `ContainerKind`
+     * lights up almost nothing — there are no switches over it — so this record
+     * is deliberately one of the few places that WILL fail to compile: a fifth
+     * kind gets a band from the registry for free, and an unlisted control would
+     * render that band empty with no affordance in it, which is the one state
+     * the empty-band rule exists to prevent.
+     */
+    const bandControls: Record<ContainerKind, ReactNode> = {
       project: containerControl,
       routine: routineControl,
       program: programControl,
