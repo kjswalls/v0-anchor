@@ -19,6 +19,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore, SIDEBAR_DEFAULT_WIDTH } from '@/lib/sidebar-store';
 import { recordReleased, releasedOn } from '@/lib/sweep-grace';
 import { useViewStore } from '@/lib/view-store';
+import { seededLocalStorage } from '../e2e/helpers/session';
 
 /**
  * The clear registry: what a change of user drops, what it deliberately keeps,
@@ -476,6 +477,59 @@ describe('the account-owned slice of every registered store', () => {
       }
     }
   );
+});
+
+/**
+ * The e2e fixture, checked against the real thing without running Playwright.
+ *
+ * tests/e2e/global-setup.ts hands every spec a browser that is signed in AND
+ * carries seeded view prefs. Until the stamp was added to that list the two
+ * halves disagreed: the cookie said "this account", the prefs said nothing at
+ * all, and `adoptLocalState` correctly read an unattributed browser and cleared
+ * what it could before the first assertion ran.
+ *
+ * The invariant is not "the stamp key is present" but "the fixture provokes NO
+ * clear", so that is what this asserts — by replaying the fixture into jsdom and
+ * driving the real adopt. A future edit that seeds prefs without the stamp, or
+ * stamps the wrong id, fails here in three seconds instead of in a 1.4-hour
+ * Playwright run.
+ */
+describe('the e2e fixture arrives owned, not orphaned', () => {
+  const FIXTURE_USER = '00000000-0000-4000-8000-000000000001';
+
+  /** Replay the fixture's localStorage the way a browser context would. */
+  function applyFixture() {
+    localStorage.clear();
+    for (const { name, value } of seededLocalStorage(FIXTURE_USER)) {
+      localStorage.setItem(name, value);
+    }
+  }
+
+  it('carries the stamp under the key lib/local-state actually reads', () => {
+    const stamp = seededLocalStorage(FIXTURE_USER).find(
+      (e) => e.name === LOCAL_STATE_OWNER_KEY
+    );
+    expect(stamp?.value).toBe(FIXTURE_USER);
+  });
+
+  it('provokes no clear when the seeded account signs in', () => {
+    applyFixture();
+    // The fixture's own view seed, as global-setup writes it.
+    const seededView = JSON.parse(localStorage.getItem('anchor-view')!);
+
+    expect(adoptLocalState(FIXTURE_USER)).toBe(false);
+
+    // Byte-identical: not merely "the fields survived", but "nothing ran".
+    expect(JSON.parse(localStorage.getItem('anchor-view')!)).toEqual(seededView);
+    expect(seededView.state.adoptedLegacy).toBe(true);
+  });
+
+  it('still clears for a DIFFERENT account, which is the point of stamping it', () => {
+    applyFixture();
+
+    expect(adoptLocalState(USER_B)).toBe(true);
+    expect(localStateOwner()).toBe(USER_B);
+  });
 });
 
 /**

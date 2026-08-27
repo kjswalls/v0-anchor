@@ -102,6 +102,46 @@ export function sessionCookies(supabaseUrl: string, session: SupabaseSession): C
 }
 
 /**
+ * Whose local state the seed below is.
+ *
+ * lib/local-state.ts stamps this key with the signed-in account and clears the
+ * browser's per-user stores whenever what it finds disagrees — including when
+ * it finds NOTHING, because an unstamped browser holding state is a browser
+ * where nothing on disk records who wrote it, and that is exactly the shared-
+ * machine case the stamp exists for.
+ *
+ * WITHOUT this, the fixture is self-contradictory: `seededViewState()` puts one
+ * account's view prefs on disk and `sessionCookies()` signs that same account
+ * in, but nothing on disk says the two belong together — so the app treats a
+ * legitimately-seeded browser as an orphaned one and clears what it can before
+ * the first assertion runs.
+ *
+ * SEEDED HERE RATHER THAN PER-SPEC, deliberately. This fixture's job is to
+ * present the browser of a user who has signed in on this machine before, and
+ * as of lib/local-state.ts that state includes the stamp exactly as much as it
+ * includes the auth cookie. An unstamped browser is a real state, but it is the
+ * one-time transitional one — the first load after the feature ships — not the
+ * steady state 119 specs should each be re-establishing by hand. Seeding it
+ * beside the view prefs also keeps the two in step: a spec that seeded prefs and
+ * forgot the stamp would silently get them half-cleared, which is precisely the
+ * N-copies-to-keep-in-step problem the feature under test was written to end.
+ */
+export function seededOwnerState(userId: string): { name: string; value: string } {
+  return { name: 'anchor-local-state-owner', value: userId };
+}
+
+/**
+ * Everything the fixture puts in localStorage, in one list.
+ *
+ * globalSetup writes it into `storageState`; `injectFreshSession` replays the
+ * same list through an init script for the few specs that mint their own
+ * session. One source so the two can never drift.
+ */
+export function seededLocalStorage(userId: string): Array<{ name: string; value: string }> {
+  return [seededViewState(), seededOwnerState(userId)];
+}
+
+/**
  * The view-store's persisted shape, seeded so every test starts in Day ×
  * Buckets regardless of what another test left behind.
  *
