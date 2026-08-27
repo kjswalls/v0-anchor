@@ -181,6 +181,14 @@ expected to be safe to re-run.
   launcher, `/` opens it in command mode, ⌘I focuses the dock — all in
   `lib/commands/registry.ts`, whose shortcut ids are frozen by a test (add, never rename).
   Tests scope by `data-omnibar-variant` since both shells share testids.
+- **The shortcuts table is one component in two shells, too.** The bindings are settings
+  records (`SHORTCUT_RECORDS` in [lib/settings/manifest.ts](lib/settings/manifest.ts),
+  derived 1:1 from `DEFAULT_SHORTCUTS` — never a second copy of the list), and
+  `components/settings/shortcuts-panel.tsx` renders them in the Keyboard settings pane and
+  in the ⌘/ overlay off a `variant: 'pane' | 'overlay'`. A shortcut id is now BOTH the
+  persistence key for a rebinding and the second half of a permanent settings id
+  (`keys.<shortcutId>`), so renaming one breaks two things at once. Tests scope by
+  `data-shortcuts-variant`. See [keyboard-shortcuts.md](memory/plans/keyboard-shortcuts.md).
 - **Design source of truth is the Figma file, not the mockup PNGs in the repo.** Pull
   specs live via the Figma MCP; the checked-in PNGs drift.
 - Some settings persist but are read by no view. That's deliberate — leave them alone
@@ -195,6 +203,9 @@ Longer-running design docs live in [memory/plans/](memory/plans/) and are commit
 [unified-items.md](memory/plans/unified-items.md) carries the phase ledger and the locked
 design decisions for the items refactor — read it before touching item types, the
 registry, or the agent API.
+[keyboard-shortcuts.md](memory/plans/keyboard-shortcuts.md) records why the shortcuts
+table lives in the settings manifest and renders in two shells — read it before touching
+`lib/commands/keys.ts`, the `keys` control kind, or anything that derives a binding list.
 [long-term-goals.md](memory/plans/long-term-goals.md) does the same for **goals** — the
 third container role (`aspire`), where milestones and check-ins are ordinary items wearing
 a membership role. Read it before touching `lib/goals.ts`, the goals store slice, or

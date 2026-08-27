@@ -84,11 +84,59 @@ export function matchesBinding(pressed: string[], binding: string[]): boolean {
 }
 
 /**
+ * Display order: modifiers first, in the order they are spoken (⌘⌥⇧K), then
+ * the key itself.
+ *
+ * This is not cosmetic. `pressedKeys` SORTS alphabetically, because a sorted
+ * array is what makes `matchesBinding` a cheap element-wise compare — so every
+ * binding a user records is stored sorted, and ⌘K comes back as ['k','mod'].
+ * Rendering that array in place printed "K + ⌘" in the shortcuts table and in
+ * the palette's key hints, for every rebound shortcut and only for rebound
+ * ones. The authored defaults happened to be written modifier-first, which is
+ * why the table looked right until the moment you changed something.
+ *
+ * Ordering lives HERE rather than in the renderers because both of them go
+ * through formatKeys, and a second copy would drift the way the first one did.
+ */
+const MODIFIER_ORDER = [MOD, 'ctrl', 'alt', 'shift'];
+
+export function orderKeys(keys: string[]): string[] {
+  const rank = (key: string) => {
+    const at = MODIFIER_ORDER.indexOf(key === 'meta' ? MOD : key);
+    return at === -1 ? MODIFIER_ORDER.length : at;
+  };
+  // Stable, so two non-modifiers (which no binding has) keep their order.
+  return [...keys].sort((a, b) => rank(a) - rank(b));
+}
+
+/**
+ * A binding as ONE string, for the surfaces that carry a value as a scalar —
+ * a settings record's read()/write() and the DOM attribute it renders into.
+ *
+ * Space-separated, never '+'. '+' is itself a recordable key (⌘+ arrives as
+ * ['+','mod'], because isShiftProducedSymbol keeps 'shift' off it), so joining
+ * on '+' makes that one binding un-splittable and silently unbindable. A space
+ * cannot collide: the space bar normalizes to the token 'space'.
+ *
+ * NORMALIZED on the way in, so the encoded form is canonical — ['meta','k'],
+ * ['ctrl','k'] and the sorted ['k','mod'] a recorder produces all encode to
+ * "mod k". That is what lets a settings record compare its current value
+ * against its default with `!==` and be right.
+ */
+export function encodeKeys(keys: string[]): string {
+  return orderKeys(normalizeBinding(keys)).join(' ');
+}
+
+export function decodeKeys(value: string): string[] {
+  return value.split(' ').filter(Boolean);
+}
+
+/**
  * Human-readable key labels. 'ctrl' and 'meta' both render as the platform's
  * primary modifier, because that is what they both now match.
  */
 export function formatKeys(keys: string[], isMac: boolean): string[] {
-  return keys.map((key) => {
+  return orderKeys(keys).map((key) => {
     switch (key) {
       case 'ctrl':
       case 'meta':

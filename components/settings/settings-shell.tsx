@@ -22,6 +22,7 @@ import {
 } from '@/lib/settings/manifest';
 import { searchSettings, paneRows, paneMatchCount, highlightRuns } from '@/lib/settings/search';
 import { ExtensionIndex } from './extension-index';
+import { ShortcutsPanel } from './shortcuts-panel';
 
 /**
  * The settings surface: a rail that is a map, and a content column that is
@@ -618,7 +619,26 @@ export function SettingsShell({
                   copy of a control that already has a permanent home. */}
               {pane === 'extensions' && <ExtensionIndex ctx={ctx} />}
 
-              <div className="divide-border divide-y">{rows.map((record) => rowFor(record))}</div>
+              {/* The Keyboard pane's rows ARE the shortcut records, and they
+                  are grouped rather than flat — nineteen bindings in one
+                  undivided list is a wall. The panel is the shared component
+                  the ⌘/ overlay also renders (components/settings/
+                  shortcuts-panel.tsx), so the two shells cannot group or order
+                  the same set differently. It renders every row this pane
+                  holds, which is why the flat list below is the ELSE arm and
+                  not a sibling — a test pins that the two sets are the same.
+                  Search results still go through rowFor like every other
+                  record, so a hit here is drawn by the generic path. */}
+              {pane === 'keyboard' ? (
+                <ShortcutsPanel
+                  variant="pane"
+                  ctx={ctx}
+                  highlightId={highlight}
+                  onReset={reset}
+                />
+              ) : (
+                <div className="divide-border divide-y">{rows.map((record) => rowFor(record))}</div>
+              )}
 
               {advanced.length > 0 && (
                 <>

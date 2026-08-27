@@ -132,6 +132,13 @@ const planner = () => usePlannerStore.getState();
 const view = () => useViewStore.getState();
 
 /**
+ * Said once, on all three column-width bindings. Their `availableWhen` is the
+ * enforcement (`scope === 'week' && isScalableLayout(layout)`); this is the
+ * same fact in words, for the shortcuts table — see CommandShortcutSpec.context.
+ */
+const WEEK_COLUMNS_CONTEXT = 'Only in a week view with columns.';
+
+/**
  * "Set priority" and "Move to bucket" want TWO values — an item and a level.
  * The argument model holds one, and rather than grow a multi-chip flow for two
  * commands, each value gets its own command: "Set priority: High" then pick the
@@ -664,7 +671,7 @@ export const STATIC_COMMANDS: Command[] = [
     icon: CalendarRange,
     keywords: 'day week scope toggle switch flip view',
     aliases: ['toggle'],
-    shortcut: { id: 'toggle_view_scope', keys: ['v'] },
+    shortcut: { id: 'toggle_view_scope', keys: ['v'], context: 'Desktop only — mobile is day-only.' },
     // Same reason as the two commands above: mobile is day-only by
     // construction, so this would silently write default_view with no
     // visible effect.
@@ -685,7 +692,12 @@ export const STATIC_COMMANDS: Command[] = [
     group: 'view',
     icon: ChevronsLeftRight,
     keywords: 'week column width wider zoom in bigger scale days',
-    shortcut: { id: 'week_columns_wider', keys: ['meta', '='], repeatable: true },
+    shortcut: {
+      id: 'week_columns_wider',
+      keys: ['meta', '='],
+      repeatable: true,
+      context: WEEK_COLUMNS_CONTEXT,
+    },
     availableWhen: () => view().scope === 'week' && isScalableLayout(view().layout),
     hidden: (ctx) => ctx.isMobile,
     run: () => view().stepWeekDaysVisible(1),
@@ -697,7 +709,12 @@ export const STATIC_COMMANDS: Command[] = [
     group: 'view',
     icon: ChevronsRightLeft,
     keywords: 'week column width narrower zoom out smaller scale days',
-    shortcut: { id: 'week_columns_narrower', keys: ['meta', '-'], repeatable: true },
+    shortcut: {
+      id: 'week_columns_narrower',
+      keys: ['meta', '-'],
+      repeatable: true,
+      context: WEEK_COLUMNS_CONTEXT,
+    },
     availableWhen: () => view().scope === 'week' && isScalableLayout(view().layout),
     hidden: (ctx) => ctx.isMobile,
     run: () => view().stepWeekDaysVisible(-1),
@@ -709,7 +726,7 @@ export const STATIC_COMMANDS: Command[] = [
     group: 'view',
     icon: Columns3,
     keywords: 'week column width reset default automatic fit canvas',
-    shortcut: { id: 'week_columns_reset', keys: ['meta', '0'] },
+    shortcut: { id: 'week_columns_reset', keys: ['meta', '0'], context: WEEK_COLUMNS_CONTEXT },
     // Clears the choice rather than writing a fixed count, so the view goes back
     // to picking the stop nearest TARGET_COL_PX — and keeps re-picking it as the
     // canvas changes, exactly as it did before the control was ever touched.
@@ -766,7 +783,12 @@ export const STATIC_COMMANDS: Command[] = [
     group: 'workspace',
     icon: MessageSquare,
     keywords: 'chat panel sidebar beacon hide show',
-    shortcut: { id: 'toggle_right_sidebar', keys: ['meta', ']'], allowInInput: true },
+    shortcut: {
+      id: 'toggle_right_sidebar',
+      keys: ['meta', ']'],
+      allowInInput: true,
+      context: 'Desktop only — nothing on mobile reads the sidebar.',
+    },
     // Nothing in the mobile tree consumes sidebar-store.
     hidden: (ctx) => ctx.isMobile,
     run: () => {
@@ -784,7 +806,12 @@ export const STATIC_COMMANDS: Command[] = [
     group: 'workspace',
     icon: PanelLeft,
     keywords: 'sidebar collapse expand hide show braindump',
-    shortcut: { id: 'toggle_left_sidebar', keys: ['meta', '['], allowInInput: true },
+    shortcut: {
+      id: 'toggle_left_sidebar',
+      keys: ['meta', '['],
+      allowInInput: true,
+      context: 'Desktop only — nothing on mobile reads the sidebar.',
+    },
     // Deliberately never a palette row: the omnibar lives INSIDE the sidebar,
     // so running this from the palette makes the palette disappear — and
     // ⌘K then focuses a zero-width, clipped input that looks broken. The
@@ -799,7 +826,12 @@ export const STATIC_COMMANDS: Command[] = [
     group: 'workspace',
     icon: PanelLeft,
     keywords: 'item panel inspector focus edit details',
-    shortcut: { id: 'focus_item_panel', keys: ['meta', '\\'], allowInInput: true },
+    shortcut: {
+      id: 'focus_item_panel',
+      keys: ['meta', '\\'],
+      allowInInput: true,
+      context: 'Only while an item panel is open.',
+    },
     // Hidden for the same reason toggleSidebar is: with no panel open the row
     // would be a trapdoor that appears to do nothing. The binding is the point,
     // and it still shows up in the shortcuts modal.
@@ -1147,20 +1179,29 @@ export const STATIC_COMMANDS: Command[] = [
  * the registry, because they need the shell's React state (the hovered item
  * read at keypress time). They carry no palette row — acting on "the item under
  * the mouse" is meaningless once the omnibar has focus — but they own their
- * binding here so the shortcuts modal lists them and rebinding works.
+ * binding here so the shortcuts table lists them and rebinding works.
+ *
+ * Both are the plainest case for `context` (see CommandShortcutSpec): they are
+ * the only two bindings that need something under the pointer, and a flat table
+ * would otherwise advertise ⌫ as a way to delete whatever you last thought
+ * about.
  */
+const HOVER_CONTEXT = 'Only while the pointer is over an item.';
+
 export const SHELL_SHORTCUTS = [
   {
     id: 'edit_hovered',
     label: 'Edit hovered item',
     description: 'Open the edit dialog for the task currently under the mouse',
     keys: ['e'],
+    context: HOVER_CONTEXT,
   },
   {
     id: 'delete_hovered',
     label: 'Delete hovered item',
     description: 'Delete the task currently under the mouse (shows confirmation)',
     keys: ['backspace'],
+    context: HOVER_CONTEXT,
   },
 ] as const;
 
