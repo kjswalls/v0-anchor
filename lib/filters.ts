@@ -1,4 +1,4 @@
-import type { Habit, Item, Priority, Task } from './planner-types';
+import type { HabitItem, Item, Priority, Task } from './planner-types';
 import { getItemTypeConfig } from './item-registry';
 import {
   NO_CONTAINER,
@@ -87,7 +87,7 @@ export function fieldApplies(typeName: string, field: string): boolean {
  * ride it — which is why this resolves the registry name rather than assuming
  * 'task'.
  */
-export function typeNameOf(row: Task | Habit | Item): string {
+export function typeNameOf(row: Task | HabitItem | Item): string {
   const r = row as { type?: string; customType?: string };
   if (r.type === 'custom') return r.customType ?? 'custom';
   return r.type ?? 'task';
@@ -107,7 +107,7 @@ export function typeNameOf(row: Task | Habit | Item): string {
  * maps `group: row.group ?? ''` (db.ts:108), so '' is a real live value and is
  * exactly what "No group" must catch.
  */
-export function containerRefOf(row: Task | Habit | Item, typeName = typeNameOf(row)): string | null {
+export function containerRefOf(row: Task | HabitItem | Item, typeName = typeNameOf(row)): string | null {
   const kind = classifyKindForItemType(getItemTypeConfig(typeName).containerKind);
   if (kind === null) return null;
   // The field is the registry's, not a branch: `project` for projects, `group`
@@ -120,7 +120,7 @@ export function containerRefOf(row: Task | Habit | Item, typeName = typeNameOf(r
 
 /** Empty selection = no-op. Then the pass-through rule, then membership. */
 export function passesContainerFilter(
-  row: Task | Habit | Item,
+  row: Task | HabitItem | Item,
   containers: string[],
   typeName = typeNameOf(row)
 ): boolean {
@@ -134,7 +134,7 @@ export function passesContainerFilter(
 
 /** Empty selection = no-op. Habits carry no priority, so they pass through. */
 export function passesPriorityFilter(
-  row: Task | Habit | Item,
+  row: Task | HabitItem | Item,
   priorities: PriorityFilterValue[],
   typeName = typeNameOf(row)
 ): boolean {
@@ -170,7 +170,7 @@ export function passesPriorityFilter(
  * module was written to stop.
  */
 export function passesGoalFilter(
-  row: Task | Habit | Item,
+  row: Task | HabitItem | Item,
   goals: readonly string[],
   memberIds?: ReadonlySet<string> | null
 ): boolean {
@@ -185,7 +185,7 @@ export function passesGoalFilter(
  * module is date-blind. Each surface applies it beside its own date logic.
  */
 export function passesFilters(
-  row: Task | Habit | Item,
+  row: Task | HabitItem | Item,
   filters: ViewFilters,
   typeName = typeNameOf(row),
   goalMemberIds?: ReadonlySet<string> | null
@@ -226,14 +226,49 @@ export const EMPTY_VIEW_FILTERS: ViewFilters = {
  *
  * Re-run safety comes from branch ORDER, not from inspecting the value: output
  * always carries `containers`, so a second pass takes the first branch and
- * never reaches here.
+ * never reaches here — which is why the RETIRED-KIND rewrite below sits inside
+ * that first branch instead.
  */
+/**
+ * `group:Health` → `project:Health`, for blobs written before migration 039.
+ *
+ * THIS IS NOT COSMETIC. `containerKindOf` answers only for kinds the registry
+ * still knows, so a retired `group:` ref reads as "not a container ref":
+ * `namesOfKind` drops it, the Display menu's checkbox never shows as ticked,
+ * and `passesContainerFilter` narrows to the OTHER selected containers only —
+ * while `activeFilterCount` still counts the clause. The filter reads as active
+ * and quietly answers a different question. `localStorage` survives the reload
+ * that would otherwise fix it, which is what makes it worth a rewrite rather
+ * than a drop.
+ *
+ * Deduped, for `renameContainerRef`'s reason: a blob holding both
+ * `project:Work` and `group:Work` would otherwise render "Work" twice in the
+ * chip row and toggle only one of them off.
+ *
+ * Anything that is not a retired classify prefix passes through untouched —
+ * including bare legacy names, which the branch above owns.
+ */
+const RETIRED_CLASSIFY_PREFIX = 'group:';
+
+function adoptRetiredKinds(containers: string[]): string[] {
+  if (!containers.some((c) => c.startsWith(RETIRED_CLASSIFY_PREFIX))) return containers;
+  return [
+    ...new Set(
+      containers.map((c) =>
+        c.startsWith(RETIRED_CLASSIFY_PREFIX)
+          ? containerRef('project', c.slice(RETIRED_CLASSIFY_PREFIX.length))
+          : c,
+      ),
+    ),
+  ];
+}
+
 export function normalizeFilters(raw: unknown): ViewFilters {
   if (!raw || typeof raw !== 'object') return { ...EMPTY_VIEW_FILTERS };
   const f = raw as Record<string, unknown>;
 
   const containers = Array.isArray(f.containers)
-    ? (f.containers as string[])
+    ? adoptRetiredKinds(f.containers as string[])
     : Array.isArray(f.projects)
       ? (f.projects as string[]).map((name) => containerRef('project', name))
       : [];

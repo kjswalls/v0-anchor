@@ -27,7 +27,7 @@ const program = (id: string, over: Partial<Program> = {}): Program => ({
 });
 
 const seed = (routines: Routine[], programs: Program[]) =>
-  usePlannerStore.setState({ routines, programs, userTimezone: 'UTC', projects: [], habitGroups: [] });
+  usePlannerStore.setState({ routines, programs, userTimezone: 'UTC', projects: [] });
 
 afterEach(() => cleanup());
 

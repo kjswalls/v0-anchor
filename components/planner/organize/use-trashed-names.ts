@@ -7,15 +7,15 @@ import { fetchTrashedNames, type TrashedName } from '@/lib/db';
 /**
  * The container names a trashed row is still holding.
  *
- * `projects_user_id_name_key` and `habit_groups_user_id_name_key` are PLAIN
- * unique indexes over `(user_id, name)` — no `WHERE deleted_at IS NULL` — so a
+ * `projects_user_id_name_key` is a PLAIN
+ * unique index over `(user_id, name)` — no `WHERE deleted_at IS NULL` — so a
  * deleted container reserves its name for the full 30 days while being
  * invisible to `usePlannerStore`, whose arrays come from `deleted_at`-filtered
  * fetches. The store literally cannot see the row that is about to reject the
  * write.
  *
- * That gap is a live bug on BOTH container paths, and the create half is the
- * louder one. `addProject` de-dupes against live rows, passes, `set()`s
+ * That gap is a live bug on the create and the rename path both, and the create
+ * half is the louder one. `addProject` de-dupes against live rows, passes, `set()`s
  * optimistically, and only then does the insert raise 23505 into a
  * `.catch(console.error)`. The console then selects the phantom, opens its
  * detail pane, and accepts a glyph, a colour and a whole time block — every one
@@ -55,17 +55,14 @@ import { fetchTrashedNames, type TrashedName } from '@/lib/db';
  */
 export function useTrashedNames(
   { enabled = true }: { enabled?: boolean } = {},
-): { projects: TrashedName[]; groups: TrashedName[] } {
+): { projects: TrashedName[] } {
   const userId = usePlannerStore((s) => s.userId);
-  const [names, setNames] = useState<{ projects: TrashedName[]; groups: TrashedName[] }>({
-    projects: [],
-    groups: [],
-  });
-  /** Containers that vanished from the live arrays since this section mounted. */
-  const [gone, setGone] = useState<{ projects: TrashedName[]; groups: TrashedName[] }>({
-    projects: [],
-    groups: [],
-  });
+  // One list since 039 collapsed the two CLASSIFY kinds. Kept as an object with
+  // a `projects` key rather than a bare array: that is the shape every caller
+  // destructures, and it is what `fetchTrashedNames` returns.
+  const [names, setNames] = useState<{ projects: TrashedName[] }>({ projects: [] });
+  /** Containers that vanished from the live array since this section mounted. */
+  const [gone, setGone] = useState<{ projects: TrashedName[] }>({ projects: [] });
 
   useEffect(() => {
     if (!userId || !enabled) return;
@@ -92,20 +89,16 @@ export function useTrashedNames(
     // Optional-called: a unit test that mocks `@/lib/planner-store` with only
     // the members it needs has no `subscribe`, and this runs on mount.
     return usePlannerStore.subscribe?.((next, prev) => {
-      if (next.projects === prev.projects && next.habitGroups === prev.habitGroups) return;
+      if (next.projects === prev.projects) return;
       setGone((current) => ({
         projects: stillGone([...current.projects, ...vanished(prev.projects, next.projects)], next.projects),
-        groups: stillGone([...current.groups, ...vanished(prev.habitGroups, next.habitGroups)], next.habitGroups),
       }));
     });
   }, []);
 
   // Deduped by id: a later remount refetches, and a container deleted this
   // session will by then be in the server's bin as well.
-  return {
-    projects: mergeById(names.projects, gone.projects),
-    groups: mergeById(names.groups, gone.groups),
-  };
+  return { projects: mergeById(names.projects, gone.projects) };
 }
 
 /**
@@ -126,14 +119,14 @@ export function useTrashedNames(
 /**
  * Requests in flight, so hooks that mount in the same tick share one round trip.
  *
- * The console's Labels pane is the case that needs it: Projects and Habit groups
- * each call this hook, both are mounted together, and each call is two SELECTs.
- * Deduping by user id collapses that to one pair without any of the staleness a
+ * The console's Labels pane is the case that needs it: Projects and Item types
+ * each call this hook, both are mounted together, and each call is a SELECT.
+ * Deduping by user id collapses that to one without any of the staleness a
  * result cache would introduce — the entry is dropped the moment it settles, so
  * the NEXT mount still gets a fresh read, which is the behaviour the union is
  * built around.
  */
-const inFlight = new Map<string, Promise<{ projects: TrashedName[]; groups: TrashedName[] }>>();
+const inFlight = new Map<string, Promise<{ projects: TrashedName[] }>>();
 
 const loadTrashedNames = (userId: string) => {
   const existing = inFlight.get(userId);

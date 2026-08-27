@@ -39,7 +39,7 @@ const goal = (over: Partial<Goal> = {}): Goal =>
   }) as Goal;
 
 const build = (over: { items: Item[]; goals?: Goal[]; programs?: Program[]; focusItemId?: string }) =>
-  buildAnchorContext({ projects: [], habitGroups: [], userTimezone: TZ, ...over });
+  buildAnchorContext({ projects: [], userTimezone: TZ, ...over });
 
 describe('the Long-term goals section', () => {
   beforeEach(() => {

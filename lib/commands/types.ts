@@ -97,7 +97,7 @@ export interface CommandEntityOption {
   /** Registry type name ('task', 'habit', 'goal') — for the row's a11y label. */
   typeName: string;
   icon: LucideIcon;
-  /** Project / habit group, with its glyph already resolved. */
+  /** The item's container, with its glyph already resolved. */
   container?: { name: string; glyph: string };
   /** Muted right-hand detail: a date for dated items, a streak for habits. */
   detail?: string;

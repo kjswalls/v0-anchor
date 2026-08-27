@@ -12,7 +12,7 @@ import { cn } from '@/lib/utils';
 /**
  * Section heading: a category icon (lib/category-icons) + label in the content
  * color + a chevron that collapses/expands the rows. When the section names a
- * project or habit group, its stored glyph (a picked icon token) drives the
+ * container, its stored glyph (a picked icon token) drives the
  * icon — resolved from the live store so editing a project's icon updates the
  * heading; otherwise the icon derives from the label name. Icon matches the
  * label's font color.
@@ -38,11 +38,11 @@ export function GroupSection({
    *
    * The glyph is resolved from THIS, not from `label`, because a label has had
    * its namespace thrown away and a heading is not the only thing that can be
-   * called "Work". Before A′ the lookup matched a project by bare label first
-   * and a habit group second, which meant a project named "High" put its emoji
-   * on the Priority › High heading, and (once the braindump carries habits) a
-   * habit group would borrow the same-named project's icon — the seeds disagree
-   * on two of their three: 🧘/💚 for Wellness, 🏠/⭐ for Personal.
+   * called "Work". Before A′ the lookup matched a container by bare label, which
+   * meant a project named "High" put its emoji on the Priority › High heading.
+   * The key still carries a KIND for that reason after 039 collapsed the two
+   * classify kinds: `containerKindOf` answering at all is what says "this
+   * section is a container", and a bare name could not.
    *
    * Omitted means "this section is not a container" — no store lookup at all,
    * and `CategoryIcon` derives from the name as it always has.
@@ -62,15 +62,13 @@ export function GroupSection({
   const [collapsed, setCollapsed] = useState(false);
   // Subscribe to the arrays (not the getter fns) so a glyph edit re-renders.
   const projects = usePlannerStore((s) => s.projects);
-  const habitGroups = usePlannerStore((s) => s.habitGroups);
   const kind = groupKey ? containerKindOf(groupKey) : null;
   const name = kind ? containerName(groupKey!) : '';
-  const glyph =
-    kind === 'project'
-      ? projects.find((p) => sameContainerName('project', p.name, name))?.emoji
-      : kind === 'group'
-        ? habitGroups.find((g) => sameContainerName('group', g.name, name))?.emoji
-        : undefined;
+  // `kind` is still the gate, not decoration: it is what keeps this from
+  // hunting a container glyph for a `priority:high` or `goal:none` heading.
+  const glyph = kind
+    ? projects.find((p) => sameContainerName('project', p.name, name))?.emoji
+    : undefined;
 
   const heading = (
     <button

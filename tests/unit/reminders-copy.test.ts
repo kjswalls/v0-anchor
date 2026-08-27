@@ -4,7 +4,7 @@ import type { ReminderCandidate } from '@/lib/reminders/due';
 import type { Item } from '@anchor-app/types';
 
 const habit = (over: Partial<Item> = {}): Item => ({
-  type: 'habit', id: 'h', title: 'Vitamins', group: 'G', streak: 0, status: 'pending',
+  type: 'habit', id: 'h', title: 'Vitamins', project: 'G', streak: 0, status: 'pending',
   completedDates: [], skippedDates: [], dailyCounts: {}, repeatFrequency: 'daily',
   ...over,
 } as Item);

@@ -1,4 +1,4 @@
-import type { Task, Habit, Project, TimeBucket } from './planner-types';
+import type { Task, HabitItem, Project, TimeBucket } from './planner-types';
 import { shouldShowOnDate, isCompletedOnDate, isSkippedOnDate, isRecurring } from './recurrence';
 import { EMPTY_VIEW_FILTERS, passesFilters, type ViewFilters } from './filters';
 import { containerRef } from './container-registry';
@@ -23,7 +23,7 @@ const NO_FILTERS = EMPTY_VIEW_FILTERS;
 
 export interface DayItemsInput {
   tasks: Task[];
-  habits: Habit[];
+  habits: HabitItem[];
   projects: Project[];
   /**
    * yyyy-MM-dd for the selected day (already timezone-resolved).
@@ -72,7 +72,7 @@ export interface DayItemsInput {
 
 export interface DayItems {
   tasksByBucket: Record<TimeBucket, Task[]>;
-  habitsByBucket: Record<TimeBucket, Habit[]>;
+  habitsByBucket: Record<TimeBucket, HabitItem[]>;
   /** Projects with a recurring time block that lands on this day. */
   recurringProjects: Project[];
   totalCount: number;
@@ -91,7 +91,7 @@ function emptyBuckets<T>(): Record<TimeBucket, T[]> {
  * grouping and ordering passes are both stable, so this IS the tie-break for
  * everything downstream.
  */
-export function flattenDayRows(day: DayItems): { itemType: 'task' | 'habit'; item: Task | Habit }[] {
+export function flattenDayRows(day: DayItems): { itemType: 'task' | 'habit'; item: Task | HabitItem }[] {
   return [
     ...BUCKET_ORDER.flatMap((b) => day.habitsByBucket[b]).map((h) => ({
       itemType: 'habit' as const,
@@ -203,7 +203,7 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
     .sort(byTimeThenOrder)
     .forEach((t) => tasksByBucket[t.timeBucket as TimeBucket].push(t));
 
-  const habitsByBucket = emptyBuckets<Habit>();
+  const habitsByBucket = emptyBuckets<HabitItem>();
   dayHabits
     .filter((h) => h.timeBucket)
     // The same comparator as tasks. It used to be

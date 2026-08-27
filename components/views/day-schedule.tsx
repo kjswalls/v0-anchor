@@ -47,7 +47,7 @@ import { groupRows } from '@/lib/grouping';
 import { groupBySupport } from '@/lib/view-options';
 import { ProgramNotice } from '@/components/views/program-notice';
 import type { DayItems } from '@/lib/day-items';
-import type { Task, Habit, TimeBucket, Item } from '@/lib/planner-types';
+import type { Task, HabitItem, TimeBucket, Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -185,7 +185,7 @@ const LINE_CLAMP = [
 
 export type TimedEntry = {
   itemType: 'task' | 'habit';
-  item: Task | Habit;
+  item: Task | HabitItem;
   startMin: number;
   duration: number;
 };
@@ -196,7 +196,7 @@ const toMin = (t: string) => {
 };
 
 /** The type's own fallback block length, for an item with no duration set. */
-function defaultMinutes(item: Task | Habit, itemType: 'task' | 'habit'): number {
+function defaultMinutes(item: Task | HabitItem, itemType: 'task' | 'habit'): number {
   const projected = item as { type?: string; customType?: string };
   return getItemTypeConfig(projected.type === 'custom' ? projected.customType! : itemType).schedule
     .defaultBlockMinutes;
@@ -574,7 +574,6 @@ export function ScheduleBlock({
 }) {
   const {
     getProjectColor,
-    getHabitGroupColor,
     selectedDate,
     userTimezone,
     routines,
@@ -594,7 +593,7 @@ export function ScheduleBlock({
   const { item, itemType } = entry;
   const isTask = itemType === 'task';
   const task = isTask ? (item as Task) : null;
-  const habit = !isTask ? (item as Habit) : null;
+  const habit = !isTask ? (item as HabitItem) : null;
 
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const rowDate = date ?? selectedDate;
@@ -616,11 +615,8 @@ export function ScheduleBlock({
       : task!.status === 'completed'
     : habit!.completedDates.includes(dateStr);
 
-  const accent = isTask
-    ? task!.project
-      ? getProjectColor(task!.project)
-      : 'var(--primary)'
-    : getHabitGroupColor(habit!.group);
+  // One CLASSIFY axis (039): the container's colour, whatever the type.
+  const accent = item.project ? getProjectColor(item.project) : 'var(--primary)';
 
   // Drag-to-resize an own-timed block. Bottom edge changes duration; top edge
   // changes start (bottom fixed). Live preview from local state; the store write

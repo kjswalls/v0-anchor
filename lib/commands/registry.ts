@@ -1071,7 +1071,10 @@ export const STATIC_COMMANDS: Command[] = [
     // ids are the stable handle the e2e suite and command-usage ranking key on,
     // and an alias is muscle memory. Only the label follows the rename.
     id: 'app.categories',
-    label: 'Organize projects & groups',
+    // 'groups' stays in the aliases and keywords though the surface is gone
+    // (039): the id and the aliases are frozen, and a habit group IS a project
+    // now, so the alias still lands where the user meant.
+    label: 'Organize projects & item types',
     group: 'app',
     icon: FolderOpen,
     keywords: 'projects groups categories manage organize folders edit labels',

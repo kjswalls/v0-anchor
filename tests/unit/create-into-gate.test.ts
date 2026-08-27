@@ -28,7 +28,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('@/lib/db', () => ({
   fetchItems: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
-  fetchHabitGroups: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   createItemType: vi.fn(async () => {}),
   updateItemType: vi.fn(async () => {}),
@@ -42,10 +41,6 @@ vi.mock('@/lib/db', () => ({
   updateProject: vi.fn(async () => {}),
   deleteProject: vi.fn(async () => {}),
   restoreProject: vi.fn(async () => {}),
-  createHabitGroup: vi.fn(async () => {}),
-  updateHabitGroup: vi.fn(async () => {}),
-  deleteHabitGroup: vi.fn(async () => {}),
-  restoreHabitGroup: vi.fn(async () => {}),
   fetchRoutines: vi.fn(async () => []),
   createRoutine: vi.fn(async () => {}),
   updateRoutine: vi.fn(async () => {}),
@@ -211,7 +206,7 @@ describe('the membership a program gets', () => {
 
   it('reaches habits and custom types by the same door', () => {
     store().addHabit(
-      { title: 'Stretch', group: 'Wellness', repeatFrequency: 'daily' },
+      { title: 'Stretch', project: 'Wellness', repeatFrequency: 'daily' },
       { programIds: ['p1'] },
     );
     expect(store().programs[0].itemIds).toEqual([created('Stretch').id]);
@@ -391,7 +386,7 @@ describe('the receipt', () => {
   it('rides habits too', () => {
     seed({ programs: [program({ state: 'paused' })] });
     store().addHabit(
-      { title: 'Stretch', group: 'Wellness', repeatFrequency: 'daily' },
+      { title: 'Stretch', project: 'Wellness', repeatFrequency: 'daily' },
       { programIds: ['p1'] },
     );
     expect(getActionLog()[0].receipt).toBe('Hidden with your Summer program');
@@ -407,7 +402,7 @@ describe('the receipt', () => {
       programs: [program({ state: 'auto', startsOn: '2026-03-01', endsOn: '2026-03-31' })],
     });
     store().addHabit(
-      { title: 'Stretch', group: 'Wellness', repeatFrequency: 'daily' },
+      { title: 'Stretch', project: 'Wellness', repeatFrequency: 'daily' },
       { programIds: ['p1'] },
     );
     // TODAY is inside the window, so nothing to say.
@@ -419,7 +414,7 @@ describe('the receipt', () => {
       programs: [program({ state: 'auto', startsOn: '2026-04-01', endsOn: '2026-04-30' })],
     });
     store().addHabit(
-      { title: 'Stretch', group: 'Wellness', repeatFrequency: 'daily' },
+      { title: 'Stretch', project: 'Wellness', repeatFrequency: 'daily' },
       { programIds: ['p1'] },
     );
     expect(getActionLog()[0].receipt).toContain('Summer');

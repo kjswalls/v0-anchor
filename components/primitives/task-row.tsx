@@ -29,7 +29,7 @@ import {
   formatDuration,
   formatDurationLong,
 } from '@/components/primitives/pills';
-import type { Task, Habit, HabitStatus, Item } from '@/lib/planner-types';
+import type { Task, HabitItem, HabitStatus, Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -50,7 +50,9 @@ import { cn } from '@/lib/utils';
  * title. Owed, not done.
  */
 
-export type RowItem = { itemType: 'task'; item: Task } | { itemType: 'habit'; item: Habit };
+// `HabitItem`, not the legacy `Habit`: the store holds items, and since 039 the
+// two shapes disagree about the container field (`project` vs `group`).
+export type RowItem = { itemType: 'task'; item: Task } | { itemType: 'habit'; item: HabitItem };
 
 interface TaskRowProps {
   row: RowItem;
@@ -68,7 +70,6 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     deleteTask,
     deleteHabit,
     unscheduleTask,
-    getHabitGroupColor,
     getProjectColor,
     selectedDate,
     userTimezone,
@@ -81,7 +82,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const { item, itemType } = row;
   const isTask = itemType === 'task';
   const task = isTask ? (item as Task) : null;
-  const habit = !isTask ? (item as Habit) : null;
+  const habit = !isTask ? (item as HabitItem) : null;
   const inBraindump = context === 'braindump';
   const compact = density === 'compact';
 
@@ -215,14 +216,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const multiPartial = multiTarget > 0 && habitEffectiveCount > 0 && !completed;
   const multiPct = multiTarget > 0 ? Math.min(100, Math.round((habitEffectiveCount / multiTarget) * 100)) : 0;
 
-  // Project (task) or group (habit) — one identity per item, rendered as a
-  // color dot + name in the trailing rail.
-  const tagName = isTask ? task!.project : habit!.group;
-  const tagColor = isTask
-    ? task!.project
-      ? getProjectColor(task!.project)
-      : undefined
-    : getHabitGroupColor(habit!.group);
+  // The CLASSIFY axis — one identity per item, whatever its type (039),
+  // rendered as a color dot + name in the trailing rail.
+  const tagName = item.project;
+  const tagColor = tagName ? getProjectColor(tagName) : undefined;
 
   // Both tasks and habits are drag sources now (habits can be dropped onto
   // the schedule grid / buckets — see lib/dnd/CONTRACT.md).

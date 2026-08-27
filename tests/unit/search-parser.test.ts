@@ -25,7 +25,7 @@ describe('type:<name> grammar (Phase 6)', () => {
       type: 'custom', customType: 'goal',
     } as unknown as Task;
     const habit = {
-      id: 'h1', title: 'Run daily', group: 'Fitness', streak: 0, status: 'pending',
+      id: 'h1', title: 'Run daily', project: 'Fitness', streak: 0, status: 'pending',
       completedDates: [], skippedDates: [], dailyCounts: {}, repeatFrequency: 'daily',
     };
 
@@ -51,7 +51,7 @@ describe('groupResults', () => {
     }) as unknown as Task;
   const mkHabit = (id: string, title = 'Habit') =>
     ({
-      id, title, group: 'Fitness', streak: 0, status: 'pending',
+      id, title, project: 'Fitness', streak: 0, status: 'pending',
       completedDates: [], skippedDates: [], dailyCounts: {}, repeatFrequency: 'daily',
       type: 'habit',
     }) as never;

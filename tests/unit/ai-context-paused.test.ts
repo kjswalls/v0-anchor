@@ -34,7 +34,6 @@ const build = (over: {
 }) =>
   buildAnchorContext({
     projects: [],
-    habitGroups: [],
     userTimezone: TZ,
     ...over,
   });
@@ -145,7 +144,6 @@ describe('the Paused section', () => {
     const out = buildAnchorContext({
       items,
       projects: [],
-      habitGroups: [],
       userTimezone: TZ,
       focusItemId: 't1',
     });

@@ -5,7 +5,6 @@ import { EMPTY_VIEW_FILTERS, isEmptyFilters, normalizeFilters } from '@/lib/filt
 import { containerKindOf, containerName, containerRef, namesOfKind } from '@/lib/container-registry';
 
 const projectNamesFrom = (refs: string[]) => namesOfKind(refs, 'project');
-const groupNamesFrom = (refs: string[]) => namesOfKind(refs, 'group');
 
 /**
  * The rehydration gap the e2e suite structurally cannot cover.
@@ -224,15 +223,46 @@ describe('normalizeFilters — rehydrating a stored payload', () => {
     expect(projectNamesFrom(merged.containers)).toEqual(['Client: Acme', 'Work']);
   });
 
-  it('prefixes a legacy name that looks like a ref for the other namespace', () => {
+  it('prefixes a legacy name that looks like a ref for the retired namespace', () => {
     // A project literally named "group:health" is a legal project name. Treated
-    // as an already-formed ref it would resolve to a habit GROUP — the wrong
-    // container entirely. The legacy array only ever held project names.
+    // as an already-formed ref it would have resolved to a habit GROUP — the
+    // wrong container entirely. The legacy array only ever held project names,
+    // so it is prefixed unconditionally.
     const merged = normalizeFilters({ projects: ['group:health'] });
 
     expect(merged.containers).toEqual(['project:group:health']);
     expect(projectNamesFrom(merged.containers)).toEqual(['group:health']);
-    expect(groupNamesFrom(merged.containers)).toEqual([]);
+  });
+
+  /**
+   * THE RETIRED KIND, rewritten on read (migration 039).
+   *
+   * A blob written before the collapse holds `group:Health`, and
+   * `containerKindOf` answers null for it now — so `namesOfKind` drops it, the
+   * menu never shows it ticked, and `passesContainerFilter` narrows to the
+   * OTHER selections only while `activeFilterCount` still counts the clause.
+   * The filter reads as active and quietly answers a different question.
+   * localStorage survives the reload that would otherwise fix it, which is what
+   * makes this a rewrite rather than a drop.
+   */
+  it('rewrites a retired group: ref into the one classify namespace', () => {
+    const merged = normalizeFilters({ containers: ['project:Work', 'group:Health'] });
+    expect(merged.containers).toEqual(['project:Work', 'project:Health']);
+  });
+
+  it('does not leave a duplicate when a blob held both spellings', () => {
+    // Two containers named Work could exist before the collapse, one on each
+    // side of the axis. Rewritten naively the chip row renders "Work" twice and
+    // one click toggles only one of them off.
+    const merged = normalizeFilters({ containers: ['project:Work', 'group:Work'] });
+    expect(merged.containers).toEqual(['project:Work']);
+  });
+
+  it('leaves a blob with no retired refs strictly alone', () => {
+    // Identity, not merely equality: the rewrite must not churn a new array on
+    // every rehydrate.
+    const containers = ['project:Work'];
+    expect(normalizeFilters({ containers }).containers).toBe(containers);
   });
 
   it('prefers the new field when a blob carries both', () => {
@@ -252,19 +282,16 @@ describe('normalizeFilters — rehydrating a stored payload', () => {
 });
 
 describe('the container vocabulary', () => {
-  it('separates the two namespaces so a shared name cannot collide', () => {
-    // Not hypothetical: DEFAULT_PROJECTS and DEFAULT_HABIT_GROUPS both seed
-    // Work / Wellness / Personal.
-    const containers = [containerRef('project', 'Work'), containerRef('group', 'Work')];
-
-    expect(projectNamesFrom(containers)).toEqual(['Work']);
-    expect(groupNamesFrom(containers)).toEqual(['Work']);
-    expect(containers[0]).not.toBe(containers[1]);
+  it('reads a retired-kind ref as no kind at all', () => {
+    // Which is exactly why normalizeFilters rewrites it before it can reach a
+    // filter clause.
+    expect(containerKindOf('group:Work')).toBeNull();
+    expect(projectNamesFrom(['group:Work'])).toEqual([]);
   });
 
   it('round-trips a name through a ref', () => {
     expect(containerName(containerRef('project', 'Side project'))).toBe('Side project');
-    expect(containerKindOf(containerRef('group', 'health'))).toBe('group');
+    expect(containerKindOf(containerRef('project', 'health'))).toBe('project');
   });
 
   it('survives a name containing a colon', () => {
@@ -303,31 +330,30 @@ describe('isEmptyFilters', () => {
 describe('renameContainerRef follows a container rename', () => {
   beforeEach(() => {
     useViewStore.setState({
-      canvasFilters: { ...EMPTY_VIEW_FILTERS, containers: ['project:Work', 'group:Wellness'] },
+      canvasFilters: { ...EMPTY_VIEW_FILTERS, containers: ['project:Work', 'project:Wellness'] },
       braindumpFilters: { ...EMPTY_VIEW_FILTERS, containers: ['project:Work'] },
     });
   });
 
   it('rewrites the ref in both filter sets', () => {
-    useViewStore.getState().renameContainerRef('project', 'Work', 'Deep Work');
+    useViewStore.getState().renameContainerRef('Work', 'Deep Work');
     expect(useViewStore.getState().canvasFilters.containers).toContain('project:Deep Work');
     expect(useViewStore.getState().canvasFilters.containers).not.toContain('project:Work');
     expect(useViewStore.getState().braindumpFilters.containers).toEqual(['project:Deep Work']);
   });
 
-  it('leaves refs of the other kind alone', () => {
-    // The group must share the project's NAME, or the assertion passes against a
-    // kind-blind implementation too: `group:Wellness` could never be confused
-    // with a project called Work no matter how the matching worked, so the
-    // earlier fixture proved nothing. `group:Work` is the only shape that can
-    // catch a rewrite that ignores the prefix.
+  it('leaves a value that merely CONTAINS the old name alone', () => {
+    // The rewrite is on the whole ref, not on a substring: a container called
+    // "Work Log" must not be dragged along by a rename of "Work". (This used to
+    // assert that a `group:Work` ref stayed put — the second namespace is gone,
+    // but the exact-match property it was really testing is not.)
     useViewStore.setState({
-      canvasFilters: { ...EMPTY_VIEW_FILTERS, containers: ['project:Work', 'group:Work'] },
+      canvasFilters: { ...EMPTY_VIEW_FILTERS, containers: ['project:Work', 'project:Work Log'] },
     });
-    useViewStore.getState().renameContainerRef('project', 'Work', 'Deep Work');
+    useViewStore.getState().renameContainerRef('Work', 'Deep Work');
     expect(useViewStore.getState().canvasFilters.containers).toEqual([
       'project:Deep Work',
-      'group:Work',
+      'project:Work Log',
     ]);
   });
 
@@ -335,13 +361,13 @@ describe('renameContainerRef follows a container rename', () => {
     useViewStore.setState({
       canvasFilters: { ...EMPTY_VIEW_FILTERS, containers: ['project:Work', 'project:Home'] },
     });
-    useViewStore.getState().renameContainerRef('project', 'Work', 'Home');
+    useViewStore.getState().renameContainerRef('Work', 'Home');
     expect(useViewStore.getState().canvasFilters.containers).toEqual(['project:Home']);
   });
 
   it('is inert when nothing referenced the old name', () => {
     const before = useViewStore.getState().canvasFilters;
-    useViewStore.getState().renameContainerRef('project', 'Untouched', 'Renamed');
+    useViewStore.getState().renameContainerRef('Untouched', 'Renamed');
     expect(useViewStore.getState().canvasFilters).toBe(before);
   });
 

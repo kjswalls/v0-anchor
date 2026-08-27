@@ -58,7 +58,7 @@ const task = (over: Partial<Item> & { id: string; title: string }) =>
 const habit = (over: Partial<Item> & { id: string; title: string }) =>
   ({
     type: 'habit',
-    group: 'Wellness',
+    project: 'Wellness',
     streak: 0,
     status: 'pending',
     completedDates: [],

@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  * Container ids — migration 027, plan Phase 0
  * (memory/plans/organize-console.md).
  *
- * `items.project` / `items."group"` were NAME references, so renaming a
+ * `items.project` was a NAME reference, so renaming a
  * container silently emptied it: every member kept the old string with nothing
  * left to resolve it by. The id is what survives the rename; the name stays
  * authoritative for display, because the permanent legacy projection has to
@@ -18,7 +18,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('@/lib/db', () => ({
   fetchItems: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
-  fetchHabitGroups: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   createItemType: vi.fn(async () => {}),
   updateItemType: vi.fn(async () => {}),
@@ -33,10 +32,6 @@ vi.mock('@/lib/db', () => ({
   deleteProject: vi.fn(async () => {}),
   restoreProject: vi.fn(async () => {}),
   renameContainerMembers: vi.fn(async () => {}),
-  createHabitGroup: vi.fn(async () => {}),
-  updateHabitGroup: vi.fn(async () => {}),
-  deleteHabitGroup: vi.fn(async () => {}),
-  restoreHabitGroup: vi.fn(async () => {}),
   fetchRoutines: vi.fn(async () => []),
   createRoutine: vi.fn(async () => {}),
   updateRoutine: vi.fn(async () => {}),
@@ -57,13 +52,16 @@ vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }
 
 import { usePlannerStore } from '@/lib/planner-store';
 import * as db from '@/lib/db';
-import type { HabitGroupType, Item, Project } from '@/lib/planner-types';
+import type { Item, Project } from '@/lib/planner-types';
 
 const USER = 'user-1';
 const store = () => usePlannerStore.getState();
 
 const PROJECT: Project = { id: 'pr-work', name: 'Work', emoji: 'icon:Briefcase' };
-const GROUP: HabitGroupType = { id: 'gr-well', name: 'Wellness', emoji: '⭐' };
+// A second container, which used to be a habit group. One CLASSIFY kind since
+// 039, so it is a project row like any other — what still differs is the item
+// filed under it, whose type declares `containerRequired`.
+const WELLNESS: Project = { id: 'gr-well', name: 'Wellness', emoji: '⭐' };
 
 const items = (): Item[] => [
   {
@@ -94,8 +92,8 @@ const items = (): Item[] => [
     type: 'habit',
     id: 'habit-member',
     title: 'Stretch',
-    group: 'Wellness',
-    groupId: 'gr-well',
+    project: 'Wellness',
+    projectId: 'gr-well',
     streak: 0,
     status: 'pending',
     completedDates: [],
@@ -114,8 +112,7 @@ beforeEach(async () => {
   store().clearStore();
   vi.clearAllMocks();
   vi.mocked(db.fetchItems).mockResolvedValue(items());
-  vi.mocked(db.fetchProjects).mockResolvedValue([PROJECT]);
-  vi.mocked(db.fetchHabitGroups).mockResolvedValue([GROUP]);
+  vi.mocked(db.fetchProjects).mockResolvedValue([PROJECT, WELLNESS]);
   await store().initializeStore(USER);
 });
 
@@ -128,9 +125,7 @@ describe('renaming a container fans the new name out to its members', () => {
     // trashed name, which takenBy cannot see) must not leave the members
     // rewritten. A synchronous assertion here would pass on either wiring.
     await Promise.resolve();
-    expect(db.renameContainerMembers).toHaveBeenCalledWith(
-      USER, 'project_id', 'pr-work', 'Deep Work'
-    );
+    expect(db.renameContainerMembers).toHaveBeenCalledWith(USER, 'pr-work', 'Deep Work');
   });
 
   it('does NOT fan out when the container write fails', async () => {
@@ -163,13 +158,13 @@ describe('renaming a container fans the new name out to its members', () => {
     expect(db.renameContainerMembers).not.toHaveBeenCalled();
   });
 
-  it('does the same for habit groups', async () => {
-    store().updateHabitGroup('gr-well', { name: 'Health' });
-    expect((find('habit-member') as { group?: string }).group).toBe('Health');
+  it('does the same for a container whose members are habits', async () => {
+    // One action for the whole axis since 039 — this used to be
+    // `updateHabitGroup` fanning out on `group_id`.
+    store().updateProject('gr-well', { name: 'Health' });
+    expect((find('habit-member') as { project?: string }).project).toBe('Health');
     await Promise.resolve();
-    expect(db.renameContainerMembers).toHaveBeenCalledWith(
-      USER, 'group_id', 'gr-well', 'Health'
-    );
+    expect(db.renameContainerMembers).toHaveBeenCalledWith(USER, 'gr-well', 'Health');
   });
 
   it('drops a fan-out whose rename was undone while the write was in flight', async () => {
@@ -203,9 +198,7 @@ describe('renaming a container fans the new name out to its members', () => {
     release();
     await Promise.resolve();
     await Promise.resolve();
-    expect(db.renameContainerMembers).toHaveBeenCalledWith(
-      USER, 'project_id', 'pr-work', 'Deep Work'
-    );
+    expect(db.renameContainerMembers).toHaveBeenCalledWith(USER, 'pr-work', 'Deep Work');
   });
 
   it('undo puts the members back, not just the container', () => {
@@ -249,20 +242,20 @@ describe('a name write resolves the id', () => {
   });
 
   it('files a habit by name and stores the id alongside', () => {
-    store().addHabit({ title: 'New habit', group: 'Wellness', repeatFrequency: 'daily' } as AddHabitArg);
-    const added = store().items.find((i) => i.title === 'New habit') as { groupId?: string };
-    expect(added.groupId).toBe('gr-well');
+    store().addHabit({ title: 'New habit', project: 'Wellness', repeatFrequency: 'daily' } as AddHabitArg);
+    const added = store().items.find((i) => i.title === 'New habit') as { projectId?: string };
+    expect(added.projectId).toBe('gr-well');
   });
 
-  it('resolves a habit group case-insensitively, as the group surfaces do', () => {
+  it('resolves a container case-insensitively, as every container surface does', () => {
     // The habit starts on gr-well, so the assertion is that the id MOVED. An
     // earlier version of this test asserted it was still 'gr-well' — the value
     // the fixture already held — and stayed green with the whole resolution
     // deleted.
-    store().addHabitGroup('Focus', '🎯');
-    const focus = store().habitGroups.find((g) => g.name === 'Focus')!;
-    store().updateHabit('habit-member', { group: 'focus' });
-    expect((find('habit-member') as { groupId?: string }).groupId).toBe(focus.id);
+    store().addProject('Focus', '🎯');
+    const focus = store().projects.find((p) => p.name === 'Focus')!;
+    store().updateHabit('habit-member', { project: 'focus' });
+    expect((find('habit-member') as { projectId?: string }).projectId).toBe(focus.id);
   });
 });
 
@@ -277,22 +270,23 @@ describe('deleting a container', () => {
   });
 
   it('reassigns habits to the destination row, id included', () => {
-    store().addHabitGroup('Focus', '🎯');
-    const dest = store().habitGroups.find((g) => g.name === 'Focus')!;
-    store().removeHabitGroup('gr-well');
-    const moved = find('habit-member') as { group?: string; groupId?: string };
-    expect(moved.group).toBe('Focus');
-    expect(moved.groupId).toBe(dest.id);
+    // `containerRequired` is what makes this a reassignment rather than an
+    // unfile — the registry answers it, `unfiled` reads the answer.
+    store().removeProject('gr-well');
+    const moved = find('habit-member') as { project?: string; projectId?: string };
+    expect(moved.project).toBe('Work');
+    expect(moved.projectId).toBe('pr-work');
   });
 
   it('falls back to a bare “Personal” name with no id when no row remains', () => {
     // The account the migration found with 223 habits and ZERO habit_groups
-    // rows: the fallback names a group that does not exist, so claiming an id
-    // for it would be a lie the FK would reject.
-    store().removeHabitGroup('gr-well');
-    const moved = find('habit-member') as { group?: string; groupId?: string };
-    expect(moved.group).toBe('Personal');
-    expect(moved.groupId).toBeUndefined();
+    // rows: the fallback names a container that does not exist, so claiming an
+    // id for it would be a lie the FK would reject.
+    store().removeProject('pr-work');
+    store().removeProject('gr-well');
+    const moved = find('habit-member') as { project?: string; projectId?: string };
+    expect(moved.project).toBe('Personal');
+    expect(moved.projectId).toBeUndefined();
   });
 
   /**
@@ -316,7 +310,6 @@ describe('deleting a container', () => {
     }));
 
     store().removeProject('pr-does-not-exist');
-    store().removeHabitGroup('gr-does-not-exist');
 
     const after = store().items.map((i) => ({
       id: i.id,

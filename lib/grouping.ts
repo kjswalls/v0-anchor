@@ -1,4 +1,4 @@
-import type { Goal, GroupBy, Habit, Priority, Program, Routine, Task, TimeBucket } from './planner-types';
+import type { Goal, GroupBy, HabitItem, Priority, Program, Routine, Task, TimeBucket } from './planner-types';
 import { displayGoals, goalItemIds } from './goals';
 import { TIME_BUCKET_RANGES } from './planner-types';
 import { BUCKET_ORDER } from './day-items';
@@ -39,7 +39,9 @@ import { getItemTypeConfig } from './item-registry';
 
 export interface GroupableRow {
   itemType: 'task' | 'habit';
-  item: Task | Habit;
+  // `HabitItem`, not the legacy `Habit`: the two disagree about the container
+  // field since 039, and `containerRefOf` reads the ITEM's (`project`).
+  item: Task | HabitItem;
 }
 
 /**
@@ -48,8 +50,11 @@ export interface GroupableRow {
  * `key` is separate from `label` because they answer different questions: the
  * label is what the reader sees, the key is what React reconciles on. For most
  * groupings they coincide; routine grouping is the exception that forced the
- * split (two routines may share a name), and container grouping is the second
- * (a project and a habit group may share one — the seeds do).
+ * split (two routines may share a name). Container grouping was the second,
+ * back when a project and a habit group could share a name; 039 left one
+ * classify kind, so that pair can no longer occur — the split stays because the
+ * routines still need it and because the key is also what carries the `none:`
+ * and `foldRef` forms.
  */
 export interface RowGroup<T> {
   key: string;
@@ -93,26 +98,27 @@ interface Building<T> extends RowGroup<T> {
  * hoisted every habit into a single "Habits" section and grouped only the tasks,
  * so grouping by Project answered a question about tasks and then filed the rest
  * of the day under its own type name. A habit is not container-less — it answers
- * with its GROUP, exactly as `passesContainerFilter` has since Phase 1.
+ * on the same axis, exactly as `passesContainerFilter` has since Phase 1, and
+ * since migration 039 with the same field.
  *
- * The key is the PREFIXED ref, so a project and a habit group sharing a name
- * stay two sections (DEFAULT_PROJECTS and DEFAULT_HABIT_GROUPS both seed Work,
- * Wellness and Personal). They will render the same visible label; on the canvas
- * that is all a heading is, and `variant="canvas"` draws no glyph, so there is
- * nothing else to disagree.
+ * The key is the PREFIXED ref. It used to be prefixed because a project and a
+ * habit group could share a name and had to stay two sections (DEFAULT_PROJECTS
+ * and DEFAULT_HABIT_GROUPS both seeded Work); 039 removed the collision at the
+ * source. The prefix stays because these keys share a keyspace with the other
+ * section keys — `priority:high`, `routine:none`, `goal:none`, `none:project` —
+ * and `containerKindOf` is what tells a container ref apart from all of them.
  *
- * The key is FOLDED through `foldRef`, which is where the case policy lives —
- * habit-group keys fold, project keys do not. It is not a preference:
- * `makeAddDraft` writes a lowercase 'personal' against DEFAULT_HABIT_GROUPS'
- * capitalised 'Personal' whenever the groups list has not loaded yet, so both
- * spellings live in real data. Grouping keyed on the raw ref would put them in
- * two sections that the menu's SINGLE "Personal" checkbox selects together. The
- * label is the first spelling seen, which is the store's own order.
+ * The key is FOLDED through `foldRef`, which is where the case policy lives.
+ * It is not a preference: `makeAddDraft` writes a lowercase 'personal' against a
+ * seeded capitalised 'Personal' whenever the container list has not loaded yet,
+ * so both spellings live in real data. Grouping keyed on the raw ref would put
+ * them in two sections that the menu's SINGLE "Personal" checkbox selects
+ * together. The label is the first spelling seen, which is the store's own order.
  *
- * Unset is kind-TAGGED — `none:project` / `none:group` — rather than sharing the
- * filter's single `NO_CONTAINER` sentinel. The filter needs one checkbox that
- * catches both sides of the axis; a heading has room to say which side it is,
- * and "No project" over a stack of habits would be false.
+ * Unset is kind-TAGGED — `none:project` — rather than sharing the filter's bare
+ * `NO_CONTAINER` sentinel. With one kind the two differ only in the suffix; the
+ * tag stays because it is what keeps a heading key from ever reading as a real
+ * ref, and because a second classify kind would need it back.
  */
 function containerSection(row: GroupableRow): { key: string; label: string; unset: boolean } {
   const typeName = row.itemType === 'habit' ? 'habit' : typeNameOf(row.item);

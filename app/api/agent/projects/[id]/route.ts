@@ -57,7 +57,7 @@ export async function PATCH(
     // matters. (The store's own copy of this carries an extra re-check because
     // it races undo; there is no undo here.)
     if (typeof updates.name === 'string' && updates.name) {
-      await renameContainerMembers(userId, 'project_id', id, updates.name, serviceClient)
+      await renameContainerMembers(userId, id, updates.name, serviceClient)
     }
     return NextResponse.json({ success: true })
   } catch (err) {

@@ -40,11 +40,13 @@ describe('custom item types and the container axis', () => {
     expect(config.form.containerLabel).toBe('Project');
   });
 
-  it('does not claim a habit-shaped container', () => {
+  it('never answers null, which is what dropped it out of the axis', () => {
     const config = buildCustomTypeConfig(def('goal'));
-    // The dialog resolves `containerKind === 'projects' ? projects : habitGroups`,
-    // so anything other than 'projects' silently offers habit groups.
-    expect(config.containerKind).not.toBe('habitGroups');
+    // Left null, a custom item carried a real project value that no container
+    // question could see: the dialog never rendered the picker and every custom
+    // item was filed under "No project". `'habitGroups'` was the other wrong
+    // answer until 039 retired the vocabulary.
+    expect(config.containerKind).not.toBeNull();
   });
 
   it('resolves through getItemTypeConfig for a hydrated type', () => {
@@ -63,8 +65,11 @@ describe('custom item types and the container axis', () => {
     expect(getItemTypeConfig('never-registered').containerKind).toBe('projects');
   });
 
-  it('keeps the built-in types unchanged', () => {
+  it('keeps the built-in types on the same one axis', () => {
+    // The habit answered 'habitGroups' until migration 039 collapsed the two
+    // CLASSIFY kinds. `containerRequired` is what still distinguishes it.
     expect(getItemTypeConfig('task').containerKind).toBe('projects');
-    expect(getItemTypeConfig('habit').containerKind).toBe('habitGroups');
+    expect(getItemTypeConfig('habit').containerKind).toBe('projects');
+    expect(getItemTypeConfig('habit').containerRequired).toBe(true);
   });
 });

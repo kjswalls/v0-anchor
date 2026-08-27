@@ -55,7 +55,7 @@ describe('buildAnchorContext', () => {
       type: 'habit',
       id: 'h1',
       title: 'Stretch',
-      group: 'Wellness',
+      project: 'Wellness',
       streak: 4,
       status: 'pending',
       completedDates: ['2026-07-15'],
@@ -67,7 +67,7 @@ describe('buildAnchorContext', () => {
       type: 'habit',
       id: 'h2',
       title: 'Read',
-      group: 'Growth',
+      project: 'Growth',
       streak: 0,
       status: 'pending',
       completedDates: [],
@@ -78,7 +78,7 @@ describe('buildAnchorContext', () => {
   ];
 
   it('renders the exact pre-unification presentation', () => {
-    const out = buildAnchorContext({ items, projects: [{ id: 'p1', name: 'Work', emoji: '' }], habitGroups: [] });
+    const out = buildAnchorContext({ items, projects: [{ id: 'p1', name: 'Work', emoji: '' }] });
     expect(out).toBe(
       [
         '## Anchor Context',
@@ -108,7 +108,7 @@ describe('buildAnchorContext', () => {
   });
 
   it('renders the empty-state lines', () => {
-    const out = buildAnchorContext({ items: [], projects: [], habitGroups: [] });
+    const out = buildAnchorContext({ items: [], projects: [] });
     expect(out).toContain('No tasks scheduled for today.');
     expect(out).toContain('No habits tracked.');
     expect(out).toContain('No projects.');

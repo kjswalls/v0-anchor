@@ -64,7 +64,7 @@ export async function waitForAppReady(page: Page): Promise<void> {
    * …and the planner store's INITIAL FETCH has landed.
    *
    * Hydration is not enough, and the difference is destructive rather than
-   * merely slow. `initializeStore` replaces `projects`, `habitGroups` and
+   * merely slow. `initializeStore` replaces `projects` and
    * `items` wholesale when it resolves, so anything written in the window
    * between mount and that resolve is silently discarded. A test that acted on
    * "the page is interactive" could create a project, watch the row and its

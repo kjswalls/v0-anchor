@@ -30,7 +30,6 @@ import { cleanup, renderHook } from '@testing-library/react';
 vi.mock('@/lib/db', () => ({
   fetchItems: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
-  fetchHabitGroups: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   fetchRoutines: vi.fn(async () => []),
   fetchPrograms: vi.fn(async () => []),
@@ -41,7 +40,6 @@ vi.mock('@/lib/db', () => ({
   createProject: vi.fn(async () => {}),
   updateProject: vi.fn(async () => {}),
   deleteProject: vi.fn(async () => {}),
-  createHabitGroup: vi.fn(async () => {}),
   renameContainerMembers: vi.fn(async () => {}),
   itemDbType: (item: { type: string; customType?: string }) =>
     item.type === 'custom' ? item.customType : item.type,
@@ -81,7 +79,6 @@ beforeEach(async () => {
   vi.clearAllMocks();
   vi.mocked(db.fetchItems).mockResolvedValue([]);
   vi.mocked(db.fetchProjects).mockResolvedValue([]);
-  vi.mocked(db.fetchHabitGroups).mockResolvedValue([]);
   vi.mocked(db.createProject).mockResolvedValue(undefined);
   await store().initializeStore('user-1');
   useUndoStripStore.setState({ entry: null });

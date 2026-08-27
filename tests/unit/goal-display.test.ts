@@ -5,7 +5,7 @@ import { displayGoals, goalFilterItemIds, goalItemIds } from '@/lib/goals';
 import { inactiveItemIdsOn } from '@/lib/active';
 import { groupRows, type GroupableRow } from '@/lib/grouping';
 import { containerRef } from '@/lib/container-registry';
-import type { Goal, Habit, Item, Project, Task } from '@/lib/planner-types';
+import type { Goal, HabitItem, Item, Project, Task } from '@/lib/planner-types';
 
 /**
  * Filtering and grouping by GOAL — the aspire axis on a display surface.
@@ -44,7 +44,7 @@ const task = (id: string, over: Partial<Task> = {}): Task =>
     ...over,
   }) as Task;
 
-const habit = (id: string, over: Partial<Habit> = {}): Habit =>
+const habit = (id: string, over: Partial<HabitItem> = {}): HabitItem =>
   ({
     id,
     // Carried so `typeNameOf` resolves this row as a habit: the point of the
@@ -53,7 +53,7 @@ const habit = (id: string, over: Partial<Habit> = {}): Habit =>
     // says what it is.
     type: 'habit',
     title: `habit ${id}`,
-    group: 'wellness',
+    project: 'wellness',
     status: 'pending',
     streak: 0,
     completedDates: [],
@@ -61,7 +61,7 @@ const habit = (id: string, over: Partial<Habit> = {}): Habit =>
     repeatFrequency: 'daily',
     timeBucket: 'morning',
     ...over,
-  }) as Habit;
+  }) as HabitItem;
 
 const goal = (id: string, over: Partial<Goal> = {}): Goal => ({
   id,
@@ -90,7 +90,7 @@ const t = (id: string, over: Partial<Task> = {}): GroupableRow => ({
   itemType: 'task',
   item: task(id, over),
 });
-const h = (id: string, over: Partial<Habit> = {}): GroupableRow => ({
+const h = (id: string, over: Partial<HabitItem> = {}): GroupableRow => ({
   itemType: 'habit',
   item: habit(id, over),
 });

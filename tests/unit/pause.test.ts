@@ -12,7 +12,6 @@ vi.mock('@/lib/db', async (importOriginal) => {
     ...actual,
     fetchItems: vi.fn(async () => []),
     fetchProjects: vi.fn(async () => []),
-    fetchHabitGroups: vi.fn(async () => []),
     fetchItemTypes: vi.fn(async () => []),
     createItem: vi.fn(async () => {}),
     updateItem: vi.fn(async () => {}),
@@ -23,10 +22,6 @@ vi.mock('@/lib/db', async (importOriginal) => {
     updateProject: vi.fn(async () => {}),
     deleteProject: vi.fn(async () => {}),
     restoreProject: vi.fn(async () => {}),
-    createHabitGroup: vi.fn(async () => {}),
-    updateHabitGroup: vi.fn(async () => {}),
-    deleteHabitGroup: vi.fn(async () => {}),
-    restoreHabitGroup: vi.fn(async () => {}),
   fetchRoutines: vi.fn(async () => []),
   createRoutine: vi.fn(async () => {}),
   updateRoutine: vi.fn(async () => {}),
@@ -78,7 +73,7 @@ const fixtures = (): Item[] => [
     completedDates: [], skippedDates: [],
   },
   {
-    type: 'habit', id: 'habit-1', title: 'Stretch', group: 'Wellness',
+    type: 'habit', id: 'habit-1', title: 'Stretch', project: 'Wellness',
     streak: 7, status: 'pending', completedDates: ['2026-03-09'], skippedDates: [],
     dailyCounts: {}, repeatFrequency: 'daily',
   },
@@ -452,11 +447,11 @@ describe('create-with-membership is one gesture', () => {
 
   it('works for habits too', () => {
     const id = store().addRoutine({ name: 'Morning', itemIds: [] });
-    store().addHabit({ title: 'New habit', group: 'Wellness', repeatFrequency: 'daily' });
+    store().addHabit({ title: 'New habit', project: 'Wellness', repeatFrequency: 'daily' });
     expect(store().routines.find((r) => r.id === id)!.itemIds).toEqual([]);
 
     store().addHabit(
-      { title: 'Joined habit', group: 'Wellness', repeatFrequency: 'daily' },
+      { title: 'Joined habit', project: 'Wellness', repeatFrequency: 'daily' },
       { routineIds: [id] },
     );
     const created = store().items.find((i) => i.title === 'Joined habit')!;

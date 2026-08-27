@@ -1,4 +1,4 @@
-import type { Item, Task, Habit, Goal } from './planner-types';
+import type { Item, Task, HabitItem, Goal } from './planner-types';
 import { getAllItemTypeNames, getItemTypeConfig } from './item-registry';
 import { passesContainerFilter, typeNameOf } from './filters';
 import { containerRef } from './container-registry';
@@ -65,14 +65,14 @@ export function parseSearchQuery(raw: string): ParsedSearchQuery {
 
 export interface SearchResults {
   tasks: Task[];
-  habits: Habit[];
+  habits: HabitItem[];
 }
 
 // typeNameOf moved to lib/filters.ts — the filter predicates need the same
 // resolution, and two copies of "which registry type is this row" is exactly
 // how the four filter shapes drifted apart.
 
-export function searchItems(raw: string, tasks: Task[], habits: Habit[]): SearchResults {
+export function searchItems(raw: string, tasks: Task[], habits: HabitItem[]): SearchResults {
   const query = parseSearchQuery(raw);
   const text = query.text.toLowerCase();
   const hasQuery = text.length > 0 || query.type !== null || query.priority !== null || query.project !== null;
@@ -107,18 +107,18 @@ export function searchItems(raw: string, tasks: Task[], habits: Habit[]): Search
    * the surprise.)
    *
    * `project:` DID wipe, and that was wrong. It is the container axis, and a
-   * habit answers it with its group — so `project:Health` now finds the habits
-   * in the Health group instead of silently returning none. One axis, resolved
-   * per type (see lib/filters.ts containerRefOf).
+   * habit answers it too — so `project:Health` finds the habits filed under
+   * Health instead of silently returning none. One axis, resolved per type
+   * (see lib/filters.ts containerRefOf), and since 039 one kind as well.
    */
   const matchedHabits =
     (query.type !== null && query.type !== 'habit') || query.priority !== null
       ? []
       : habits.filter(
           (h) =>
-            matchText(h.title, h.group) &&
+            matchText(h.title, h.project) &&
             (query.project === null ||
-              passesContainerFilter(h, [containerRef('group', query.project)]))
+              passesContainerFilter(h, [containerRef('project', query.project)]))
         );
 
   return { tasks: matchedTasks, habits: matchedHabits };

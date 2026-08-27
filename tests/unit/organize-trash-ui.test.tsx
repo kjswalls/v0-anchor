@@ -71,7 +71,6 @@ beforeEach(() => {
     isLoading: false,
     items: [],
     projects: [],
-    habitGroups: [],
     routines: [],
     programs: [],
     itemTypes: [],
