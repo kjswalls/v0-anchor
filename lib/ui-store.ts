@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { Task, Habit, Item, KnownItemType, TimeBucket } from './planner-types';
+import type { Task, HabitItem, Item, KnownItemType, TimeBucket } from './planner-types';
 
 /**
  * Ephemeral UI state for the desktop shell: which dialog is open, the shared
@@ -161,7 +161,7 @@ export const openBulkAdd = (
  * discriminator must survive: stamping 'task' over a {type:'custom'} object
  * would open it with the wrong config and labels.
  */
-export const openEditFor = (item: Task | Habit, itemType: KnownItemType) => {
+export const openEditFor = (item: Task | HabitItem, itemType: KnownItemType) => {
   const runtime = item as { type?: string };
   const stamped =
     runtime.type === 'custom' ? (item as unknown as Item) : ({ ...item, type: itemType } as Item);

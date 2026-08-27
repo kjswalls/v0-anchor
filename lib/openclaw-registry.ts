@@ -88,6 +88,14 @@ async function hmacSha256(secret: string, data: string): Promise<string> {
     .join('')
 }
 
+/**
+ * `habitGroups.updated` is PINNED even though the kind is gone (migration 039).
+ *
+ * `notifyPlugins` DROPS an unregistered event name, so removing it here would
+ * not merely stop a redundant webhook — it would silently unsubscribe every
+ * deployed plugin build that registered for it, with nothing logged. The
+ * container writes in lib/db.ts emit both names for that reason.
+ */
 export type AnchorEvent =
   | 'tasks.updated'
   | 'habits.updated'

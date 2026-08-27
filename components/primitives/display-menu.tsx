@@ -47,7 +47,13 @@ import {
   type PriorityFilterValue,
   type ViewFilters,
 } from '@/lib/filters';
-import { NO_CONTAINER, containerRef, namesOfKind } from '@/lib/container-registry';
+import {
+  CONTAINER_KINDS,
+  NO_CONTAINER,
+  containerRef,
+  namesOfKind,
+  sameContainerName,
+} from '@/lib/container-registry';
 import { displayGoals } from '@/lib/goals';
 import { useBraindumpGroupBy, useCanvasGroupBy, useGoalsEnabled } from '@/lib/extension-gates';
 import { accentColorForName } from '@/lib/accent-colors';
@@ -96,7 +102,7 @@ import { cn } from '@/lib/utils';
  *
  * **Drill-in rather than one flattened sheet, because one section is
  * unbounded.** Grouping is 6 values, Ordering 3, Type 3, Priority 4 — but
- * Project / Group is every project plus every habit group plus the unset value,
+ * The Project section is every container plus the unset value,
  * which is why it carries a scroller on the desktop panel too. Flattened, a
  * fresh seed already stands ~22 rows tall at the 44px touch floor (~970px, past
  * an 80vh sheet on most phones) and it grows with the user's own data, burying
@@ -434,9 +440,7 @@ export function DisplayMenu({
   scope?: ViewScope;
 }) {
   const projects = usePlannerStore((s) => s.projects);
-  const habitGroups = usePlannerStore((s) => s.habitGroups);
   const getProjectColor = usePlannerStore((s) => s.getProjectColor);
-  const getHabitGroupColor = usePlannerStore((s) => s.getHabitGroupColor);
   const showPausedOnGrid = usePlannerStore((s) => s.showPausedOnGrid);
   const setShowPausedOnGrid = usePlannerStore((s) => s.setShowPausedOnGrid);
   const goals = usePlannerStore((s) => s.goals);
@@ -481,7 +485,6 @@ export function DisplayMenu({
   /* ── what is set ──────────────────────────────────────────────────────── */
 
   const selectedProjects = namesOfKind(filters.containers, 'project');
-  const selectedGroups = namesOfKind(filters.containers, 'group');
   /** The goal selection AS THE APP READS IT — empty while Goals is off. */
   const goalClause = goalsOn ? filters.goals : [];
 
@@ -767,60 +770,41 @@ export function DisplayMenu({
     {
       id: 'container',
       icon: Folder,
-      label: 'Project / Group',
+      // The noun has one home — see CONTAINER_KINDS.project. This section was
+      // "Project / Group" and drew the one question as two capped lists, which
+      // is exactly the distinction migration 039 removed.
+      label: CONTAINER_KINDS.project.label,
       rail: containerRail(filters.containers),
       set: filters.containers.length > 0,
-      // One axis, two namespaces. A habit is not container-less: it answers
-      // with its GROUP. Values are stored prefixed so a project and a habit
-      // group sharing a name cannot collide — and the seeds do collide,
-      // DEFAULT_PROJECTS and DEFAULT_HABIT_GROUPS both ship Work.
+      // Values are still stored PREFIXED (`project:Work`). Not because a second
+      // namespace exists any more, but because these keys share a keyspace with
+      // `priority:high` and `goal:none` — see the ref grammar in
+      // lib/container-registry.ts.
       //
       // The only section whose length is the user's own data, which is what
       // decides the touch shell for the whole menu — see the header.
       scroll: true,
       entries: [
-        ...(projects.length > 0
-          ? [
-              { kind: 'cap', key: 'projects-cap', label: 'Projects' } satisfies Entry,
-              ...projects.map((p) => {
-                const ref = containerRef('project', p.name);
-                return rowEntry({
-                  key: ref,
-                  leading: <ContainerSquare color={getProjectColor(p.name)} />,
-                  label: p.name,
-                  checked: selectedProjects.includes(p.name),
-                  keepOpen: true,
-                  onToggle: () => patch({ containers: toggle(filters.containers, ref) }),
-                });
-              }),
-            ]
-          : []),
-        ...(habitGroups.length > 0
-          ? [
-              ...(projects.length > 0
-                ? [{ kind: 'sep', key: 'groups-sep' } satisfies Entry]
-                : []),
-              { kind: 'cap', key: 'groups-cap', label: 'Habit groups' } satisfies Entry,
-              ...habitGroups.map((g) => {
-                const ref = containerRef('group', g.name);
-                return rowEntry({
-                  key: ref,
-                  leading: <ContainerSquare color={getHabitGroupColor(g.name)} />,
-                  label: g.name,
-                  checked: selectedGroups.some((n) => n.toLowerCase() === g.name.toLowerCase()),
-                  keepOpen: true,
-                  onToggle: () => patch({ containers: toggle(filters.containers, ref) }),
-                });
-              }),
-            ]
-          : []),
-        { kind: 'sep', key: 'none-sep' },
-        // itemFromRow maps `group: row.group ?? ''` (db.ts:108), so unset is a
-        // real reachable value on both sides of the axis.
+        ...projects.map((p) => {
+          const ref = containerRef('project', p.name);
+          return rowEntry({
+            key: ref,
+            leading: <ContainerSquare color={getProjectColor(p.name)} />,
+            label: p.name,
+            // Folded, because the axis folds (`CONTAINER_KINDS.project.caseFold`)
+            // — a habit stored as 'personal' must tick the 'Personal' row.
+            checked: selectedProjects.some((n) => sameContainerName('project', n, p.name)),
+            keepOpen: true,
+            onToggle: () => patch({ containers: toggle(filters.containers, ref) }),
+          });
+        }),
+        ...(projects.length > 0 ? [{ kind: 'sep', key: 'none-sep' } satisfies Entry] : []),
+        // itemFromRow maps an unset container to '' (db.ts), so this is a real
+        // reachable value rather than a theoretical one.
         rowEntry({
           key: NO_CONTAINER,
           leading: <PriorityDot value={NO_PRIORITY} />,
-          label: 'No project or group',
+          label: CONTAINER_KINDS.project.unsetLabel!,
           checked: filters.containers.includes(NO_CONTAINER),
           keepOpen: true,
           onToggle: () => patch({ containers: toggle(filters.containers, NO_CONTAINER) }),

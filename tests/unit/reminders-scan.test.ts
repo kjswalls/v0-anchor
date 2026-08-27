@@ -66,7 +66,7 @@ function makeService(results: Record<string, Result>) {
 }
 
 const habit = (over: Partial<Item> = {}): Item => ({
-  type: 'habit', id: 'h1', title: 'Vitamins', group: 'G', streak: 12, status: 'pending',
+  type: 'habit', id: 'h1', title: 'Vitamins', project: 'G', streak: 12, status: 'pending',
   completedDates: [], skippedDates: [], dailyCounts: {}, repeatFrequency: 'daily',
   ...over,
 } as Item);

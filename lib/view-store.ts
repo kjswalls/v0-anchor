@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { isGroupBy, type GroupBy, type TimeBucket } from './planner-types';
 import { usePlannerStore } from './planner-store';
 import { EMPTY_VIEW_FILTERS, normalizeFilters, type ViewFilters } from './filters';
+import { containerRef } from './container-registry';
 import { isSortBy, type SortBy } from './sort-rows';
 // Type-only, so it is erased at compile time and lib/local-state.ts importing
 // this store back does not make a runtime cycle — the same trick the
@@ -163,7 +164,7 @@ interface ViewStore {
    * because this store already imports planner-store and the reverse would
    * close a cycle.
    */
-  renameContainerRef: (kind: 'project' | 'group', from: string, to: string) => void;
+  renameContainerRef: (from: string, to: string) => void;
   setTypeMode: (mode: TypeMode) => void;
   setScheduleMarkStyle: (style: ScheduleMarkStyle) => void;
   /** `null` hands the choice back to the width-derived default. */
@@ -268,9 +269,11 @@ export const useViewStore = create<ViewStore>()(
       setBraindumpFilters: (braindumpFilters) => set({ braindumpFilters }),
       setCanvasFilters: (canvasFilters) => set({ canvasFilters }),
 
-      renameContainerRef: (kind, from, to) => {
-        const oldRef = `${kind}:${from}`;
-        const newRef = `${kind}:${to}`;
+      renameContainerRef: (from, to) => {
+        // One CLASSIFY kind since 039, so the prefix is a constant rather than a
+        // parameter — built through `containerRef` so the grammar has one home.
+        const oldRef = containerRef('project', from);
+        const newRef = containerRef('project', to);
         const swap = (filters: ViewFilters): ViewFilters => {
           if (!filters.containers.includes(oldRef)) return filters;
           // Through a Set: renaming Work → Home while BOTH were selected would
@@ -436,14 +439,13 @@ export function adoptLegacyViewPrefs() {
  * every such rejection.
  */
 const remapRefs = (
-  kind: 'project' | 'group',
   before: { id: string; name: string }[],
   after: { id: string; name: string }[],
 ) => {
   for (const now of after) {
     const was = before.find((b) => b.id === now.id);
     if (was && was.name !== now.name) {
-      useViewStore.getState().renameContainerRef(kind, was.name, now.name);
+      useViewStore.getState().renameContainerRef(was.name, now.name);
     }
   }
 };
@@ -455,8 +457,5 @@ const remapRefs = (
 // always has it; the dedicated coverage in tests/unit/view-store-merge.test.ts
 // drives the actual store.
 usePlannerStore.subscribe?.((state, prev) => {
-  if (state.projects !== prev.projects) remapRefs('project', prev.projects, state.projects);
-  if (state.habitGroups !== prev.habitGroups) {
-    remapRefs('group', prev.habitGroups, state.habitGroups);
-  }
+  if (state.projects !== prev.projects) remapRefs(prev.projects, state.projects);
 });

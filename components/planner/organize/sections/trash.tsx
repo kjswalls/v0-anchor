@@ -175,7 +175,6 @@ export function TrashSection() {
 const KIND_LABEL: Record<TrashKind, string> = {
   item: 'Item',
   project: 'Project',
-  group: 'Habit group',
   routine: 'Routine',
   program: 'Program',
   goal: 'Goal',

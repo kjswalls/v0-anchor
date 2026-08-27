@@ -173,6 +173,9 @@ describe('AnchorContextResponseSchema (items[] additivity)', () => {
     tasks: [],
     habits: [],
     projects: [],
+    // REQUIRED, and it stayed required through migration 039 — the collapse is
+    // internal, and a response that omits this key fails the plugin's parse
+    // outright. `/api/agent/context` serves it as a projection of projects[].
     habitGroups: [],
   };
 

@@ -58,7 +58,7 @@ function habit(over: Partial<Item> = {}): Item {
     type: 'habit',
     id: `h${++seq}`,
     title: 'habit',
-    group: 'Wellness',
+    project: 'Wellness',
     status: 'pending',
     streak: 0,
     completedDates: [],

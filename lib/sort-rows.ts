@@ -1,4 +1,4 @@
-import type { Habit, Priority, Task } from './planner-types';
+import type { HabitItem, Priority, Task } from './planner-types';
 import { fieldApplies, typeNameOf } from './filters';
 import { getItemTypeConfig } from './item-registry';
 import { isCompletedOnDate, isRecurring } from './recurrence';
@@ -65,7 +65,8 @@ const UNSET_RANK = 3;
 
 export interface SortableRow {
   itemType: 'task' | 'habit';
-  item: Task | Habit;
+  /** See GroupableRow — the ITEM shape, not the legacy projection. */
+  item: Task | HabitItem;
 }
 
 /**

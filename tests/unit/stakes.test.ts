@@ -27,7 +27,7 @@ const ctx: ActivationContext = { userTimezone: TZ };
 const DAY = '2026-08-10';
 
 const habit = (over: Partial<Item> = {}): Item => ({
-  type: 'habit', id: 'h1', title: 'Vitamins', group: 'G', streak: 3, status: 'pending',
+  type: 'habit', id: 'h1', title: 'Vitamins', project: 'G', streak: 3, status: 'pending',
   completedDates: [], skippedDates: [], dailyCounts: {}, repeatFrequency: 'daily',
   ...over,
 } as Item);

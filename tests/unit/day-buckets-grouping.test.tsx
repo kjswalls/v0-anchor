@@ -38,7 +38,6 @@ beforeAll(() => {
 vi.mock('@/lib/db', () => ({
   fetchItems: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
-  fetchHabitGroups: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   createItem: vi.fn(async () => {}),
   updateItem: vi.fn(async () => {}),
@@ -55,7 +54,7 @@ import { DayBuckets } from '@/components/views/day-buckets';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
-import type { GroupBy, Habit, Task } from '@/lib/planner-types';
+import type { GroupBy, HabitItem, Task } from '@/lib/planner-types';
 
 const TZ = 'UTC';
 const DATE_STR = '2026-08-13';
@@ -71,9 +70,9 @@ const task = (over: Partial<Task>): Task =>
     ...over,
   }) as Task;
 
-const habit = (over: Partial<Habit>): Habit =>
+const habit = (over: Partial<HabitItem>): HabitItem =>
   ({
-    group: 'Health',
+    project: 'Health',
     streak: 0,
     status: 'pending',
     completedDates: [],
@@ -81,7 +80,7 @@ const habit = (over: Partial<Habit>): Habit =>
     repeatFrequency: 'daily',
     timeBucket: 'morning',
     ...over,
-  }) as Habit;
+  }) as HabitItem;
 
 /**
  * One untimed habit and two untimed tasks in two projects, plus THREE TIMED
@@ -95,7 +94,7 @@ const tasks: Task[] = [
   task({ id: 'ten', title: 'Ten', startTime: '10:00', project: 'Work' }),
   task({ id: 'eleven', title: 'Eleven', startTime: '11:00', project: 'Home' }),
 ];
-const habits: Habit[] = [habit({ id: 'stretch', title: 'Stretch', group: 'Health' })];
+const habits: HabitItem[] = [habit({ id: 'stretch', title: 'Stretch', project: 'Health' })];
 
 function seed(canvasGroupBy: GroupBy) {
   usePlannerStore.setState({
@@ -106,11 +105,13 @@ function seed(canvasGroupBy: GroupBy) {
     tasks,
     habits,
     items: [...tasks, ...habits] as never,
+    // ONE container list since 039 — 'Health' used to be a habit group, and
+    // the habit that names it is now an ordinary member of a project.
     projects: [
       { id: 'p1', name: 'Work', emoji: '💼' },
       { id: 'p2', name: 'Home', emoji: '🏠' },
+      { id: 'g1', name: 'Health', emoji: '💚' },
     ],
-    habitGroups: [{ id: 'g1', name: 'Health', emoji: '💚' }],
     routines: [],
     programs: [],
     showCompletedTasks: true,

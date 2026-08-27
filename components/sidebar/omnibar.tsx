@@ -132,7 +132,6 @@ export function Omnibar({
     habits,
     addTask,
     getProjectEmoji,
-    getHabitGroupEmoji,
     userTimezone,
     routines,
     programs,

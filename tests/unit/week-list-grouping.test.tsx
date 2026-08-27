@@ -30,7 +30,6 @@ beforeAll(() => {
 vi.mock('@/lib/db', () => ({
   fetchItems: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
-  fetchHabitGroups: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   createItem: vi.fn(async () => {}),
   updateItem: vi.fn(async () => {}),
@@ -84,7 +83,6 @@ function seed(canvasGroupBy: GroupBy) {
       { id: 'p1', name: 'Work', emoji: '💼' },
       { id: 'p2', name: 'Home', emoji: '🏠' },
     ],
-    habitGroups: [],
     routines: [],
     programs: [],
     showCompletedTasks: true,

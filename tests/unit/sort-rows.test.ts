@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { sortRows, isSortBy, type SortableRow } from '@/lib/sort-rows';
 import { deriveDayItems, type DayItemsInput } from '@/lib/day-items';
-import type { Habit, Priority, Task } from '@/lib/planner-types';
+import type { HabitItem, Priority, Task } from '@/lib/planner-types';
 
 /**
  * Ordering, and the comparator repair that shipped with it.
@@ -18,7 +18,7 @@ const task = (title: string, priority?: Priority): SortableRow => ({
 
 const habit = (title: string): SortableRow => ({
   itemType: 'habit',
-  item: { type: 'habit', id: title, title, group: 'Health', status: 'pending' } as unknown as Habit,
+  item: { type: 'habit', id: title, title, project: 'Health', status: 'pending' } as unknown as HabitItem,
 });
 
 const titles = (rows: SortableRow[]) => rows.map((r) => r.item.title);
@@ -94,18 +94,18 @@ describe('isSortBy', () => {
 
 const DATE_STR = '2026-07-08';
 
-const dayHabit = (over: Partial<Habit>): Habit =>
+const dayHabit = (over: Partial<HabitItem>): HabitItem =>
   ({
     id: over.title ?? 'h',
     title: 'habit',
-    group: 'wellness',
+    project: 'wellness',
     status: 'pending',
     streak: 0,
     completedDates: [],
     repeatFrequency: 'daily',
     timeBucket: 'morning',
     ...over,
-  }) as Habit;
+  }) as HabitItem;
 
 const input = (over: Partial<DayItemsInput>): DayItemsInput => ({
   tasks: [],

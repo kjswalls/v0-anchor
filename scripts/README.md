@@ -45,3 +45,27 @@ supabase stop       # shut the stack down (frees the RAM)
 - To move to a hosted test DB later — e.g. after upgrading to Pro and using
   Supabase **branching** — just replace `.env.test` with the hosted values; no
   code changes needed.
+
+## `verify-039.sh`
+
+Runs migration `039_one_classify_kind.sql` against a **throwaway local Postgres**
+and asserts on the resulting rows: the fold-merge collision rule, ids preserved
+across the table move, soft-deleted groups carried with their members, live rows
+beating binned ones, text-only references kept, the frozen ballast untouched,
+three runs producing an identical snapshot, and the pre-flight refusing an
+account it cannot repair.
+
+Not in CI — it needs a Postgres 15+ binary (039 uses `ON DELETE SET NULL
+(column)`) and CI has none. Run it by hand when touching 039 or the container
+collapse:
+
+```bash
+./scripts/verify-039.sh          # or PGBIN=/path/to/pg/bin ./scripts/verify-039.sh
+```
+
+It needs no Supabase credentials and cannot reach a remote database. The schema
+it stands up is a RECONSTRUCTION — `projects` and `habit_groups` are created by
+no migration in the tree — so keep the fixture honest first if the real shape
+ever disagrees. `tests/unit/collapse-classify-kind.test.ts` covers the same
+migration in CI, but only as text: it cannot catch a syntax error or a wrong
+join, which is exactly what this finds.

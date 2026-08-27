@@ -175,10 +175,10 @@ export function createChatStore(config: ChatThreadConfig) {
         setMessages((prev) => [...prev, { role: 'assistant', content: '', timestamp: Date.now() }]);
 
         try {
-          const { items, projects, habitGroups, itemTypes, routines, programs, goals, userTimezone } =
+          const { items, projects, itemTypes, routines, programs, goals, userTimezone } =
             usePlannerStore.getState();
           const context = buildAnchorContext({
-            items, projects, habitGroups, routines, programs,
+            items, projects, routines, programs,
             // Beacon is told about goals only while the user has the idea
             // switched on. `buildAnchorContext` already renders nothing for an
             // empty list, so this removes a LINE from the context rather than

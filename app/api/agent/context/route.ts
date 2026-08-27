@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { HabitItem, TaskItem } from '@anchor-app/types'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
-import { fetchItems, fetchProjects, fetchHabitGroups, fetchRoutines, fetchPrograms, toLegacyTask, toLegacyHabit, fetchGoals } from '@/lib/db'
+import { fetchItems, fetchProjects, fetchRoutines, fetchPrograms, toLegacyTask, toLegacyHabit, fetchGoals } from '@/lib/db'
 import { isOpenLoopSuppressedOn } from '@/lib/active'
 import { toDateStr } from '@/lib/recurrence'
 
@@ -11,6 +11,9 @@ import { toDateStr } from '@/lib/recurrence'
  *
  * Returns the authenticated user's current tasks, habits, projects, and habit
  * groups. Used by the OpenClaw Anchor plugin to seed its local context cache.
+ *
+ * `habitGroups[]` is a PROJECTION of `projects[]` since migration 039 collapsed
+ * the two CLASSIFY kinds — see the response below.
  *
  * Auth (either):
  *   A) Bearer <openclaw_api_key>  — server-to-server (plugin uses this)
@@ -31,7 +34,6 @@ export async function GET(req: NextRequest) {
   const [
     items,
     projects,
-    habitGroups,
     routinesResult,
     programsResult,
     goalsResult,
@@ -40,7 +42,6 @@ export async function GET(req: NextRequest) {
     await Promise.all([
       fetchItems(userId, undefined, dbClient),
       fetchProjects(userId, dbClient),
-      fetchHabitGroups(userId, dbClient),
       // Both are needed for the filter below to see container-caused
       // suppression. Without them the server answers "pending" for work the app
       // itself hides, and the plugin nags about it.
@@ -105,7 +106,23 @@ export async function GET(req: NextRequest) {
     tasks,
     habits,
     projects,
-    habitGroups,
+    /**
+     * THE SAME CONTAINERS, UNDER THE OTHER NAME (migration 039).
+     *
+     * `AnchorContextResponseSchema.habitGroups` is a REQUIRED array and the
+     * plugin `safeParse`s the whole response, throwing on drift — so omitting
+     * this key would brick every deployed build's cached context on its next
+     * fetch, not degrade it. There is one container kind now, so the honest
+     * projection is the whole list: a container IS a project and IS a habit
+     * group, and an agent asking either question gets the same true answer.
+     *
+     * Narrowed to `HabitGroupSchema`'s four fields rather than passed whole.
+     * `ProjectSchema` carries a time block (repeatFrequency, timeBucket,
+     * startTime, duration) that a habit group never had; an older build strips
+     * unknown keys rather than throwing, so shipping them would parse — and
+     * would quietly tell a model that habit groups have schedules.
+     */
+    habitGroups: projects.map(({ id, name, emoji, color }) => ({ id, name, emoji, color })),
     // Additive — old plugin builds strip unknown keys. Version 2 = tasks/habits
     // are projections of the unified items table (migration 019); version 3 =
     // unified items[] included alongside the legacy projections.

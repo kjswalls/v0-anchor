@@ -24,7 +24,6 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 vi.mock('@/lib/db', () => ({
   fetchItems: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
-  fetchHabitGroups: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   fetchRoutines: vi.fn(async () => []),
   fetchPrograms: vi.fn(async () => []),

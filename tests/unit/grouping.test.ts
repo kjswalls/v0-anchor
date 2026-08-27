@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { groupRows, type GroupableRow } from '@/lib/grouping';
 import { groupBySupport } from '@/lib/view-options';
-import type { Goal, GroupBy, Habit, Task } from '@/lib/planner-types';
+import type { Goal, GroupBy, HabitItem, Task } from '@/lib/planner-types';
 
 /**
  * The shared grouping core (Phase 5a).
@@ -24,11 +24,11 @@ const task = (id: string, over: Partial<Task> = {}): Task =>
     ...over,
   }) as Task;
 
-const habit = (id: string, over: Partial<Habit> = {}): Habit =>
+const habit = (id: string, over: Partial<HabitItem> = {}): HabitItem =>
   ({
     id,
-    title: `Habit ${id}`,
-    group: 'Health',
+    title: `HabitItem ${id}`,
+    project: 'Health',
     streak: 0,
     status: 'pending',
     completedDates: [],
@@ -36,13 +36,13 @@ const habit = (id: string, over: Partial<Habit> = {}): Habit =>
     repeatFrequency: 'daily',
     timeBucket: 'morning',
     ...over,
-  }) as Habit;
+  }) as HabitItem;
 
 const t = (id: string, over: Partial<Task> = {}): GroupableRow => ({
   itemType: 'task',
   item: task(id, over),
 });
-const h = (id: string, over: Partial<Habit> = {}): GroupableRow => ({
+const h = (id: string, over: Partial<HabitItem> = {}): GroupableRow => ({
   itemType: 'habit',
   item: habit(id, over),
 });
@@ -61,38 +61,36 @@ const labels = (gs: { label: string }[]) => gs.map((g) => g.label);
 const ids = (g: { rows: GroupableRow[] }) => g.rows.map((r) => r.item.id);
 
 describe('groupRows — the container axis', () => {
-  it('sections habits by their own GROUP instead of hoisting them out', () => {
+  it('sections habits by their own container instead of hoisting them out', () => {
     // The half of the habits fix grouping never got. buildListGroups put every
     // habit in one "Habits" section and grouped only the tasks, so "group by
     // Project" answered a question about tasks and then filed the rest of the
     // day under its own type name. A habit is not container-less — it answers
-    // with its group, exactly as passesContainerFilter has since Phase 1.
-    const out = groupRows([h('h1', { group: 'Health' }), t('t1', { project: 'Work' })], 'project');
+    // on the same axis, exactly as passesContainerFilter has since Phase 1.
+    const out = groupRows([h('h1', { project: 'Health' }), t('t1', { project: 'Work' })], 'project');
 
     expect(labels(out)).toEqual(['Health', 'Work']);
     expect(out.map(ids)).toEqual([['h1'], ['t1']]);
   });
 
-  it('keeps a project and a habit group of the SAME NAME apart', () => {
-    // DEFAULT_PROJECTS and DEFAULT_HABIT_GROUPS both seed Work, Wellness and
-    // Personal, so this is the shipped state of a fresh account, not an edge
-    // case. Two sections under one React key reconcile against a single fiber.
-    const out = groupRows([h('h1', { group: 'Work' }), t('t1', { project: 'Work' })], 'project');
+  it('puts a habit and a task naming the SAME container in ONE section', () => {
+    // The asserted opposite before migration 039: DEFAULT_PROJECTS and
+    // DEFAULT_HABIT_GROUPS both seeded Work, and the two namespaces had to keep
+    // two same-named sections apart under distinct React keys. One namespace
+    // means the collision is gone at the source, and "Work" is one place.
+    const out = groupRows([h('h1', { project: 'Work' }), t('t1', { project: 'Work' })], 'project');
 
-    expect(labels(out)).toEqual(['Work', 'Work']);
-    // The group key is case-folded (see the case-variant case below); the
-    // project key is not. The namespaces keep them apart either way.
-    expect(out.map((g) => g.key)).toEqual(['group:work', 'project:Work']);
-    expect(new Set(out.map((g) => g.key)).size).toBe(2);
+    expect(out).toHaveLength(1);
+    expect(out[0].key).toBe('project:work');
+    expect(ids(out[0])).toEqual(['h1', 't1']);
   });
 
-  it('merges two case-variant spellings of ONE habit group', () => {
-    // The filter folds case for `group:` refs — a deliberate asymmetry
-    // (filters.ts:140-150), because makeAddDraft writes a lowercase 'personal'
-    // against DEFAULT_HABIT_GROUPS' 'Personal' whenever the groups list has not
-    // loaded. Keyed on the raw ref, grouping split them into two sections that
-    // the menu's single "Personal" checkbox selects together.
-    const out = groupRows([h('h1', { group: 'personal' }), h('h2', { group: 'Personal' })], 'project');
+  it('merges two case-variant spellings of ONE container', () => {
+    // The filter folds case, because makeAddDraft writes a lowercase 'personal'
+    // against a seeded 'Personal' whenever the container list has not loaded.
+    // Keyed on the raw ref, grouping split them into two sections that the
+    // menu's single "Personal" checkbox selects together.
+    const out = groupRows([h('h1', { project: 'personal' }), h('h2', { project: 'Personal' })], 'project');
 
     expect(out).toHaveLength(1);
     expect(ids(out[0])).toEqual(['h1', 'h2']);
@@ -100,19 +98,22 @@ describe('groupRows — the container axis', () => {
     expect(out[0].label).toBe('personal');
   });
 
-  it('does NOT fold case for projects, which compare exactly everywhere else', () => {
+  it('folds case for TASK containers too, since one kind means one policy', () => {
     const out = groupRows([t('t1', { project: 'work' }), t('t2', { project: 'Work' })], 'project');
 
-    expect(out.map((g) => g.key)).toEqual(['project:work', 'project:Work']);
+    expect(out).toHaveLength(1);
+    expect(out[0].key).toBe('project:work');
   });
 
-  it('says which SIDE of the axis is unset rather than merging the two', () => {
-    // The filter needs one "No project or group" checkbox that catches both
-    // sides. A heading has room to say which side it is, and "No project" over a
-    // stack of habits would be false.
-    const out = groupRows([h('h1', { group: '' }), t('t1', { project: undefined })], 'project');
+  it('gives every unset item ONE section, whatever its type', () => {
+    // Two headings before 039 — "No group" over habits and "No project" over
+    // tasks — because "No project" over a stack of habits would have been
+    // false. One kind, one unset heading, and it is the registry's
+    // `unsetLabel`.
+    const out = groupRows([h('h1', { project: '' }), t('t1', { project: undefined })], 'project');
 
-    expect(labels(out)).toEqual(['No group', 'No project']);
+    expect(labels(out)).toEqual(['No project']);
+    expect(ids(out[0])).toEqual(['h1', 't1']);
   });
 
   it('puts the unset sections last, however early they arrive', () => {
@@ -281,8 +282,8 @@ describe('groupRows — the aspire axis', () => {
 
 describe('groupRows — the contract every caller depends on', () => {
   const rows = [
-    h('h1', { group: 'Health' }),
-    h('h2', { group: '' }),
+    h('h1', { project: 'Health' }),
+    h('h2', { project: '' }),
     t('t1', { project: 'Work', priority: 'low', timeBucket: 'evening' }),
     t('t2', { priority: 'high' }),
     t('t3', { project: 'Work' }),
