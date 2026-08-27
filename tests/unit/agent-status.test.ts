@@ -16,7 +16,7 @@ import {
  * until they opened the item.
  *
  * Which makes the WRONG number the thing to guard against hardest. That is why
- * the stamp is a dedicated `aiStatusAt` (migration 038) rather than the item's
+ * the stamp is a dedicated `aiStatusAt` (migration 041) rather than the item's
  * trigger-maintained `updated_at`: the latter moves on any edit, so renaming a
  * task mid-run would silently reset the clock. No number beats a wrong one, and
  * these tests pin the cases where the honest answer is "say nothing".
@@ -103,7 +103,7 @@ describe('what the row says', () => {
   });
 
   it('still names the state when the stamp is missing', () => {
-    // Rows written before migration 038 carry no timestamp. Losing the label
+    // Rows written before migration 041 carry no timestamp. Losing the label
     // too would hide the delegation entirely.
     const noStamp = view({ aiStatusAt: undefined })!;
     expect(noStamp.label).toBe('Working');
@@ -232,7 +232,7 @@ describe('a run that has gone quiet', () => {
   });
 
   it('says nothing without a stamp, having no evidence either way', () => {
-    // Rows predating migration 038. Guessing would be the confident wrong
+    // Rows predating migration 041. Guessing would be the confident wrong
     // number this whole column exists to avoid.
     expect(view({ aiStatusAt: undefined })!.stalled).toBe(false);
     expect(view({ aiStatusAt: 'not a date' })!.stalled).toBe(false);

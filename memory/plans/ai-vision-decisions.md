@@ -71,11 +71,36 @@ chat. But it is the first place delegation costs you setup, so it is your call.
 
 ---
 
+## Applied to production (2026-08-27, via Supabase MCP)
+
+Migrations **040 / 041 / 042** are live on `anchor` (`ctcspcferkdlzdcqlozq`), recorded in
+`supabase_migrations.schema_migrations` under those exact versions so `db push` will not
+replay them. Verified after applying: both gateway columns, `items.ai_status_at`, and —
+the one that matters — `items_windowed.ai_status_at`, since a column present on the table
+but absent from the view is invisible to `fetchItems` forever. `plugin_registrations`
+exists with RLS on, zero grants to `authenticated`/`anon`, and the service role granted.
+
+**They were renumbered from 037/038/039 first.** `main` had moved on while this branch was
+open and had taken all three numbers (`disk_io_hygiene`, `session_reaper`,
+`one_classify_kind`). None of them interact with these — indexes, auth sessions and
+containers respectively — but applying under a colliding number would have left the ledger
+permanently ambiguous about which 037 the database has.
+
+### A live footgun on `main`, not from this branch
+
+The ledger records `one_classify_kind` as version **`20260827043953`**, while the repo file
+is **`039_one_classify_kind.sql`**. That is exactly the drift CLAUDE.md warns about, so the
+next `pnpm db:push` is likely to treat 039 as unapplied and replay a migration that MOVES
+DATA (habit_groups → projects) and writes `*_pre039_backup` tables. It is guarded and reads
+as idempotent, so it probably no-ops — "probably" is doing real work in that sentence, which
+is why this is written down rather than acted on. The fix is one row: record it under `039`,
+or drop the timestamped entry. Kirby's call, since it is main's migration.
+
 ## Not decisions — things to verify
 
 Full detail in [ai-vision.md](ai-vision.md#unverified-assumptions-test-these-first-with-a-real-gateway).
 
-1. **Apply migration 037** (`pnpm db:push`). Until then the gateway transport is inert, the
+1. **Apply migration 040** (`pnpm db:push`). Until then the gateway transport is inert, the
    settings rows say "needs a database update", and chat keeps using the plugin path.
 2. **Enable `gateway.http.endpoints.chatCompletions.enabled: true`** on the gateway, then put
    its URL and token into Settings → Beacon (both rows are behind Advanced).

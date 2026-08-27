@@ -176,7 +176,7 @@ interface AssignedItem {
   aiStatus?: string
   aiResult?: string
   /**
-   * When `aiStatus` last changed (migration 038), against the response's
+   * When `aiStatus` last changed (migration 041), against the response's
    * `fetchedAt` so elapsed is computable.
    *
    * Without it a worker finding one of its own items at 'working' cannot tell a

@@ -292,7 +292,7 @@ const taskShape = {
     /** Agent's latest result/summary for this item. */
     aiResult: z.string().optional(),
     /**
-     * When `aiStatus` last changed (migration 038). Read-only client-side —
+     * When `aiStatus` last changed (migration 041). Read-only client-side —
      * stamped by lib/db.ts as a companion of the status write, never on its own,
      * so it cannot drift from the state it timestamps.
      *

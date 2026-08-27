@@ -1,4 +1,4 @@
--- 037_openclaw_gateway_transport — gateway transport for Beacon chat (memory/plans/ai-vision.md).
+-- 040_openclaw_gateway_transport — gateway transport for Beacon chat (memory/plans/ai-vision.md).
 --
 -- Anchor talks to a user's OpenClaw gateway over its OpenAI-compatible HTTP
 -- surface, proxied SERVER-SIDE from the Next.js route handlers. That replaces

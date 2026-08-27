@@ -358,7 +358,7 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
   if ('assignee' in updates) row.assignee = updates.assignee ?? null;
   if ('aiStatus' in updates) {
     row.ai_status = updates.aiStatus ?? null;
-    // Stamped WITH the status, never on its own (migration 038). Writing them
+    // Stamped WITH the status, never on its own (migration 041). Writing them
     // together is what stops the timestamp drifting from the state it
     // describes — and it is why `aiStatusAt` has no branch of its own here:
     // nothing may set it alone. The allowlist suite knows it as a declared

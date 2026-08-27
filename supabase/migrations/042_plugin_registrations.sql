@@ -1,4 +1,4 @@
--- 039_plugin_registrations: webhook registrations that survive a cold start.
+-- 042_plugin_registrations: webhook registrations that survive a cold start.
 --
 -- lib/openclaw-registry.ts kept these in an in-process Map. On Vercel that dies
 -- with the instance and is absent on every other one, so a plugin registered

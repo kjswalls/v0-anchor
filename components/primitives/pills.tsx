@@ -637,7 +637,7 @@ const AGENT_CLOCK_MS = 60_000;
  * "Working" alone is not information — an agent four minutes into a task is
  * fine and the same agent three hours in has died somewhere. The elapsed
  * reading is the entire point, which is why it comes from a dedicated
- * `aiStatusAt` stamp (migration 038) rather than the item's `updated_at`:
+ * `aiStatusAt` stamp (migration 041) rather than the item's `updated_at`:
  * that one moves whenever anything is edited, so renaming the task mid-run
  * would silently reset the clock and the row would report a confident wrong
  * number. No number beats a wrong one.

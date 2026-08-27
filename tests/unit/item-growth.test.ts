@@ -36,7 +36,7 @@ describe('growth-field update mappings', () => {
       assignee: 'openclaw',
       ai_status: 'working',
       ai_result: 'Slide 3 of 8 drafted',
-      // Stamped WITH the status and never on its own (migration 038) — which is
+      // Stamped WITH the status and never on its own (migration 041) — which is
       // what stops the timestamp drifting from the state it describes. The row
       // says "Working 3h"; a clock written separately could make that a
       // confident wrong number, which is worse than no number.

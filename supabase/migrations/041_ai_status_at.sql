@@ -1,4 +1,4 @@
--- 038_ai_status_at: when the agent's state last changed.
+-- 041_ai_status_at: when the agent's state last changed.
 --
 -- The item row can say "working" but not "working since when", and the gap
 -- between those two is the whole signal: an agent four minutes into a task is

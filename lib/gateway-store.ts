@@ -21,7 +21,7 @@ interface GatewayStore {
   hasToken: boolean;
   /** Both halves present: this is what selects the chat transport. */
   configured: boolean;
-  /** False once a fetch proved migration 037 has not landed here. */
+  /** False once a fetch proved migration 040 has not landed here. */
   available: boolean;
   hydratedUserId: string | null;
   /** Last write failure, surfaced inline by the settings row. */

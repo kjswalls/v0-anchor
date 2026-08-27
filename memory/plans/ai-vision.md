@@ -677,7 +677,7 @@ stopped offering a stuck item; and `AgentSection`'s Unassign already cleared the
 was missing was narrower and more specific:
 
 - **The worker had no way to tell a live run from a dead one.** `selectAssignedWork` omitted
-  `aiStatusAt` — exactly the blindness the item row had before migration 038. It now travels,
+  `aiStatusAt` — exactly the blindness the item row had before migration 041. It now travels,
   against the response's own `fetchedAt`, and `anchor_my_work` explains the reading: minutes
   old means leave it alone, hours old means that run died and you should finish it. A worker
   treating every `working` item as somebody else's leaves the user work they handed over and

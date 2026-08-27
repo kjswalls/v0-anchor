@@ -23,7 +23,7 @@ import { TASK_FIELDS, HABIT_FIELDS } from '@anchor-app/types';
 // allowlists — the assertion below is the inverse of the one this suite makes
 // for every other field.
 const INTENT_ROUTED = ['completedDates', 'skippedDates'];
-// `aiStatusAt` never travels alone (migration 038): `updatesToRow` has no
+// `aiStatusAt` never travels alone (migration 041): `updatesToRow` has no
 // branch for it, only a companion write inside the `aiStatus` branch, which is
 // what stops the clock drifting from the state it describes. It appears below
 // as a declared COMPANION_COLUMN instead — and `tests/unit/agent-status-write.test.ts`

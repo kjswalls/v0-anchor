@@ -53,7 +53,7 @@ export async function GET() {
         .maybeSingle(),
     ])
 
-    // A database without migration 037 means "nothing is configured", which is
+    // A database without migration 040 means "nothing is configured", which is
     // true and renderable — not an error state for the settings page to
     // explain. Same contract as /api/reminders/secrets.
     if (isMissingSchema(settingsRes.error) || isMissingSchema(secretsRes.error)) {
@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
         .upsert({ user_id: user.id, openclaw_gateway_url: url }, { onConflict: 'user_id' })
       if (isMissingSchema(error)) {
         return NextResponse.json(
-          { error: 'Needs migration 037 — run pnpm db:push.', unavailable: true },
+          { error: 'Needs migration 040 — run pnpm db:push.', unavailable: true },
           { status: 503 }
         )
       }
@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
         .upsert({ user_id: user.id, openclaw_gateway_token: token }, { onConflict: 'user_id' })
       if (isMissingSchema(error)) {
         return NextResponse.json(
-          { error: 'Needs migration 037 — run pnpm db:push.', unavailable: true },
+          { error: 'Needs migration 040 — run pnpm db:push.', unavailable: true },
           { status: 503 }
         )
       }

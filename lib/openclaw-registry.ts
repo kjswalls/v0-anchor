@@ -1,7 +1,7 @@
 /**
  * Where Anchor POSTs change events, and how it finds them.
  *
- * Registrations live in `plugin_registrations` (migration 039). They used to
+ * Registrations live in `plugin_registrations` (migration 042). They used to
  * live in an in-process Map, with a comment saying "in production this would
  * live in Supabase" — and production arrived. On Vercel that Map dies with the
  * instance and is absent on every other one, so a plugin that registered

@@ -335,7 +335,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
     /**
-     * When `aiStatus` last changed (migration 038). Read-only client-side —
+     * When `aiStatus` last changed (migration 041). Read-only client-side —
      * stamped by lib/db.ts as a companion of the status write, never on its own,
      * so it cannot drift from the state it timestamps.
      *
@@ -688,7 +688,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
     /**
-     * When `aiStatus` last changed (migration 038). Read-only client-side —
+     * When `aiStatus` last changed (migration 041). Read-only client-side —
      * stamped by lib/db.ts as a companion of the status write, never on its own,
      * so it cannot drift from the state it timestamps.
      *
@@ -1044,7 +1044,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
     /**
-     * When `aiStatus` last changed (migration 038). Read-only client-side —
+     * When `aiStatus` last changed (migration 041). Read-only client-side —
      * stamped by lib/db.ts as a companion of the status write, never on its own,
      * so it cannot drift from the state it timestamps.
      *
@@ -1268,7 +1268,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
     /**
-     * When `aiStatus` last changed (migration 038). Read-only client-side —
+     * When `aiStatus` last changed (migration 041). Read-only client-side —
      * stamped by lib/db.ts as a companion of the status write, never on its own,
      * so it cannot drift from the state it timestamps.
      *
@@ -1510,7 +1510,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
     /**
-     * When `aiStatus` last changed (migration 038). Read-only client-side —
+     * When `aiStatus` last changed (migration 041). Read-only client-side —
      * stamped by lib/db.ts as a companion of the status write, never on its own,
      * so it cannot drift from the state it timestamps.
      *
@@ -1876,7 +1876,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
     /**
-     * When `aiStatus` last changed (migration 038). Read-only client-side —
+     * When `aiStatus` last changed (migration 041). Read-only client-side —
      * stamped by lib/db.ts as a companion of the status write, never on its own,
      * so it cannot drift from the state it timestamps.
      *
@@ -3257,7 +3257,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         /** Agent's latest result/summary for this item. */
         aiResult: z.ZodOptional<z.ZodString>;
         /**
-         * When `aiStatus` last changed (migration 038). Read-only client-side —
+         * When `aiStatus` last changed (migration 041). Read-only client-side —
          * stamped by lib/db.ts as a companion of the status write, never on its own,
          * so it cannot drift from the state it timestamps.
          *
@@ -3654,7 +3654,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         /** Agent's latest result/summary for this item. */
         aiResult: z.ZodOptional<z.ZodString>;
         /**
-         * When `aiStatus` last changed (migration 038). Read-only client-side —
+         * When `aiStatus` last changed (migration 041). Read-only client-side —
          * stamped by lib/db.ts as a companion of the status write, never on its own,
          * so it cannot drift from the state it timestamps.
          *
@@ -3896,7 +3896,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         /** Agent's latest result/summary for this item. */
         aiResult: z.ZodOptional<z.ZodString>;
         /**
-         * When `aiStatus` last changed (migration 038). Read-only client-side —
+         * When `aiStatus` last changed (migration 041). Read-only client-side —
          * stamped by lib/db.ts as a companion of the status write, never on its own,
          * so it cannot drift from the state it timestamps.
          *
