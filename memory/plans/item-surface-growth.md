@@ -36,6 +36,16 @@ adapters — growth is a presentation, not a fork.
    names silently never deliver — agent progress rides `tasks.updated` or extends the
    plugin registration *and* `AnchorChangeEventSchema` in lockstep.
 
+7. **The layout is a registry question too (locked 2026-08-27, Phase 10).** Which
+   container bands exist, their order and their labels are derived from
+   `CONTAINER_KINDS` — role for the order and the gating, kind for the noun. A band
+   list written out by hand is the defect this replaces, and the fifth kind is the
+   test of it: it must arrive as a row with no edit to a component.
+8. **An empty band renders; a missing capability does not (locked 2026-08-27).**
+   Content never decides whether a band exists — capability does. The single
+   exception is a gate with nothing to join and no console to open, which is a door
+   rule inherited from the chip, not a content rule.
+
 ## Phase ledger
 
 - [x] **Phase 0 — Scrim, placement, category color** (shipped 2026-07-29).
@@ -162,12 +172,121 @@ adapters — growth is a presentation, not a fork.
       the omnibar's), which is the keyboard's only way in given the panel deliberately
       never steals focus.
 
+- [x] **Phase 10 — The bands** (shipped 2026-08-27, ticket D4).
+      The chips stop being one flat wrapping row and become a stack of labelled
+      BANDS: `When` over the schedule chips, then one band per CONTAINER KIND —
+      Project, Routine, Program, Goal — ordered by the container registry's own
+      ROLE order (classify → gate → aspire). Same rows, same order, same nouns on
+      the edit panel and on `/item/[id]`. New: [lib/item-bands.ts](../../lib/item-bands.ts)
+      (pure: what exists, in what order, and when) and
+      [components/planner/item-bands.tsx](../../components/planner/item-bands.tsx)
+      (what one looks like, plus the page's readout).
+
+      **Why bands at all.** Every chip already asked the item registry whether it
+      may exist — the house rule — but *nothing asked about order or grouping*,
+      so Project (classify) sat beside Routine (gate) sat beside Goal (aspire) as
+      five identical pills in source order, and the three roles
+      [container-registry.ts](../../lib/container-registry.ts) spends four screens
+      distinguishing reached the user as no distinction at all. The design study
+      measured the rest: the chips were never the weight (a fresh account shows
+      5–6, not 10), so this is a legibility change, not a diet.
+
+      **Nouns, not role-verbs.** The study's Direction B labelled the bands
+      "filed" / "gated by" / "serves". Kirby refused: *"Let's just use nouns like
+      'program' and 'goal'"*. The verbs are true and they are also vocabulary
+      nobody asked for. So a band's label is `CONTAINER_KINDS[kind].label` and
+      nothing else — CLAUDE.md's rule that the user-facing noun lives ONLY there
+      is what keeps a rename a string edit, and it is pinned by a test that
+      compares every band's label against the registry record.
+
+      **The role still decides everything a noun cannot.** It orders the bands,
+      and it decides when one renders (`visibleContainerBands`, written per role,
+      never per kind). Kind supplies the word; role supplies the behaviour.
+
+      **Two gate kinds, two bands.** `gate` covers routine AND program, so a
+      role-driven layout would draw one row. Three arguments for two, and the
+      first is decisive: a merged band has no name the registry can supply, so it
+      would need an invented literal — the exact thing the rule above forbids.
+      Then: they are different questions (the item dialog already said so where
+      the chips were declared — "which routine is this part of" vs "which stretch
+      of life does this belong to"), and they are separate stores, join tables and
+      write paths.
+
+      **An empty band still renders** — Direction A's rule, kept while the rest of
+      A was refused. A band with no memberships draws its chip's unset state, the
+      dashed `+ Add` affordance the dialog already uses everywhere for "you may".
+      So the surface's shape is what the item CAN be: it does not jump as you fill
+      it in, and a band you have never used is still one you can find. Rejected
+      alternatives: an em-dash or a greyed placeholder (both read as a half-loaded
+      row, which is precisely the failure the rule exists to avoid), and hiding
+      the band until used (that is what A traded discovery away for).
+
+      **The one exception, and it is inherited.** A GATE band with zero containers
+      AND the Organize console off does not render: its only content would be the
+      "Organize routines…" door, and the dialog already deletes that door while
+      the console is off because "a door that cannot open is not worth the row it
+      costs". A band whose affordance opens an empty popover is the broken-looking
+      state the empty-band rule exists to prevent. The aspire band has no such
+      clause — its door rides EXT_GOALS rather than EXT_ORGANIZE, so it renders
+      from zero, which is the argument the Goal chip already shipped with.
+
+      **"Group" is stale vocabulary, and the registry is the arbiter.** Kirby's
+      words were "nouns like 'program' and 'goal,' 'group'". There is no `group`
+      kind any more — migration 039 folded habit groups into projects, leaving
+      exactly ONE classify kind — so the band reads **Project**, which is what
+      `CONTAINER_KINDS.project.label` says. If he wants the noun to be "Group"
+      after all, that is a rename of the CLASSIFY kind rather than a band
+      decision, and it is one string here plus the ~8 places 039 deliberately
+      left spelling it by hand (listed in container-registry.ts). Flagged, not
+      assumed.
+
+      **What this does NOT change: the always-on empty sections.** The study's
+      Finding 2 was that Subtasks, Agent and Thread render a heading and a
+      control for every item, used or not. Under the empty-band rule that is no
+      longer a defect to fix — it is the same rule, applied one section earlier.
+      They stay, and Activity and the heatmap stay quiet-when-empty, because a
+      feed with nothing in it offers nothing to act on.
+
+      **Priority left the row.** It is neither a time nor a container, and a band
+      of its own would have spent a labelled row saying "Priority" twice — once in
+      the label, once in the chip's own unset state. It rides the identity line
+      beside the type chip, in both shells. (The unset chips inside a band say
+      "Add" rather than the noun for the same reason; the ACCESSIBLE name stays
+      the noun, so a control read out of its row still says which band it is in.)
+
+      **The page finally says where an item belongs.** `/item/[id]` rendered a
+      project and nothing else: an item could sit in three routines, a program and
+      two goals and its own page never mentioned it. It now renders the same bands
+      as a READOUT, and an empty band's `+ Add` opens the editor rather than
+      growing a second write path onto the page. Its `capitalize` on habit
+      containers went with it — 039's argument (Tailwind's `capitalize` upper-cases
+      every word, so "e2e tests" reads "E2e Tests") applies to one kind as much as
+      it did to two.
+
+      **Refuted: "bands make the doubling impossible to ship".** Direction B
+      claimed the page's chips should BE the editable chips, deleting
+      `withDetailSections` and the page's locally-mounted ItemDialog. Phase 6's
+      own measurement kills it: that editor is a deferred chunk worth **90.3 kB
+      gzip** of the route's first load, and it opens on a button press that most
+      visits never make. Making the page's chips live would charge every read-only
+      visit for the editor. So the page keeps a readout plus the panel, and the
+      doubling SHRINKS (the two renderings are now the same bands in the same
+      order under the same nouns) rather than disappearing. Still open, and now
+      cheaper to close if it ever earns it.
+
+      Also closed here: **focus restoration on panel unmount**, the strongest
+      entry on the list below. The `<aside>` has no FocusScope, so closing the
+      panel dropped the cursor on `<body>` and the next Tab restarted at the top
+      of the document. The opener is captured on the closed→open edge (the panel
+      RETARGETS without closing, so re-capturing would remember the third row you
+      clicked) and restored only when nothing else has claimed the cursor.
+
 ## Open after Phase 8 (2026-07-30)
 
 - ~~Keyboard reach~~ / ~~inert~~ — closed the same day, see Phase 9.
-- **No focus restoration when the panel unmounts.** Radix's FocusScope used to return
-  focus on close; the `<aside>` drops it to `<body>`, so Tab restarts at the top of the
-  document.
+- ~~No focus restoration when the panel unmounts~~ — closed in Phase 10. Radix's
+  FocusScope used to return focus on close; the `<aside>` dropped it to `<body>`, so Tab
+  restarted at the top of the document.
 - **Escape during a pointer drag** can close the panel (dnd-kit cancels the drag without
   `preventDefault`, and focus is often `<body>`). Cosmetic; noted so it isn't rediscovered.
 - **No drop shadow on the panel card** — the animating column has to clip, which would eat
