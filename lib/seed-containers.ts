@@ -1,4 +1,4 @@
-import { DEFAULT_HABIT_GROUPS, DEFAULT_PROJECTS, type ContainerSeed } from './planner-types';
+import { DEFAULT_PROJECTS, type ContainerSeed } from './planner-types';
 import type { Item } from './planner-types';
 
 /**
@@ -35,8 +35,8 @@ import type { Item } from './planner-types';
  * want. That is today's behaviour and 027's backfill made the same call.
  *
  * TRASHED NAMES ARE EXCLUDED, and this is a correctness guard rather than
- * politeness. `projects_user_id_name_key` and `habit_groups_user_id_name_key`
- * are PLAIN unique indexes over `(user_id, name)` with no `WHERE deleted_at IS
+ * politeness. `projects_user_id_name_key` is a PLAIN unique index over
+ * `(user_id, name)` with no `WHERE deleted_at IS
  * NULL`, so a soft-deleted container reserves its name for the full 30 days
  * while being invisible to every `deleted_at`-filtered fetch the store makes.
  * Adopting a name the bin still holds would raise 23505 and seat exactly the
@@ -48,29 +48,25 @@ export type SeedReason = 'none' | 'new-account' | 'adopt';
 export interface SeedPlan {
   reason: SeedReason;
   projects: ContainerSeed[];
-  groups: ContainerSeed[];
 }
 
-const NOTHING: SeedPlan = { reason: 'none', projects: [], groups: [] };
+const NOTHING: SeedPlan = { reason: 'none', projects: [] };
 
 export function planSeed(input: {
   items: readonly Item[];
   projects: readonly { name: string }[];
-  habitGroups: readonly { name: string }[];
   /** Container names held by soft-deleted rows — see the note above. */
   trashedProjectNames?: readonly string[];
-  trashedGroupNames?: readonly string[];
 }): SeedPlan {
-  const { items, projects, habitGroups } = input;
+  const { items, projects } = input;
 
-  // Either list being non-empty means the account is already being managed.
-  // Deliberately NOT "projects empty → seed projects": an account with habit
-  // groups and no projects has made a choice, and a first-run seed is not the
-  // place to second-guess it.
-  if (projects.length > 0 || habitGroups.length > 0) return NOTHING;
+  // One list since 039 collapsed the two CLASSIFY kinds. It used to be "either
+  // list non-empty means the account is already being managed", deliberately
+  // rather than seeding each side independently; with one namespace that
+  // subtlety is simply the rule.
+  if (projects.length > 0) return NOTHING;
 
   const heldProjects = new Set(input.trashedProjectNames ?? []);
-  const heldGroups = new Set(input.trashedGroupNames ?? []);
 
   /**
    * A BIN WITH CONTAINERS IN IT MEANS THIS ACCOUNT IS NOT NEW, and the live
@@ -83,7 +79,7 @@ export function planSeed(input: {
    * Adoption still runs — an item naming a container it lost is a repair, not
    * an invention — and the held names are filtered out of it below.
    */
-  const everHadContainers = heldProjects.size > 0 || heldGroups.size > 0;
+  const everHadContainers = heldProjects.size > 0;
 
   if (items.length === 0) {
     if (everHadContainers) return NOTHING;
@@ -92,13 +88,12 @@ export function planSeed(input: {
     // code dressed as a safety net. (It was there, and writing the test for the
     // new rule is what exposed it.) The starter set is only ever handed to an
     // account whose bin holds no container at all.
-    return { reason: 'new-account', projects: DEFAULT_PROJECTS, groups: DEFAULT_HABIT_GROUPS };
+    return { reason: 'new-account', projects: DEFAULT_PROJECTS };
   }
 
   return {
     reason: 'adopt',
-    projects: adoptable(namesUsed(items, 'project'), heldProjects),
-    groups: adoptable(namesUsed(items, 'group'), heldGroups),
+    projects: adoptable(namesUsed(items), heldProjects),
   };
 }
 
@@ -119,10 +114,10 @@ export function planSeed(input: {
  * " " is not something any surface can render or the user can delete. Their
  * items keep dangling on text, exactly as today.
  */
-function namesUsed(items: readonly Item[], field: 'project' | 'group'): string[] {
+function namesUsed(items: readonly Item[]): string[] {
   const seen = new Set<string>();
   for (const item of items) {
-    const raw = (item as unknown as Record<string, unknown>)[field];
+    const raw = (item as unknown as Record<string, unknown>).project;
     if (typeof raw !== 'string' || !raw.trim()) continue;
     seen.add(raw);
   }
@@ -194,13 +189,12 @@ export type CommitResult = 'committed' | 'nothing-to-do' | 'refused';
 export interface SeedDeps {
   hasSeeded: (userId: string) => Promise<boolean>;
   markSeeded: (userId: string) => Promise<void>;
-  trashedNames: (userId: string) => Promise<{ projects: { name: string }[]; groups: { name: string }[] }>;
+  trashedNames: (userId: string) => Promise<{ projects: { name: string }[] }>;
   snapshot: () => {
     userId: string | null;
     isLoading: boolean;
     items: readonly Item[];
     projects: readonly { name: string }[];
-    habitGroups: readonly { name: string }[];
   };
   commit: (plan: SeedPlan, forUserId: string) => CommitResult;
 }
@@ -211,7 +205,7 @@ export async function runFirstRunSeed(userId: string, deps: SeedDeps): Promise<S
   const before = deps.snapshot();
   if (before.userId !== userId || before.isLoading) return 'none';
 
-  if (before.projects.length > 0 || before.habitGroups.length > 0) {
+  if (before.projects.length > 0) {
     await deps.markSeeded(userId);
     return 'none';
   }
@@ -220,9 +214,7 @@ export async function runFirstRunSeed(userId: string, deps: SeedDeps): Promise<S
   const plan = planSeed({
     items: before.items,
     projects: before.projects,
-    habitGroups: before.habitGroups,
     trashedProjectNames: trashed.projects.map((t) => t.name),
-    trashedGroupNames: trashed.groups.map((t) => t.name),
   });
 
   const result = deps.commit(plan, userId);

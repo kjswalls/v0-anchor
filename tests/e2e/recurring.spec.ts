@@ -9,6 +9,7 @@ import {
   currentDateStr,
   itemCard,
   expectCompleted,
+  switchMobileTab,
 } from './helpers/app';
 
 
@@ -340,7 +341,8 @@ test.describe('Mobile @mobile', () => {
 
   async function openMobileSchedule(page: import('@playwright/test').Page) {
     // The redesigned mobile "Today" tab renders the dated day view (DayBuckets).
-    await page.click('[data-tour="tab-today"]');
+    // Reached through the dock's mode switcher since the tab bar retired.
+    await switchMobileTab(page, 'today');
     await page.waitForTimeout(300);
   }
 

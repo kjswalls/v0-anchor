@@ -9,6 +9,7 @@ import { useDraggable } from '@dnd-kit/core';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
 import { goalRolesByItem } from '@/lib/goals';
+import { useGoalsForDisplay } from '@/lib/extension-gates';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { useSelectionStore, rangeIds } from '@/lib/selection-store';
@@ -29,7 +30,7 @@ import {
   formatDuration,
   formatDurationLong,
 } from '@/components/primitives/pills';
-import type { Task, Habit, HabitStatus, Item } from '@/lib/planner-types';
+import type { Task, HabitItem, HabitStatus, Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -50,7 +51,9 @@ import { cn } from '@/lib/utils';
  * title. Owed, not done.
  */
 
-export type RowItem = { itemType: 'task'; item: Task } | { itemType: 'habit'; item: Habit };
+// `HabitItem`, not the legacy `Habit`: the store holds items, and since 039 the
+// two shapes disagree about the container field (`project` vs `group`).
+export type RowItem = { itemType: 'task'; item: Task } | { itemType: 'habit'; item: HabitItem };
 
 interface TaskRowProps {
   row: RowItem;
@@ -68,7 +71,6 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     deleteTask,
     deleteHabit,
     unscheduleTask,
-    getHabitGroupColor,
     getProjectColor,
     selectedDate,
     userTimezone,
@@ -81,7 +83,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const { item, itemType } = row;
   const isTask = itemType === 'task';
   const task = isTask ? (item as Task) : null;
-  const habit = !isTask ? (item as Habit) : null;
+  const habit = !isTask ? (item as HabitItem) : null;
   const inBraindump = context === 'braindump';
   const compact = density === 'compact';
 
@@ -156,9 +158,15 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   // is finished. Built per row rather than threaded down: the index is O(goals)
   // over a handful of containers, and threading it would mean touching every
   // one of this row's callers for a glyph.
+  //
+  // Handed the goals the DISPLAY may read, which is an empty list while the
+  // Goals extension is off — so the glyph disappears and the row itself is
+  // untouched. That asymmetry is the aspire contract: a goal may add a mark to
+  // a row and may never take the row away (lib/container-registry.ts).
+  const displayGoals = useGoalsForDisplay(goals);
   const roles = useMemo(
-    () => goalRolesByItem(goals).get(item.id)?.filter((r) => r.role !== 'member') ?? [],
-    [goals, item.id],
+    () => goalRolesByItem(displayGoals).get(item.id)?.filter((r) => r.role !== 'member') ?? [],
+    [displayGoals, item.id],
   );
 
   // Effective per-date status
@@ -209,14 +217,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const multiPartial = multiTarget > 0 && habitEffectiveCount > 0 && !completed;
   const multiPct = multiTarget > 0 ? Math.min(100, Math.round((habitEffectiveCount / multiTarget) * 100)) : 0;
 
-  // Project (task) or group (habit) — one identity per item, rendered as a
-  // color dot + name in the trailing rail.
-  const tagName = isTask ? task!.project : habit!.group;
-  const tagColor = isTask
-    ? task!.project
-      ? getProjectColor(task!.project)
-      : undefined
-    : getHabitGroupColor(habit!.group);
+  // The CLASSIFY axis — one identity per item, whatever its type (039),
+  // rendered as a color dot + name in the trailing rail.
+  const tagName = item.project;
+  const tagColor = tagName ? getProjectColor(tagName) : undefined;
 
   // Both tasks and habits are drag sources now (habits can be dropped onto
   // the schedule grid / buckets — see lib/dnd/CONTRACT.md).
@@ -416,7 +420,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
       className={cn(
         // No transition on the hover bg — highlights land instantly, like the
         // omnibar's CommandItem. touch-manipulation (not touch-none) keeps
-        // touch scrolling alive; TouchSensor's 250ms delay handles drags.
+        // touch scrolling alive; TouchSensor's 250ms hold handles drags — which
+        // is only true since the shell stopped letting PointerSensor claim touch
+        // first (lib/dnd/sensors.ts). `touch-none` here would hand dnd-kit the
+        // whole gesture again and take the scroll back off the user.
         // Hover cover: flat wash, Linear-style — no edge, no shadow. --accent is
         // the token defined for exactly this (a light gray in light mode, a
         // white 6% overlay in dark) so the highlight lifts off the card in dark

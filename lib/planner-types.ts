@@ -1,7 +1,7 @@
 /**
  * planner-types.ts
  *
- * Core entity types (Task, Habit, Project, HabitGroupType) are the source of
+ * Core entity types (Task, Habit, Project) are the source of
  * truth in @anchor-app/types and re-exported from there.
  *
  * This file adds Anchor app-specific types and constants that don't need to
@@ -41,7 +41,6 @@ export type {
 
 // ── App-only types ────────────────────────────────────────────────────────────
 
-export type HabitGroup = string;
 export type ViewMode = 'day' | 'week';
 /**
  * 'status' is gone. It was a legal member with no branch anywhere — picking it
@@ -51,7 +50,14 @@ export type ViewMode = 'day' | 'week';
  * section heading would have to either merge them or show two ladders for one
  * axis. It survives only as a stale persisted string; see `isGroupBy`.
  */
-export type GroupBy = 'none' | 'project' | 'priority' | 'bucket' | 'routine' | 'program';
+export type GroupBy =
+  | 'none'
+  | 'project'
+  | 'priority'
+  | 'bucket'
+  | 'routine'
+  | 'program'
+  | 'goal';
 
 export const GROUP_BY_VALUES: readonly GroupBy[] = [
   'none',
@@ -60,6 +66,7 @@ export const GROUP_BY_VALUES: readonly GroupBy[] = [
   'bucket',
   'routine',
   'program',
+  'goal',
 ];
 
 /**
@@ -90,12 +97,11 @@ export interface PlannerState {
   groupBy: GroupBy;
   filters: FilterState;
   projects: Project[];
-  habitGroups: HabitGroupType[];
 }
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
 
-import type { Priority, TimeBucket, RepeatFrequency, TaskStatus, Task, Habit, Project, HabitGroupType } from '@anchor-app/types'
+import type { Priority, TimeBucket, RepeatFrequency, TaskStatus, Task, Habit, Project } from '@anchor-app/types'
 
 export const TIME_BUCKET_RANGES: Record<TimeBucket, { start: number; end: number; label: string }> = {
   anytime:   { start: 0,  end: 24, label: 'Anytime'   },
@@ -135,13 +141,14 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
  * — they would have rendered as a literal "💼" in a row that draws Lucide glyphs
  * everywhere else.
  *
- * THE TWO LISTS SHARE NO NAME, deliberately. They used to be Work / Wellness /
- * Personal twice over, and lib/filters.ts documents what that costs: a saved
- * filter stores a bare name, the project and habit-group namespaces are
- * separate, and a chip reading "Work" cannot say which it means. Seeding both
- * lists handed that collision to every new account on its first day. Groups are
- * named after WHEN a habit happens because that is how habits are actually
- * gardened; projects after WHERE work belongs.
+ * ONE LIST since migration 039, and the six names are the two old lists
+ * unchanged. They were deliberately made disjoint when projects and habit groups
+ * were separate namespaces (a chip reading "Work" could not say which it meant),
+ * which is exactly what makes concatenating them safe now that there is only one
+ * namespace — there is no pair to collide. The WHERE names (Work / Home /
+ * Health) come first and the WHEN names (Morning / Movement / Wind-down) after,
+ * because that is the order the console lists them in and habits are gardened by
+ * time of day.
  */
 export interface ContainerSeed {
   name: string;
@@ -149,12 +156,9 @@ export interface ContainerSeed {
 }
 
 export const DEFAULT_PROJECTS: ContainerSeed[] = [
-  { name: 'Work',   emoji: 'icon:Briefcase' },
-  { name: 'Home',   emoji: 'icon:House' },
-  { name: 'Health', emoji: 'icon:HeartPulse' },
-];
-
-export const DEFAULT_HABIT_GROUPS: ContainerSeed[] = [
+  { name: 'Work',      emoji: 'icon:Briefcase' },
+  { name: 'Home',      emoji: 'icon:House' },
+  { name: 'Health',    emoji: 'icon:HeartPulse' },
   { name: 'Morning',   emoji: 'icon:Sunrise' },
   { name: 'Movement',  emoji: 'icon:Footprints' },
   { name: 'Wind-down', emoji: 'icon:Moon' },

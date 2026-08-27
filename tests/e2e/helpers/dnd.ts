@@ -38,7 +38,15 @@ import type { Locator, Page } from '@playwright/test';
  * commands without a gesture.
  */
 
-/** PointerSensor activationConstraint.distance in components/shell/app-shell.tsx. */
+/**
+ * NonTouchPointerSensor activationConstraint.distance — configured in
+ * components/shell/app-shell.tsx, defined in lib/dnd/sensors.ts.
+ *
+ * This helper drives `page.mouse`, whose pointer events carry
+ * `pointerType: 'mouse'`, so it goes through that sensor and this distance still
+ * governs. Only a genuinely touch-driven drag takes the TouchSensor's 250ms
+ * press-and-hold path, and nothing in the suite does that today.
+ */
 const ACTIVATION_DISTANCE = 5;
 
 export interface DragOptions {

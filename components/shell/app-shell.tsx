@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import {
   DndContext,
   closestCenter,
-  PointerSensor,
   TouchSensor,
   useSensor,
   useSensors,
@@ -20,6 +19,13 @@ import { ConfirmDialog } from '@/components/shell/confirm-dialog';
 import { BulkActionBar } from '@/components/shell/bulk-action-bar';
 import { OmniLauncher } from '@/components/shell/omni-launcher';
 import { inferDropTime } from '@/lib/dnd/infer-drop-time';
+import {
+  dragInputOf,
+  NonTouchPointerSensor,
+  POINTER_ACTIVATION_DISTANCE_PX,
+  TOUCH_ACTIVATION_DELAY_MS,
+  TOUCH_ACTIVATION_TOLERANCE_PX,
+} from '@/lib/dnd/sensors';
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
 import { BulkAddDialog } from '@/components/planner/bulk-add-dialog';
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
@@ -30,6 +36,8 @@ import { OnboardingTour } from '@/components/onboarding/onboarding-tour';
 import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
 
 import { usePlannerStore } from '@/lib/planner-store';
+import { formatKeys } from '@/lib/commands/keys';
+import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { milestoneItemIds } from '@/lib/goals';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
@@ -54,12 +62,21 @@ import { isOnboardingComplete } from '@/lib/user-profile';
 import { createClient } from '@/lib/supabase';
 import type { MobileTab } from '@/lib/mobile-nav-store';
 
+/**
+ * The resting hint on the shortcuts button.
+ *
+ * Reads the LIVE binding rather than printing '⌘ + /': `system_shortcuts` is
+ * rebindable like every other shortcut, and a hardcoded hint quietly starts
+ * lying the moment someone moves it — on the one button whose entire job is to
+ * tell you what the key is.
+ */
 function KbdHint() {
   const [isMac, setIsMac] = useState(false);
+  const keys = useShortcutKeys('system_shortcuts');
   useEffect(() => {
     setIsMac(/Mac|iPhone|iPad|iPod/.test(navigator.platform));
   }, []);
-  return <span>{isMac ? '⌘ + /' : 'Ctrl + /'}</span>;
+  return <span>{formatKeys(keys, isMac).join(' + ')}</span>;
 }
 
 function DraggableTaskOverlay({ title, count = 0 }: { title: string; count?: number }) {
@@ -99,6 +116,55 @@ function DragGhost() {
       {title !== null && <DraggableTaskOverlay title={title} count={groupCount} />}
     </DragOverlay>
   );
+}
+
+/**
+ * The one sensor set the app drags with. Two sensors, split by INPUT TYPE and
+ * never by viewport — see lib/dnd/sensors.ts for why the plain PointerSensor
+ * that used to sit here swallowed every touch gesture before the TouchSensor
+ * could see it, and why that made a 5px flick drag a row instead of scrolling
+ * the list. Order matters only in that both must be present: the pointer sensor
+ * declines fingers, the touch sensor takes them after a hold.
+ *
+ * Exported because the arbitration between the two is the thing worth testing
+ * and it only exists once they are both mounted in a real DndContext —
+ * tests/unit/dnd-sensor-pipeline.test.tsx drives this exact hook through
+ * pointerdown/touchstart. A test that rebuilt the same `useSensors` call would
+ * pass against a shell that had gone back to the plain PointerSensor.
+ */
+export function useShellSensors() {
+  return useSensors(
+    useSensor(NonTouchPointerSensor, {
+      activationConstraint: { distance: POINTER_ACTIVATION_DISTANCE_PX },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: {
+        delay: TOUCH_ACTIVATION_DELAY_MS,
+        tolerance: TOUCH_ACTIVATION_TOLERANCE_PX,
+      },
+    })
+  );
+}
+
+/**
+ * Drag start: the two facts the rest of the app reads off a live drag.
+ *
+ * Drag state lives in lib/drag-store (NOT useState here): a shell-level
+ * setState re-rendered the whole app tree before the ghost could paint.
+ *
+ * The second fact is the INPUT TYPE, read from this gesture's activator event
+ * (`dragInputOf`, lib/dnd/sensors.ts) and held for the drag's lifetime. Views
+ * decide which drop targets to mount off it (lib/dnd/drop-targets.ts), so it
+ * has to be known before the first collision pass — which is the render this
+ * `set` schedules.
+ *
+ * At module scope, closing over nothing, and exported for the same reason
+ * `useShellSensors` is: a test that rebuilt this two-liner would pass against a
+ * shell that had gone back to recording the id alone, or to hard-coding
+ * `'pointer'`. `tests/unit/dnd-touch-drop-targets.test.tsx` drives THIS.
+ */
+export function beginDrag(event: DragStartEvent) {
+  useDragStore.getState().startDrag(event.active.id as string, dragInputOf(event.activatorEvent));
 }
 
 /**
@@ -174,6 +240,12 @@ export function AppShell() {
       if (!done) {
         setTourUserId(uid);
         setShowTour(true);
+        // Published for the chat surfaces too: Beacon's own first-run Q&A
+        // renders off the same answer, and on a phone its field competes with
+        // the dock's. Seeding it here — the earliest place the answer exists —
+        // means the dock is already standing down by the time the tour's
+        // step 4 switches to the Beacon tab.
+        useUIStore.getState().setChatOnboardingActive(true);
       }
     });
   }, []);
@@ -221,32 +293,11 @@ export function AppShell() {
   // (cron/eod-notify, gated on the same eod_review_enabled/eod_review_time
   // settings) whose tap lands on the ?eod=1 deep link above.
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        // 5px: low enough that the ghost appears near-instantly, high enough
-        // that a jittery click doesn't register as a drag (rows open the edit
-        // dialog on click).
-        distance: 5,
-      },
-    }),
-    useSensor(TouchSensor, {
-      activationConstraint: {
-        delay: 250,
-        tolerance: 5,
-      },
-    })
-  );
-
-  // Drag state lives in lib/drag-store (NOT useState here): a shell-level
-  // setState re-rendered the whole app tree before the ghost could paint.
-  const handleDragStart = (event: DragStartEvent) => {
-    useDragStore.getState().setActiveId(event.active.id as string);
-  };
+  const sensors = useShellSensors();
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    useDragStore.getState().setActiveId(null);
+    useDragStore.getState().endDrag();
     if (!over) return;
 
     const itemId = active.id as string;
@@ -259,6 +310,10 @@ export function AppShell() {
 
     const command = resolveDrop(itemId, over.id as string, {
       itemType: draggedTask ? 'task' : draggedHabit ? 'habit' : null,
+      // Re-derived from the same activator event the store was seeded with, not
+      // read back from the store: one source, so the gate that mounted the
+      // targets and the gate that resolves the drop cannot disagree.
+      input: dragInputOf(event.activatorEvent),
       draggedTaskProject: draggedTask?.project,
       selectedDate,
       userTimezone: userTz,
@@ -283,6 +338,12 @@ export function AppShell() {
       // fully-ineligible group falls through instead of silently clearing.
       const taskLikeIds = groupIds.filter((id) => tasks.some((t) => t.id === id));
       const planner = usePlannerStore.getState();
+      // DELIBERATELY NOT GATED on the Goals extension, unlike every other
+      // goal read in the app. This set is what stops a bulk date verb from
+      // overwriting a milestone's target date, and that write is not
+      // recoverable by switching the extension back on — the date it replaced
+      // is gone. A gate here would make "off" destructive, which is the one
+      // thing off must never be. See lib/extension-gates.ts.
       const milestoneIds = milestoneItemIds(planner.goals);
       // What the primary drop resolved to: a bucket always, and — for a TIMED
       // slot (an hour cell) — a clock time. A timed target schedules the whole
@@ -462,12 +523,22 @@ export function AppShell() {
           <div className="w-80 rounded-panel bg-sidebar" />
           <main className="flex-1 rounded-panel bg-canvas" />
         </div>
-        {/* Mobile skeleton — matches the floating-chrome silhouette (header
-            pill · content panel · bottom dock) so there's no flash of flat bars. */}
-        <div className="flex h-[100dvh] flex-col bg-surface-0 md:hidden">
-          <div className="mx-3 mt-2 h-11 flex-shrink-0 rounded-[16px] bg-surface-2" />
-          <div className="mx-2 my-2 flex-1 rounded-[24px] border border-surface-3 bg-canvas" />
-          <div className="mx-3 mb-3 h-24 flex-shrink-0 rounded-[24px] bg-surface-3" />
+        {/* Mobile skeleton — the redesigned silhouette: one header card, content
+            straight on the paper backdrop, one dock well. The content band is
+            deliberately bare; drawing a panel here flashes a surface the shell
+            no longer has. Geometry tracks mobile-header.tsx and
+            mobile-bottom-dock.tsx — if either card's inset or radius moves, this
+            moves with it or the first paint jumps. */}
+        <div className="flex h-[100dvh] flex-col bg-surface-0 pt-safe md:hidden">
+          {/* 106px is the real card, added up: 10 top margin + 32 (the user
+              menu sets the date row's height) + 8 gap + 46.5 week strip + 8
+              bottom padding + its two 1px borders. The border is not decoration
+              either — surface-2 on surface-0 is ΔL 0.014 in light, four 8-bit
+              levels, so without it this block is invisible in one theme and the
+              skeleton shows bare paper where the card is about to appear. */}
+          <div className="mx-[10px] mt-[10px] h-[106px] flex-shrink-0 rounded-[20px] border border-surface-3 bg-surface-2" />
+          <div className="flex-1" />
+          <div className="mx-[10px] mb-3 h-[72px] flex-shrink-0 rounded-[10px] bg-surface-3" />
         </div>
       </>
     );
@@ -478,8 +549,16 @@ export function AppShell() {
       id="planner-dnd"
       sensors={sensors}
       collisionDetection={closestCenter}
-      onDragStart={handleDragStart}
+      onDragStart={beginDrag}
       onDragEnd={handleDragEnd}
+      // dnd-kit dispatches CANCEL, not end, on Escape / `touchcancel` /
+      // `cancelDrop` — so without this the store kept `activeId` (and now
+      // `input`) set after an abandoned drag, leaving every drop slot in the
+      // canvas open until the next one. Pre-existing: `setActiveId(null)` only
+      // ever lived in the end handler. Both fields clear together, here as
+      // there, so a cancelled drag can never leave one gesture's input beside
+      // another's id.
+      onDragCancel={() => useDragStore.getState().endDrag()}
       measuring={{
         droppable: {
           strategy: MeasuringStrategy.Always,

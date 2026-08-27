@@ -3,7 +3,12 @@ import { persist } from 'zustand/middleware';
 import { isGroupBy, type GroupBy, type TimeBucket } from './planner-types';
 import { usePlannerStore } from './planner-store';
 import { EMPTY_VIEW_FILTERS, normalizeFilters, type ViewFilters } from './filters';
+import { containerRef } from './container-registry';
 import { isSortBy, type SortBy } from './sort-rows';
+// Type-only, so it is erased at compile time and lib/local-state.ts importing
+// this store back does not make a runtime cycle — the same trick the
+// week-columns note below relies on.
+import type { ClearScope } from './local-state';
 // week-columns imports ViewLayout back from here, but type-only — erased at
 // compile time, so there is no runtime cycle.
 import {
@@ -25,7 +30,7 @@ import {
 export type ViewScope = 'day' | 'week';
 export type ViewLayout = 'buckets' | 'schedule' | 'list';
 export type TypeFilter = 'all' | 'tasks' | 'habits';
-export type BraindumpGroupBy = 'none' | 'type' | 'project' | 'routine' | 'program';
+export type BraindumpGroupBy = 'none' | 'type' | 'project' | 'routine' | 'program' | 'goal';
 
 const BRAINDUMP_GROUP_BY_VALUES: readonly BraindumpGroupBy[] = [
   'none',
@@ -33,6 +38,7 @@ const BRAINDUMP_GROUP_BY_VALUES: readonly BraindumpGroupBy[] = [
   'project',
   'routine',
   'program',
+  'goal',
 ];
 
 /**
@@ -158,7 +164,7 @@ interface ViewStore {
    * because this store already imports planner-store and the reverse would
    * close a cycle.
    */
-  renameContainerRef: (kind: 'project' | 'group', from: string, to: string) => void;
+  renameContainerRef: (from: string, to: string) => void;
   setTypeMode: (mode: TypeMode) => void;
   setScheduleMarkStyle: (style: ScheduleMarkStyle) => void;
   /** `null` hands the choice back to the width-derived default. */
@@ -173,26 +179,75 @@ interface ViewStore {
    * item — the count ticks up but nothing appears, which reads as a failed drop.
    */
   expandBucket: (bucket: TimeBucket) => void;
+  /** Drop this account's view preferences — see lib/local-state.ts. */
+  clearUserScopedState: (scope: ClearScope) => void;
 }
+
+/**
+ * The two fields that say something about a PERSON, at their defaults.
+ *
+ * `canvasFilters` / `braindumpFilters` hold `project:`/`group:` refs, tag names
+ * and goal ids lifted from the signed-in account's own containers. Left behind
+ * on a shared browser they name one person's projects inside another person's
+ * session — and, more prosaically, silently empty the next user's canvas,
+ * because none of those refs resolve. Cleared under BOTH scopes: on an
+ * unstamped browser we cannot rule out that they are someone else's.
+ */
+const DISCLOSIVE_DEFAULTS = {
+  braindumpFilters: EMPTY_VIEW_FILTERS,
+  canvasFilters: EMPTY_VIEW_FILTERS,
+} satisfies Partial<ViewStore>;
+
+/**
+ * Everything else this store persists — the shape of the screen, and nothing
+ * about anyone.
+ *
+ * Every one is a closed enum, a bounded number or a list of time buckets:
+ * which slice of time is on screen and how it is laid out, which axis it is
+ * grouped and sorted by, which typeface and which block chrome, how many day
+ * columns, which buckets are folded shut. None of it is free text, and none of
+ * it is derived from the account's own data, so none of it can identify or
+ * describe the person who set it.
+ *
+ * Cleared only under scope 'all' — when we KNOW the user changed. On an
+ * unstamped browser (every existing install, once) it survives, because this
+ * store has NO server copy at all: no `saveSettings` call reaches it, so
+ * clearing it there would be permanent loss of a preference from which nobody
+ * could have learned anything.
+ *
+ * `adoptedLegacy` is in neither list. It is not a preference but a one-time
+ * marker that THIS BROWSER's view-store has already absorbed the old
+ * planner-store view prefs (see adoptLegacyViewPrefs below). Resetting it would
+ * re-run that adoption against whatever planner-store happens to hold at mount
+ * — which after a clear is the defaults, and mid-hydration is a race — and it
+ * would also invalidate the fixture tests/e2e/helpers/session.ts seeds, whose
+ * whole job is to hold that flag true.
+ */
+const INERT_DEFAULTS = {
+  scope: 'day',
+  layout: 'buckets',
+  typeFilter: 'all',
+  canvasGroupBy: 'none',
+  braindumpGroupBy: 'none',
+  canvasSortBy: 'default',
+  braindumpSortBy: 'default',
+  typeMode: 'sans',
+  scheduleMarkStyle: 'nodes',
+  weekDaysVisible: null,
+  bucketStyle: 'spine',
+  collapsedBuckets: [],
+} satisfies Partial<ViewStore>;
+
+const USER_SCOPED_DEFAULTS = { ...INERT_DEFAULTS, ...DISCLOSIVE_DEFAULTS };
 
 export const useViewStore = create<ViewStore>()(
   persist(
     (set) => ({
-      scope: 'day',
-      layout: 'buckets',
-      typeFilter: 'all',
-      canvasGroupBy: 'none',
-      braindumpGroupBy: 'none',
-      canvasSortBy: 'default',
-      braindumpSortBy: 'default',
-      braindumpFilters: EMPTY_VIEW_FILTERS,
-      canvasFilters: EMPTY_VIEW_FILTERS,
-      typeMode: 'sans',
-      scheduleMarkStyle: 'nodes',
-      weekDaysVisible: null,
-      bucketStyle: 'spine',
-      collapsedBuckets: [],
+      ...USER_SCOPED_DEFAULTS,
       adoptedLegacy: false,
+
+      clearUserScopedState: (scope) =>
+        set(scope === 'all' ? { ...USER_SCOPED_DEFAULTS } : { ...DISCLOSIVE_DEFAULTS }),
 
       setScope: (scope) => {
         set({ scope });
@@ -214,9 +269,11 @@ export const useViewStore = create<ViewStore>()(
       setBraindumpFilters: (braindumpFilters) => set({ braindumpFilters }),
       setCanvasFilters: (canvasFilters) => set({ canvasFilters }),
 
-      renameContainerRef: (kind, from, to) => {
-        const oldRef = `${kind}:${from}`;
-        const newRef = `${kind}:${to}`;
+      renameContainerRef: (from, to) => {
+        // One CLASSIFY kind since 039, so the prefix is a constant rather than a
+        // parameter — built through `containerRef` so the grammar has one home.
+        const oldRef = containerRef('project', from);
+        const newRef = containerRef('project', to);
         const swap = (filters: ViewFilters): ViewFilters => {
           if (!filters.containers.includes(oldRef)) return filters;
           // Through a Set: renaming Work → Home while BOTH were selected would
@@ -382,14 +439,13 @@ export function adoptLegacyViewPrefs() {
  * every such rejection.
  */
 const remapRefs = (
-  kind: 'project' | 'group',
   before: { id: string; name: string }[],
   after: { id: string; name: string }[],
 ) => {
   for (const now of after) {
     const was = before.find((b) => b.id === now.id);
     if (was && was.name !== now.name) {
-      useViewStore.getState().renameContainerRef(kind, was.name, now.name);
+      useViewStore.getState().renameContainerRef(was.name, now.name);
     }
   }
 };
@@ -401,8 +457,5 @@ const remapRefs = (
 // always has it; the dedicated coverage in tests/unit/view-store-merge.test.ts
 // drives the actual store.
 usePlannerStore.subscribe?.((state, prev) => {
-  if (state.projects !== prev.projects) remapRefs('project', prev.projects, state.projects);
-  if (state.habitGroups !== prev.habitGroups) {
-    remapRefs('group', prev.habitGroups, state.habitGroups);
-  }
+  if (state.projects !== prev.projects) remapRefs(prev.projects, state.projects);
 });

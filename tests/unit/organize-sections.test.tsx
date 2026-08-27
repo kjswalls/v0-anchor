@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
+import { enableGoalsAndOrganize } from './support/extensions';
 import { accentColorForName } from '@/lib/accent-colors';
 import { ITEM_TYPES } from '@/lib/item-registry';
 import type { Item, Program, Project, Routine } from '@/lib/planner-types';
@@ -45,7 +46,7 @@ const habit = (id: string, title: string, extra: Partial<Item> = {}): Item =>
     completedDates: [],
     skippedDates: [],
     streak: 0,
-    group: 'Personal',
+    project: 'Personal',
     order: 0,
     isScheduled: false,
     ...extra,
@@ -81,7 +82,6 @@ function seed(state: Partial<StoreState>) {
     routines: [],
     programs: [],
     projects: [],
-    habitGroups: [],
     itemTypes: [],
     collectionsAvailable: true,
     itemTypesAvailable: true,
@@ -113,6 +113,9 @@ const pick = (triggerTestId: string, option: string) => {
 };
 
 beforeEach(() => {
+  // The sections are the console's, and the console ships off — see
+  // tests/unit/support/extensions.ts for why this is stated per suite.
+  enableGoalsAndOrganize();
   vi.useFakeTimers();
   vi.setSystemTime(new Date(`${TODAY}T12:00:00.000Z`));
   useUIStore.setState({ confirmRequest: null });
@@ -608,51 +611,59 @@ describe('the programs section', () => {
 /* ── labels ───────────────────────────────────────────────────────────── */
 
 describe('the label sections', () => {
-  it('counts a project’s items, not its tasks', () => {
-    // removeProject unfiles everything that is not a habit, so a Goal under a
-    // project must not be reported as a task — the noun and the write agree.
+  it('counts a container’s items, not its tasks', () => {
+    // removeProject reaches EVERY type since 039 — a Goal and a habit filed
+    // under this container are as much its members as the task is, so the noun
+    // is "items" and the count includes all three. It was two before the
+    // collapse, when a habit answered on the other half of the axis.
     seed({
       items: [
         task('i1', 'Plan', { project: 'Work' }),
         { ...task('i2', 'Ship'), type: 'custom', customType: 'goal', project: 'Work' } as Item,
-        habit('i3', 'Stretch', { group: 'Work' }),
+        habit('i3', 'Stretch', { project: 'Work' }),
       ],
       projects: [{ id: 'pr1', name: 'Work', emoji: 'icon:Briefcase' }],
     });
     open('projects');
-    expect(within(id('project-row')).getByText('2')).toBeInTheDocument();
+    expect(within(id('project-row')).getByText('3')).toBeInTheDocument();
     click('project-row');
-    expect(id('project-meta')).toHaveTextContent('Project · 2 items');
+    expect(id('project-meta')).toHaveTextContent('Project · 3 items');
   });
 
-  it('names the group habits will actually land in', () => {
-    // The old copy claimed deleting "unassigns it from all habits". It does not:
-    // removeHabitGroup REASSIGNS them to the first remaining group, and the user
-    // was never told where.
+  it('names the container the habits will actually land in', () => {
+    // The old habit-group copy claimed deleting "unassigns it from all habits".
+    // It does not: a type whose container is REQUIRED is reassigned, and the
+    // user was never told where. One delete action since 039, so the project
+    // sentence has to carry both halves — most items are unfiled, habits move.
     seed({
-      items: [habit('i1', 'Stretch', { group: 'Morning' })],
-      habitGroups: [
+      items: [habit('i1', 'Stretch', { project: 'Morning' })],
+      projects: [
         { id: 'g1', name: 'Morning', emoji: 'icon:Sun' },
         { id: 'g2', name: 'Evening', emoji: 'icon:Moon' },
       ],
     });
-    open('groups');
-    fireEvent.click(screen.getAllByTestId('group-row')[0]);
-    const zone = id('group-delete').closest('div')?.parentElement;
-    expect(zone).toHaveTextContent('Its 1 habit moves to “Evening”');
-    expect(zone).toHaveTextContent('⌘Z brings the group back');
+    open('projects');
+    fireEvent.click(screen.getAllByTestId('project-row')[0]);
+    const zone = id('project-delete').closest('div')?.parentElement;
+    expect(zone).toHaveTextContent('The habit moves to “Evening”');
+    expect(zone).toHaveTextContent('⌘Z brings it back');
   });
 
-  it('falls back to Personal when there is no other group, exactly as the store does', () => {
+  it('says nothing about a destination when no member needs one', () => {
+    // A task is unfiled, not reassigned, so the sentence must not promise it a
+    // new home. `containerRequired` is the whole difference.
     seed({
-      items: [habit('i1', 'Stretch', { group: 'Morning' }), habit('i2', 'Read', { group: 'Morning' })],
-      habitGroups: [{ id: 'g1', name: 'Morning', emoji: 'icon:Sun' }],
+      items: [task('i1', 'Plan', { project: 'Morning' })],
+      projects: [
+        { id: 'g1', name: 'Morning', emoji: 'icon:Sun' },
+        { id: 'g2', name: 'Evening', emoji: 'icon:Moon' },
+      ],
     });
-    open('groups');
-    click('group-row');
-    expect(id('group-delete').closest('div')?.parentElement).toHaveTextContent(
-      'Its 2 habits move to “Personal”'
-    );
+    open('projects');
+    fireEvent.click(screen.getAllByTestId('project-row')[0]);
+    const zone = id('project-delete').closest('div')?.parentElement;
+    expect(zone).toHaveTextContent('stops being filed under Morning');
+    expect(zone).not.toHaveTextContent('moves to');
   });
 
   it('warns that an item type is the one delete with no way back', () => {
@@ -705,17 +716,18 @@ describe('the label sections', () => {
     expect(usePlannerStore.getState().projects[0].color).toBeUndefined();
   });
 
-  it('selects the group that already had the name, whatever its case', () => {
-    // addHabitGroup de-duplicates case-insensitively, so "personal" against an
-    // existing "Personal" creates nothing. An exact-only lookup would then wipe
-    // the selection and leave no group, no selection and no explanation.
-    seed({ habitGroups: [{ id: 'g1', name: 'Personal', emoji: 'icon:Star' }] });
-    open('groups');
-    fireEvent.change(id('group-new-name'), { target: { value: 'personal' } });
-    fireEvent.click(id('group-add'));
+  it('selects the container that already had the name, whatever its case', () => {
+    // addProject de-duplicates case-insensitively since 039, so "personal"
+    // against an existing "Personal" creates nothing. An exact-only lookup
+    // would then wipe the selection and leave no container, no selection and no
+    // explanation.
+    seed({ projects: [{ id: 'g1', name: 'Personal', emoji: 'icon:Star' }] });
+    open('projects');
+    fireEvent.change(id('project-new-name'), { target: { value: 'personal' } });
+    fireEvent.click(id('project-add'));
 
-    expect(usePlannerStore.getState().habitGroups).toHaveLength(1);
-    expect(id('group-detail')).toHaveAttribute('data-group-id', 'g1');
+    expect(usePlannerStore.getState().projects).toHaveLength(1);
+    expect(id('project-detail')).toHaveAttribute('data-project-id', 'g1');
   });
 
   /* ── renaming, unparked by migration 027 ─────────────────────────────── */

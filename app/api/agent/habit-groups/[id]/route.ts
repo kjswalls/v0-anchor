@@ -1,16 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
-import { updateHabitGroup, deleteHabitGroup, renameContainerMembers } from '@/lib/db'
+import { updateProject, deleteProject, renameContainerMembers } from '@/lib/db'
 import type { HabitGroupType } from '@/lib/planner-types'
 
 /**
  * PATCH /api/agent/habit-groups/:id
  *
- * Updates an existing habit group. Ownership is verified before applying changes.
+ * A LEGACY ALIAS SINCE MIGRATION 039 — see the POST route's header. One
+ * CLASSIFY kind means this operates on `projects`, including the ownership
+ * check: an id that used to name a `habit_groups` row names a `projects` row
+ * now, because the migration moved each row KEEPING ITS ID. So an agent holding
+ * a group id from before the collapse still addresses the same container.
+ *
+ * The error copy still says "habit group", deliberately: it answers a caller
+ * that asked about one, and telling it about a "project" it never mentioned
+ * would be the API arguing with its own URL.
  *
  * Auth: Bearer <openclaw_api_key> only — no cookie auth.
  *
- * Body: Partial<HabitGroupType> — any subset of habit group fields to update
+ * Body: Partial<HabitGroupType> — any subset of container fields to update
  *
  * Response: { success: true }
  */
@@ -31,7 +39,7 @@ export async function PATCH(
   const serviceClient = createServiceClient()
 
   const { data: existing } = await serviceClient
-    .from('habit_groups')
+    .from('projects')
     .select('user_id')
     .eq('id', id)
     .is('deleted_at', null)
@@ -42,17 +50,17 @@ export async function PATCH(
 
   try {
     const updates: Partial<HabitGroupType> = await req.json()
-    await updateHabitGroup(userId, id, updates, serviceClient)
+    await updateProject(userId, id, updates, serviceClient)
     // Chained, for the reason spelled out in the projects route: the container
     // write and the member fan-out do not fail together, and the half-applied
     // outcome is undetectable downstream.
     if (typeof updates.name === 'string' && updates.name) {
-      await renameContainerMembers(userId, 'group_id', id, updates.name, serviceClient)
+      await renameContainerMembers(userId, id, updates.name, serviceClient)
     }
     return NextResponse.json({ success: true })
   } catch (err) {
     // See the projects route: 23505 here means the name is held by another
-    // group, possibly one in the trash that no endpoint can show the caller.
+    // container, possibly one in the trash that no endpoint can show the caller.
     const code = (err as { code?: string } | null)?.code
     if (code === '23505' || (err instanceof Error && err.message.includes('duplicate key value'))) {
       return NextResponse.json(
@@ -71,7 +79,8 @@ export async function PATCH(
 /**
  * DELETE /api/agent/habit-groups/:id
  *
- * Soft-deletes a habit group (recoverable from trash within 30 days).
+ * Soft-deletes a container (recoverable from trash within 30 days). The same
+ * legacy alias as PATCH above.
  *
  * Auth: Bearer <openclaw_api_key> only — no cookie auth.
  *
@@ -94,7 +103,7 @@ export async function DELETE(
   const serviceClient = createServiceClient()
 
   const { data: existing } = await serviceClient
-    .from('habit_groups')
+    .from('projects')
     .select('user_id')
     .eq('id', id)
     .is('deleted_at', null)
@@ -104,7 +113,7 @@ export async function DELETE(
   }
 
   try {
-    await deleteHabitGroup(userId, id, serviceClient)
+    await deleteProject(userId, id, serviceClient)
     return NextResponse.json({ success: true })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Internal server error'

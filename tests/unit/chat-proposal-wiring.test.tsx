@@ -21,8 +21,12 @@ let proposalStatus = 'idle';
 let proposalSurface = 'chat';
 let isLoading = false;
 
-vi.mock('@/lib/chat-store', () => ({
-  useChatStore: () => ({
+// Selector-aware: ChatConversation destructures the whole store, but
+// ChatComposer — which owns the field and the stop button now — subscribes to
+// one slice at a time. A mock that ignored the selector handed the composer the
+// entire state object where it expected `send`, and React refused the listener.
+vi.mock('@/lib/chat-store', () => {
+  const state = () => ({
     messages,
     isLoading,
     isTyping: false,
@@ -31,8 +35,11 @@ vi.mock('@/lib/chat-store', () => ({
     hydrate: vi.fn(),
     syncOpenclawInfo: vi.fn(),
     openclawAgentIdDisplay: null,
-  }),
-}));
+  });
+  return {
+    useChatStore: (sel?: (s: unknown) => unknown) => (sel ? sel(state()) : state()),
+  };
+});
 
 vi.mock('@/lib/ai-settings-store', () => ({
   useAISettingsStore: (sel: (s: unknown) => unknown) =>

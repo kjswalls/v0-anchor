@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
-import { reloadApp, itemCardIn, runEntityCommand } from './helpers/app';
+import { reloadApp, itemCardIn, runEntityCommand, switchMobileTab } from './helpers/app';
 import {
   createTestHabit,
   createTestTask,
@@ -200,7 +200,7 @@ test.describe('pausing', () => {
     const habitId = await createTestHabit(page, { title, timeBucket: 'morning', streak: 3 });
     try {
       await reloadApp(page);
-      await page.click('[data-tour="tab-today"]');
+      await switchMobileTab(page, 'today');
 
       const row = page.locator(`[data-testid="item-card"][data-item-id="${habitId}"]`).first();
       await row.locator('[data-testid="item-actions-button"]').click();
@@ -209,7 +209,7 @@ test.describe('pausing', () => {
 
       // Reachable on touch: the Braindump tab's Paused section, which is the
       // only place a paused row exists on mobile.
-      await page.click('[data-tour="tab-braindump"]');
+      await switchMobileTab(page, 'braindump');
       await openPausedSection(page);
       await expect(itemCardIn(pausedSection(page), habitId)).toHaveCount(1);
 

@@ -12,7 +12,6 @@ import { scoreText } from './score';
 import type { Command, CommandEntityOption } from './types';
 import type {
   CustomItem,
-  Habit,
   HabitItem,
   Item,
   Task,
@@ -114,7 +113,7 @@ export function isPausedNow(item: Item): boolean {
  * projections carry their runtime discriminator, so they are Items in all but
  * declared type — the same cast lib/search.ts makes internally.
  */
-function asItems(rows: Task[] | Habit[]): Item[] {
+function asItems(rows: Task[] | HabitItem[]): Item[] {
   return rows as unknown as Item[];
 }
 
@@ -174,15 +173,13 @@ function toOption(item: Item, dateStr: string, detail: ItemCommandSpec['detail']
 }
 
 /**
- * Where the item lives, with its glyph resolved — a habit's group or a
- * task-like item's project. Exported so the omnibar's search rows and the
- * picker's rows stay one vocabulary rather than two that drift.
+ * Where the item lives, with its glyph resolved. Exported so the omnibar's
+ * search rows and the picker's rows stay one vocabulary rather than two that
+ * drift — which, since 039 collapsed the two CLASSIFY kinds, is also all it
+ * takes: every type answers with `project`.
  */
 export function itemContainer(item: Item): { name: string; glyph: string } | undefined {
-  const { getProjectEmoji, getHabitGroupEmoji } = usePlannerStore.getState();
-  if (item.type === 'habit') {
-    return item.group ? { name: item.group, glyph: getHabitGroupEmoji(item.group) } : undefined;
-  }
+  const { getProjectEmoji } = usePlannerStore.getState();
   return item.project ? { name: item.project, glyph: getProjectEmoji(item.project) } : undefined;
 }
 

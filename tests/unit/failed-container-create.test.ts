@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 /**
  * A container create the DATABASE REFUSED, and the phantom it used to leave.
  *
- * `projects_user_id_name_key` and `habit_groups_user_id_name_key` are PLAIN
+ * `projects_user_id_name_key` is a PLAIN
  * unique indexes over `(user_id, name)` — no `WHERE deleted_at IS NULL` — so a
  * soft-deleted container reserves its name for the full 30 days while being
  * invisible to the store, whose arrays come from `deleted_at`-filtered fetches.
@@ -24,7 +24,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('@/lib/db', () => ({
   fetchItems: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
-  fetchHabitGroups: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   createItemType: vi.fn(async () => {}),
   updateItemType: vi.fn(async () => {}),
@@ -39,10 +38,6 @@ vi.mock('@/lib/db', () => ({
   deleteProject: vi.fn(async () => {}),
   restoreProject: vi.fn(async () => {}),
   renameContainerMembers: vi.fn(async () => {}),
-  createHabitGroup: vi.fn(async () => {}),
-  updateHabitGroup: vi.fn(async () => {}),
-  deleteHabitGroup: vi.fn(async () => {}),
-  restoreHabitGroup: vi.fn(async () => {}),
   fetchRoutines: vi.fn(async () => []),
   createRoutine: vi.fn(async () => {}),
   updateRoutine: vi.fn(async () => {}),
@@ -97,9 +92,7 @@ beforeEach(async () => {
   // clearAllMocks — so without this the next test's initializeStore never
   // resolves and its fixtures leak forward.
   vi.mocked(db.fetchProjects).mockResolvedValue([]);
-  vi.mocked(db.fetchHabitGroups).mockResolvedValue([]);
   vi.mocked(db.createProject).mockResolvedValue(undefined);
-  vi.mocked(db.createHabitGroup).mockResolvedValue(undefined);
   await store().initializeStore(USER);
 });
 
@@ -113,17 +106,18 @@ describe('a create the database accepts', () => {
     expect(toastError).not.toHaveBeenCalled();
   });
 
-  it('names a habit group create, which used to log as "Unknown action"', async () => {
-    store().addHabitGroup('Wellness', 'icon:Heart');
+  it('names every container create, which used to log as "Unknown action"', async () => {
+    // Was `addHabitGroup` before 039 collapsed the two CLASSIFY kinds. One
+    // action, one label.
+    store().addProject('Wellness', 'icon:Heart');
     await settle();
-    expect(labels()[0]).toBe('Add habit group: Wellness');
+    expect(labels()[0]).toBe('Add project: Wellness');
   });
 });
 
 describe('a create the database REFUSES', () => {
   beforeEach(() => {
     vi.mocked(db.createProject).mockRejectedValue(duplicate);
-    vi.mocked(db.createHabitGroup).mockRejectedValue(duplicate);
   });
 
   it('takes the phantom back out of the store', async () => {
@@ -194,8 +188,11 @@ describe('a create the database REFUSES', () => {
     );
     store().addProject('Work', 'icon:Briefcase');
 
-    vi.mocked(db.createHabitGroup).mockResolvedValue(undefined);
-    store().addHabitGroup('Wellness', 'icon:Heart');
+    // A SECOND container create that SUCCEEDS, landing while the first is in
+    // flight — the user acting during the round trip, which is what makes the
+    // failed create no longer the top of the stack.
+    vi.mocked(db.createProject).mockResolvedValueOnce(undefined);
+    store().addProject('Wellness', 'icon:Heart');
     await settle();
 
     reject(duplicate);
@@ -203,7 +200,7 @@ describe('a create the database REFUSES', () => {
 
     store().undo();
 
-    expect(store().projects).toEqual([]);
+    expect(store().projects.map((p) => p.name)).toEqual([]);
     expect(db.restoreProject).not.toHaveBeenCalled();
   });
 
@@ -347,13 +344,15 @@ describe('a create the database REFUSES', () => {
     expect(store().projects.map((p) => p.name)).toEqual(['Real']);
   });
 
-  it('rolls a habit group back the same way', async () => {
-    store().addHabitGroup('Wellness', 'icon:Heart');
-    await settle();
-
-    expect(store().habitGroups).toEqual([]);
-    expect(toastError).toHaveBeenCalledTimes(1);
-    expect(toastError.mock.calls[0][0]).toContain('habit group');
+  it('names the container in the toast, from the registry noun', () => {
+    // The noun is `CONTAINER_KINDS.project.label`, not a literal — it is
+    // provisional, and this string is the loudest place it appears.
+    store().addProject('Wellness', 'icon:Heart');
+    return settle().then(() => {
+      expect(store().projects).toEqual([]);
+      expect(toastError).toHaveBeenCalledTimes(1);
+      expect(toastError.mock.calls[0][0]).toContain('project');
+    });
   });
 
   it('THE POINT: an item created in the window survives, container-less', async () => {
@@ -488,16 +487,16 @@ describe('a create the database REFUSES', () => {
     );
     store().addProject('Work', 'icon:Briefcase');
 
-    vi.mocked(db.createHabitGroup).mockResolvedValue(undefined);
-    store().addHabitGroup('Wellness', 'icon:Heart');
+    vi.mocked(db.createProject).mockResolvedValueOnce(undefined);
+    store().addProject('Wellness', 'icon:Heart');
     await settle();
 
     reject(duplicate);
     await settle();
 
     // The phantom is still rolled out of the store…
-    expect(store().projects).toEqual([]);
-    // …and the group's entry, which arrived after it, is untouched.
-    expect(labels()).toContain('Add habit group: Wellness');
+    expect(store().projects.map((p) => p.name)).toEqual(['Wellness']);
+    // …and the later entry, which arrived after it, is untouched.
+    expect(labels()).toContain('Add project: Wellness');
   });
 });

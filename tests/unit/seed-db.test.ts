@@ -139,31 +139,27 @@ describe('adoptContainerMembers — 027 backfill, re-run for one container', () 
     // the user creates by hand with a name that happens to match: it fills a
     // blank, never re-points a member that already resolves.
     updateReturns = [{ id: 'i1' }, { id: 'i2' }];
-    const n = await adoptContainerMembers('u1', 'group_id', 'g1', 'Personal');
+    // ONE column pair since 039 collapsed the two CLASSIFY kinds — this took a
+    // `column` argument to pick between project_id/project and group_id/group.
+    const n = await adoptContainerMembers('u1', 'p1', 'Personal');
 
     expect(n).toBe(2);
-    expect(updates[0].payload).toEqual({ group_id: 'g1' });
+    expect(updates[0].payload).toEqual({ project_id: 'p1' });
     expect(updates[0].filters).toEqual([
       'eq:user_id=u1',
-      'is:group_id=null',
-      'eq:group=Personal',
+      'is:project_id=null',
+      'eq:project=Personal',
     ]);
   });
 
-  it('matches the right text column for a project', async () => {
-    await adoptContainerMembers('u1', 'project_id', 'p1', 'Housework');
-    expect(updates[0].payload).toEqual({ project_id: 'p1' });
-    expect(updates[0].filters).toContain('eq:project=Housework');
-  });
-
   it('reports zero rather than throwing when nothing matched', async () => {
-    expect(await adoptContainerMembers('u1', 'group_id', 'g1', 'Nobody')).toBe(0);
+    expect(await adoptContainerMembers('u1', 'p1', 'Nobody')).toBe(0);
   });
 
   it('THROWS on a real failure, so the caller can tell it apart from zero rows', async () => {
     // Zero rows matched and the statement failing are different answers, and
     // the seed's rollback needs to distinguish them.
     writeFails = true;
-    await expect(adoptContainerMembers('u1', 'group_id', 'g1', 'Personal')).rejects.toBeDefined();
+    await expect(adoptContainerMembers('u1', 'p1', 'Personal')).rejects.toBeDefined();
   });
 });

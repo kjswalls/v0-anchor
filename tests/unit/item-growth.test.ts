@@ -100,7 +100,6 @@ describe('focused-item context section', () => {
       task({ id: 's2', title: 'Design the cover', parentItemId: 'p1' }),
     ] as Item[],
     projects: [],
-    habitGroups: [],
   };
 
   it('is absent from the base output', () => {

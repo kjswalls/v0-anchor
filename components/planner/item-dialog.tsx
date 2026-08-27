@@ -9,7 +9,6 @@ import {
   Clock,
   Flag,
   Flame,
-  Folder,
   Moon,
   Bell,
   Pause as PauseIcon,
@@ -18,11 +17,10 @@ import {
   MoreHorizontal,
   Plus,
   Repeat,
-  CalendarRange,
   Repeat2,
   RotateCcw,
   Trash2,
-  X, Target,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -60,13 +58,13 @@ import {
   PropertyChip,
 } from '@/components/primitives/property-chip';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useGoalsEnabled, useOrganizeEnabled } from '@/lib/extension-gates';
 import { accentColorForName } from '@/lib/accent-colors';
-import { nextMilestone } from '@/lib/goals';
+import { goalItemIds, nextMilestone } from '@/lib/goals';
 import { formatShort } from '@/lib/collections';
 import { useUIStore, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
 import type {
-  Habit,
   HabitItem,
   Item,
   Priority,
@@ -83,6 +81,13 @@ import {
   isCollectible,
   isRemindable,
 } from '@/lib/item-registry';
+import {
+  CONTAINER_KINDS,
+  classifyKindForItemType,
+  type ContainerKind,
+} from '@/lib/container-registry';
+import { bandTestId, membershipSummary, visibleContainerBands } from '@/lib/item-bands';
+import { ItemBand, ItemBandGroup } from '@/components/planner/item-bands';
 import { currentDayOfWeek, toDateStr } from '@/lib/recurrence';
 import { isPausedOn, suppressionReason, suppressionLabel } from '@/lib/active';
 import { makeIconToken } from '@/lib/category-icons';
@@ -284,7 +289,7 @@ export interface ItemDraft {
   /** Free text the user and the agents both read. '' saves as `undefined`. */
   notes: string;
   priority: Priority | 'none';
-  /** Project or group NAME (containers are name-referenced pre-Phase-6). */
+  /** Container NAME (containers are name-referenced pre-Phase-6). */
   container: string;
   startDate: Date | undefined;
   timeBucket: TimeBucket | 'none';
@@ -380,12 +385,13 @@ export function taskUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Par
   return updates;
 }
 
-export function habitUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Partial<Habit> {
+export function habitUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Partial<HabitItem> {
   const wants = (...fields: string[]) => fields.some((f) => keys.includes(f));
-  const updates: Partial<Habit> = {};
+  const updates: Partial<HabitItem> = {};
   if (wants('title')) updates.title = d.title.trim();
   if (wants('notes')) updates.notes = d.notes.trim() || undefined;
-  if (wants('container')) updates.group = d.container;
+  // `project`, not `group` — one CLASSIFY kind since 039.
+  if (wants('container')) updates.project = d.container;
   if (wants('timesPerDay')) updates.timesPerDay = parseInt(d.timesPerDay) || 1;
   if (wants('startTime')) updates.startTime = d.startTime || undefined;
   if (wants('duration')) updates.duration = d.duration ? parseInt(d.duration) : undefined;
@@ -408,7 +414,8 @@ interface AddSeed {
   bucket?: TimeBucket;
   date?: Date;
   defaultTimeBucket: TimeBucket;
-  habitGroups: { name: string }[];
+  /** The one container list, since 039 collapsed the two CLASSIFY kinds. */
+  containers: { name: string }[];
 }
 
 function makeAddDraft(type: string, seed: AddSeed): ItemDraft {
@@ -417,11 +424,13 @@ function makeAddDraft(type: string, seed: AddSeed): ItemDraft {
     title: '',
     notes: '',
     priority: 'none',
-    // Required containers fall back like the old add dialog: first group, else
-    // legacy lowercase 'personal' (NOT orphanContainerFallback — changing this
-    // changes which group a fresh account's habits land in).
+    // Required containers fall back like the old add dialog: first container,
+    // else legacy lowercase 'personal' (NOT orphanContainerFallback — changing
+    // this changes where a fresh account's habits land). The lowercase spelling
+    // is exactly why `CONTAINER_KINDS.project.caseFold` is true: this value is
+    // written against a seeded 'Personal' whenever the list has not loaded.
     container: config.containerRequired
-      ? seed.habitGroups[0]?.name || 'personal'
+      ? seed.containers[0]?.name || 'personal'
       : 'none',
     startDate: config.dateAnchored ? seed.date : undefined,
     timeBucket: seed.bucket ?? seed.defaultTimeBucket ?? 'anytime',
@@ -469,7 +478,7 @@ function draftFromItem(item: Item): ItemDraft {
     title: item.title,
     notes: item.notes || '',
     priority: item.type !== 'habit' ? item.priority || 'none' : 'none',
-    container: item.type === 'habit' ? item.group : item.project || 'none',
+    container: item.project || (config.containerRequired ? '' : 'none'),
     startDate,
     timeBucket: item.timeBucket || 'none',
     startTime: item.startTime || '',
@@ -520,11 +529,8 @@ export function ItemDialog({
     scheduleHabit,
     resetHabitStreak,
     projects,
-    habitGroups,
     getProjectColor,
-    getHabitGroupColor,
     addProject,
-    addHabitGroup,
     itemTypesAvailable,
     defaultTimeBucket,
     itemTypes,
@@ -539,6 +545,18 @@ export function ItemDialog({
     goalsAvailable,
     updateGoal,
   } = usePlannerStore();
+  /**
+   * The two extension gates this dialog answers to.
+   *
+   * The dialog is a READOUT, not a feature — the weight ledger's word for it —
+   * so nothing here is gated for its own sake. `goalsOn` takes the Goal chip
+   * because the chip IS goal membership; `organizeOn` takes the three
+   * "Organize …" rows because each is a door to a console that will not open.
+   * A door to a shut room is worse than no door: it is the one kind of dead
+   * control that looks like a bug rather than a choice.
+   */
+  const goalsOn = useGoalsEnabled();
+  const organizeOn = useOrganizeEnabled();
 
   // Hoisted out of renderChips, which runs on every render of a component that
   // subscribes to the whole store — so this rebuilt an N-item Map on every
@@ -629,7 +647,7 @@ export function ItemDialog({
 
   const [activeType, setActiveType] = useState<string>('task');
   const [addDrafts, setAddDrafts] = useState<Record<string, ItemDraft>>(() =>
-    buildAddDrafts({ defaultTimeBucket, habitGroups })
+    buildAddDrafts({ defaultTimeBucket, containers: projects })
   );
   const [editDraft, setEditDraft] = useState<ItemDraft | null>(null);
 
@@ -691,11 +709,11 @@ export function ItemDialog({
     const bucket = addPayload.bucket ?? defaultTimeBucket ?? 'anytime';
     setAddDrafts((drafts) => {
       const next = { ...drafts };
-      // typeNames/habitGroups are read fresh here, which is safe now that this
+      // typeNames/projects are read fresh here, which is safe now that this
       // runs on a new payload identity rather than on an effect's dep list.
       for (const t of typeNames) {
         // Custom types hydrate after mount — seed a fresh draft on first sight.
-        const base = drafts[t] ?? makeAddDraft(t, { defaultTimeBucket, habitGroups });
+        const base = drafts[t] ?? makeAddDraft(t, { defaultTimeBucket, containers: projects });
         next[t] = {
           ...base,
           // A quick-add hand-off seeds the title; a plain open keeps whatever
@@ -715,10 +733,12 @@ export function ItemDialog({
    * two parallel forms; with one form and a type switcher, losing the title you
    * just typed reads as a bug.
    *
-   * Container is deliberately NOT carried — projects and habit groups are
-   * different namespaces — and the target's own default (first group, for a
-   * type that requires one) is kept. Fields the target type has no use for ride
-   * along harmlessly: its save adapter never reads them.
+   * Container is STILL not carried, and the reason changed with 039 rather than
+   * disappearing: it is one namespace now, but the target's own default (the
+   * first container, for a type that requires one) is what a type that requires
+   * a container must land on — carrying 'none' across from a task would produce
+   * a habit filed nowhere. Fields the target type has no use for ride along
+   * harmlessly: its save adapter never reads them.
    */
   const switchType = (next: string) => {
     if (next === activeType) return;
@@ -739,7 +759,7 @@ export function ItemDialog({
       (config.allowedFrequencies as readonly string[]).includes(from.repeatFrequency);
 
     setAddDrafts((drafts) => {
-      const base = drafts[next] ?? makeAddDraft(next, { defaultTimeBucket, habitGroups });
+      const base = drafts[next] ?? makeAddDraft(next, { defaultTimeBucket, containers: projects });
       return {
         ...drafts,
         [next]: {
@@ -777,7 +797,7 @@ export function ItemDialog({
 
   /** Draft for a type, with a default for custom types not yet seeded. */
   const draftFor = (type: string): ItemDraft =>
-    addDrafts[type] ?? makeAddDraft(type, { defaultTimeBucket, habitGroups });
+    addDrafts[type] ?? makeAddDraft(type, { defaultTimeBucket, containers: projects });
 
   const patchDraft = (type: string, updates: Partial<ItemDraft>) => {
     if (last?.mode === 'edit') {
@@ -788,13 +808,13 @@ export function ItemDialog({
     } else {
       setAddDrafts((d) => ({
         ...d,
-        [type]: { ...(d[type] ?? makeAddDraft(type, { defaultTimeBucket, habitGroups })), ...updates },
+        [type]: { ...(d[type] ?? makeAddDraft(type, { defaultTimeBucket, containers: projects })), ...updates },
       }));
     }
   };
 
   const resetAddDrafts = () => {
-    const seed = { bucket: addPayload?.bucket, defaultTimeBucket, habitGroups };
+    const seed = { bucket: addPayload?.bucket, defaultTimeBucket, containers: projects };
     setAddDrafts(
       Object.fromEntries(typeNames.map((t) => [t, makeAddDraft(t, seed)]))
     );
@@ -839,7 +859,7 @@ export function ItemDialog({
       addHabit({
         title: d.title.trim(),
         notes: d.notes.trim() || undefined,
-        group: d.container,
+        project: d.container,
         timeBucket: d.timeBucket === 'none' ? 'anytime' : d.timeBucket,
         startTime: d.startTime || undefined,
         duration: d.duration ? parseInt(d.duration) : undefined,
@@ -982,25 +1002,81 @@ export function ItemDialog({
     setShowPauseUntil(false);
   };
 
-  // ── Registry-driven chips ─────────────────────────────────────────────────
+  /**
+   * Priority — the one chip that is neither a time nor a container, so it rides
+   * the identity row beside the type instead of standing alone in a band of its
+   * own. A band would have cost a whole labelled row to say "Priority" twice:
+   * once in the label, once in the chip's own unset state.
+   */
+  const renderPriorityChip = (type: string, d: ItemDraft) => {
+    const config = getItemTypeConfig(type);
+    const patch = (updates: Partial<ItemDraft>) => patchDraft(type, updates);
+    return config.fields.includes('priority') ? (
+      <PropertyChip
+        icon={Flag}
+        label="Priority"
+        value={d.priority === 'none' ? undefined : PRIORITY_LABELS[d.priority]}
+        swatch={d.priority === 'none' ? undefined : `var(--priority-${d.priority})`}
+        contentClassName="w-48"
+      >
+        {(close) =>
+          PRIORITY_ORDER.map((p) => (
+            <ChipOption
+              key={p}
+              selected={d.priority === p}
+              onSelect={() => {
+                patch({ priority: p });
+                close();
+              }}
+            >
+              <span
+                className={cn('size-2 shrink-0 rounded-full', p === 'none' && 'opacity-50')}
+                style={{
+                  background:
+                    p === 'none' ? 'var(--muted-foreground)' : `var(--priority-${p})`,
+                }}
+              />
+              {PRIORITY_LABELS[p]}
+              {d.priority === p && <Check className="ml-auto size-3.5" />}
+            </ChipOption>
+          ))
+        }
+      </PropertyChip>
+    ) : null;
+  };
+  // ── Registry-driven bands ─────────────────────────────────────────────────
 
   /**
-   * Every optional property of an item, as one wrapping row of chips. Which
-   * chips exist is the type's capability config — a new custom type gets a
-   * correct dialog with no work here.
+   * Every optional property of an item, as a stack of labelled BANDS.
    *
-   * Unset chips carry the noun ("Priority"), set chips carry the value
-   * ("High"), which is what replaced the old label-above-every-control layout
-   * without hiding what a control is for.
+   * Which chips exist has always been the type's capability config — a new
+   * custom type gets a correct dialog with no work here. What was NOT a
+   * capability question was the layout: ten chips rendered as one flat wrapping
+   * row in source order, so Project (classify) sat beside Routine (gate) sat
+   * beside Goal (aspire) with nothing between them, and the three container
+   * roles lib/container-registry.ts exists to distinguish reached the user as no
+   * distinction at all.
+   *
+   * Now the row is a stack: 'When' holds the schedule chips, and every container
+   * kind gets its own band, ordered by role and labelled with the registry's own
+   * noun (lib/item-bands.ts). Priority left the row entirely — it is neither a
+   * time nor a container, so it rides the identity line beside the type.
+   *
+   * The chip vocabulary inside a band is unchanged with one edit: an unset chip
+   * used to carry the noun ("Routine") and now carries the verb ("Add"), because
+   * the band's label is already the noun and saying it twice on a 420px column
+   * is how a labelled layout gets wider without getting clearer. The ACCESSIBLE
+   * name stays the noun.
    */
   const renderChips = (type: string, d: ItemDraft) => {
     const config = getItemTypeConfig(type);
     const patch = (updates: Partial<ItemDraft>) => patchDraft(type, updates);
-    const containers = config.containerKind === 'projects' ? projects : habitGroups;
+    // ONE list and ONE colour resolver since 039 — the two-way pick here was
+    // the last place the dialog had to know which classify kind a type used.
+    const containers = projects;
     // The same color the rows' TagDot and the schedule rail resolve for this
     // container — the dialog joins that vocabulary instead of the gray icon.
-    const containerColor =
-      config.containerKind === 'projects' ? getProjectColor : getHabitGroupColor;
+    const containerColor = getProjectColor;
 
     const toggleDay = (day: number) => {
       patch({
@@ -1018,12 +1094,7 @@ export function ItemDialog({
       ? routines.filter((r) => r.itemIds.includes(editingItem.id))
       : routines.filter((r) => d.routineIds.includes(r.id));
     const memberIds = memberRoutines.map((r) => r.id);
-    const routineChipValue =
-      memberRoutines.length === 0
-        ? undefined
-        : memberRoutines.length === 1
-          ? memberRoutines[0].name
-          : `${memberRoutines[0].name} +${memberRoutines.length - 1}`;
+    const routineChipValue = membershipSummary(memberRoutines.map((r) => r.name));
     // A subtask can't join a routine (the registry's rule), and in add mode
     // there is no item yet — the type's capability is the whole answer.
     const collectible = editingItem
@@ -1062,28 +1133,15 @@ export function ItemDialog({
     // grants a milestone or check-in role, which are the goal's own decision
     // and are made where its timeline is visible.
     const memberGoals = editingItem
-      ? goals.filter(
-          (g) =>
-            g.state === 'active' &&
-            [...g.memberIds, ...g.milestoneIds, ...g.checkinIds].includes(editingItem.id),
-        )
+      ? goals.filter((g) => g.state === 'active' && goalItemIds(g).includes(editingItem.id))
       : goals.filter((g) => d.goalIds.includes(g.id));
     const memberGoalIds = memberGoals.map((g) => g.id);
-    const goalChipValue =
-      memberGoals.length === 0
-        ? undefined
-        : memberGoals.length === 1
-          ? memberGoals[0].name
-          : `${memberGoals[0].name} +${memberGoals.length - 1}`;
+    const goalChipValue = membershipSummary(memberGoals.map((g) => g.name));
     // The goals this item served that have since ended. Shown under their own
     // divider rather than dropped: a still-scheduled milestone of a set-aside
     // goal is otherwise a row with no explanation anywhere in the app.
     const endedGoals = editingItem
-      ? goals.filter(
-          (g) =>
-            g.state !== 'active' &&
-            [...g.memberIds, ...g.milestoneIds, ...g.checkinIds].includes(editingItem.id),
-        )
+      ? goals.filter((g) => g.state !== 'active' && goalItemIds(g).includes(editingItem.id))
       : [];
 
     const toggleGoal = (goalId: string, on: boolean) => {
@@ -1116,12 +1174,7 @@ export function ItemDialog({
       ? programs.filter((p) => p.itemIds.includes(editingItem.id))
       : programs.filter((p) => d.programIds.includes(p.id));
     const memberProgramIds = memberPrograms.map((p) => p.id);
-    const programChipValue =
-      memberPrograms.length === 0
-        ? undefined
-        : memberPrograms.length === 1
-          ? memberPrograms[0].name
-          : `${memberPrograms[0].name} +${memberPrograms.length - 1}`;
+    const programChipValue = membershipSummary(memberPrograms.map((p) => p.name));
 
     const toggleProgram = (programId: string, on: boolean) => {
       if (!editingItem) {
@@ -1156,18 +1209,16 @@ export function ItemDialog({
     const createContainer = (): boolean => {
       const name = d.newContainer.name.trim();
       if (!name) return false;
-      const projects = config.containerKind === 'projects';
       const held = heldByTrash(
-        projects ? trashedNames.projects : trashedNames.groups,
+        trashedNames.projects,
         name,
-        projects ? 'project' : 'habit group'
+        CONTAINER_KINDS.project.label.toLowerCase(),
       );
       if (held) {
         toast.error(held);
         return false;
       }
-      if (projects) addProject(name, d.newContainer.icon);
-      else addHabitGroup(name, d.newContainer.icon);
+      addProject(name, d.newContainer.icon);
       patch({
         container: name,
         newContainer: {
@@ -1210,671 +1261,789 @@ export function ItemDialog({
       return REPEAT_FREQUENCY_LABELS[d.repeatFrequency];
     };
 
-    return (
-      <div className="flex flex-wrap items-center gap-1.5">
-        {config.fields.includes('priority') && (
-          <PropertyChip
-            icon={Flag}
-            label="Priority"
-            value={d.priority === 'none' ? undefined : PRIORITY_LABELS[d.priority]}
-            swatch={d.priority === 'none' ? undefined : `var(--priority-${d.priority})`}
-            contentClassName="w-48"
-          >
-            {(close) =>
-              PRIORITY_ORDER.map((p) => (
+    const containerControl = (
+      <PropertyChip
+        icon={Plus}
+        swatch={d.container === 'none' ? undefined : containerColor(d.container)}
+        swatchShape="square"
+        // The BAND beside this chip is the noun, so the chip is free to be the
+        // verb: "+ Add" when nothing is chosen, the value itself once something
+        // is. The accessible name keeps the noun either way — a control read out
+        // of its row has to say which band it belongs to.
+        label="Add"
+        ariaLabel={
+          d.container === 'none'
+            ? config.form.containerLabel
+            : `${config.form.containerLabel}: ${d.container}`
+        }
+        testId="item-dialog-container-chip"
+        value={d.container === 'none' ? undefined : d.container}
+        // NO `capitalize`. The habit-group side of the axis carried it,
+        // because `makeAddDraft`'s fallback writes a lowercase 'personal';
+        // one kind means one rule, and applying it to every container is
+        // the worse half — Tailwind's `capitalize` upper-cases EVERY word,
+        // so a project called "e2e tests" renders as "E2e Tests". A stray
+        // lowercase name reading as typed is only untidy.
+        contentClassName="w-64"
+      >
+        {(close) =>
+          d.newContainer.show ? (
+            <div className="flex gap-1 p-1">
+              <IconPicker
+                value={d.newContainer.icon}
+                name={d.newContainer.name}
+                onSelect={(icon) => patch({ newContainer: { ...d.newContainer, icon } })}
+              />
+              <Input
+                autoFocus
+                placeholder="Name"
+                value={d.newContainer.name}
+                onChange={(e) =>
+                  patch({ newContainer: { ...d.newContainer, name: e.target.value } })
+                }
+                className="h-9 flex-1 text-sm"
+                onKeyDown={(e) => {
+                  if (e.key !== 'Enter') return;
+                  e.preventDefault();
+                  // Closing only on acceptance: a refused name has to stay
+                  // on screen next to the message explaining it.
+                  if (createContainer()) close();
+                }}
+                data-sub-input
+              />
+              <AddIconButton
+                size="input"
+                onClick={() => {
+                  if (createContainer()) close();
+                }}
+                aria-label={`Add ${config.form.containerLabel.toLowerCase()}`}
+              />
+            </div>
+          ) : (
+            <div className="max-h-64 overflow-y-auto" data-chip-scroll>
+              {!config.containerRequired && (
                 <ChipOption
-                  key={p}
-                  selected={d.priority === p}
+                  selected={d.container === 'none'}
                   onSelect={() => {
-                    patch({ priority: p });
+                    patch({ container: 'none' });
+                    close();
+                  }}
+                  tone="muted"
+                >
+                  No {config.form.containerLabel.toLowerCase()}
+                </ChipOption>
+              )}
+              {containers.map((c) => (
+                <ChipOption
+                  key={c.name}
+                  selected={d.container === c.name}
+                  onSelect={() => {
+                    patch({ container: c.name });
                     close();
                   }}
                 >
-                  <span
-                    className={cn('size-2 shrink-0 rounded-full', p === 'none' && 'opacity-50')}
-                    style={{
-                      background:
-                        p === 'none' ? 'var(--muted-foreground)' : `var(--priority-${p})`,
-                    }}
-                  />
-                  {PRIORITY_LABELS[p]}
-                  {d.priority === p && <Check className="ml-auto size-3.5" />}
+                  <ColorSquare color={containerColor(c.name)} />
+                  <span className="truncate">{c.name}</span>
+                  {d.container === c.name && <Check className="ml-auto size-3.5 shrink-0" />}
                 </ChipOption>
-              ))
-            }
-          </PropertyChip>
-        )}
+              ))}
+              <ChipOption
+                tone="primary"
+                onSelect={() => patch({ newContainer: { ...d.newContainer, show: true } })}
+              >
+                <Plus className="size-3.5" />
+                {config.form.newContainerLabel}
+              </ChipOption>
+            </div>
+          )
+        }
+      </PropertyChip>
+    );
 
-        {config.containerKind && (
-          <PropertyChip
-            icon={Folder}
-            swatch={d.container === 'none' ? undefined : containerColor(d.container)}
-            swatchShape="square"
-            label={config.form.containerLabel}
-            value={d.container === 'none' ? undefined : d.container}
-            className={config.containerKind === 'habitGroups' ? 'capitalize' : undefined}
-            contentClassName="w-64"
-          >
-            {(close) =>
-              d.newContainer.show ? (
-                <div className="flex gap-1 p-1">
-                  <IconPicker
-                    value={d.newContainer.icon}
-                    name={d.newContainer.name}
-                    onSelect={(icon) => patch({ newContainer: { ...d.newContainer, icon } })}
-                  />
-                  <Input
-                    autoFocus
-                    placeholder="Name"
-                    value={d.newContainer.name}
-                    onChange={(e) =>
-                      patch({ newContainer: { ...d.newContainer, name: e.target.value } })
-                    }
-                    className="h-9 flex-1 text-sm"
-                    onKeyDown={(e) => {
-                      if (e.key !== 'Enter') return;
-                      e.preventDefault();
-                      // Closing only on acceptance: a refused name has to stay
-                      // on screen next to the message explaining it.
-                      if (createContainer()) close();
-                    }}
-                    data-sub-input
-                  />
-                  <AddIconButton
-                    size="input"
-                    onClick={() => {
-                      if (createContainer()) close();
-                    }}
-                    aria-label={`Add ${config.form.containerLabel.toLowerCase()}`}
-                  />
-                </div>
-              ) : (
-                <div className="max-h-64 overflow-y-auto" data-chip-scroll>
-                  {!config.containerRequired && (
-                    <ChipOption
-                      selected={d.container === 'none'}
-                      onSelect={() => {
-                        patch({ container: 'none' });
-                        close();
-                      }}
-                      tone="muted"
-                    >
-                      No {config.form.containerLabel.toLowerCase()}
-                    </ChipOption>
-                  )}
-                  {containers.map((c) => (
-                    <ChipOption
-                      key={c.name}
-                      selected={d.container === c.name}
-                      onSelect={() => {
-                        patch({ container: c.name });
-                        close();
-                      }}
-                    >
-                      <ColorSquare color={containerColor(c.name)} />
-                      <span
-                        className={cn(
-                          'truncate',
-                          config.containerKind === 'habitGroups' && 'capitalize'
-                        )}
-                      >
-                        {c.name}
+    /* Routine membership. Multi-valued, so this is check-rows rather than
+       the single-select the container chip uses — joining a second routine
+       is an additional reason to appear, never a replacement.
+
+       Two write paths on purpose. In ADD mode the ids sit on the draft and
+       ride the create as a `memberships` payload, so one gesture is one
+       history entry. In EDIT mode they write LIVE through updateRoutine,
+       because membership is a join row rather than a column on the item,
+       and the panel's scoped-write draft machinery only tracks columns —
+       routing it through there would either drop the write or widen the
+       panel's write surface, and that invariant is load-bearing. */
+    const routineControl = (
+      <PropertyChip
+        icon={Plus}
+        // The BAND beside this chip is the noun, so the chip is free to be the
+        // verb: "+ Add" when nothing is chosen, the value itself once something
+        // is. The accessible name keeps the noun either way — a control read out
+        // of its row has to say which band it belongs to.
+        label="Add"
+        ariaLabel={
+          routineChipValue
+            ? `${CONTAINER_KINDS.routine.label}: ${routineChipValue}`
+            : CONTAINER_KINDS.routine.label
+        }
+        value={routineChipValue}
+        // The same resolver the option rows below use. Reading `color` raw left
+        // an un-coloured routine with no swatch at all, which handed the chip
+        // back to its icon — and the icon is now the "add" plus.
+        swatch={
+          memberRoutines[0]
+            ? memberRoutines[0].color ?? accentColorForName(memberRoutines[0].name)
+            : undefined
+        }
+        swatchShape="square"
+        contentClassName="w-56"
+        testId="item-dialog-routine-chip"
+      >
+        {(close) => (
+          <div className="max-h-64 overflow-y-auto" data-chip-scroll>
+            {routines.map((routine) => {
+              const on = memberIds.includes(routine.id);
+              return (
+                <ChipOption
+                  key={routine.id}
+                  selected={on}
+                  onSelect={() => toggleRoutine(routine.id, !on)}
+                  testId="item-dialog-routine-option"
+                  value={routine.id}
+                >
+                  <ColorSquare color={routine.color ?? accentColorForName(routine.name)} />
+                  <span className="truncate">{routine.name}</span>
+                  {on && <Check className="ml-auto size-3.5 shrink-0" />}
+                </ChipOption>
+              );
+            })}
+            {/* The manager's home. It is NOT in the braindump header —
+                that row is width-critical at the 280px minimum — so the
+                routes in are here, the palette, and mobile's sheet.
+
+                Gone entirely while the Organize console is off, rather than
+                disabled: this is a door, and a door that cannot open is not
+                worth the row it costs inside a 264px popover. The console's
+                catalogue row, its settings pane and its (greyed) palette
+                commands are where it stays findable. */}
+            {organizeOn && (
+              <ChipOption
+                tone="muted"
+                onSelect={() => {
+                  close();
+                  // Replaces this dialog rather than stacking on it —
+                  // openDialog swaps the single active slot. Same escape the
+                  // type chip's "Organize types…" row makes.
+                  useUIStore.getState().openDialog({ type: 'organize', section: 'routines' });
+                }}
+                testId="item-dialog-routine-manage"
+              >
+                <Plus className="size-3.5" />
+                Organize routines…
+              </ChipOption>
+            )}
+          </div>
+        )}
+      </PropertyChip>
+    );
+
+    /* Programs get their own chip rather than sharing the routine one.
+       They are different questions — "which routine is this part of" vs
+       "which stretch of life does this belong to" — and a merged picker
+       would have to invent a grouping the user never asked for.
+
+       Both chips name GATES, so ticking either can switch the item off on
+       the very date it belongs to. Nothing here announces that, and only
+       ADD mode has an answer elsewhere: the store's landing receipt on the
+       undo toast — `newMemberReceipt` in lib/planner-store.ts, resolved at
+       the item's own start date, in the same words the bulk "Add to …"
+       verb uses for the identical write. That is the mode that behaves
+       correctly.
+
+       EDIT mode does not, and it is an open follow-up rather than
+       something this chip should paper over. Its write goes through
+       `updateProgram`, whose label is `Edit program:` with no receipt and
+       no SIGNIFICANT_ACTIONS match, so the toast never fires; and the
+       activation note above resolves at TODAY (decision 3 — pausing is
+       dateless), not at the item's date. So ticking a program whose window
+       excludes an item's future date, while today sits inside that window,
+       is silent here and spoken in add mode. The fix is the note taking the
+       item's date, not a warning in this popover. */
+    const programControl = (
+      <PropertyChip
+        icon={Plus}
+        // The BAND beside this chip is the noun, so the chip is free to be the
+        // verb: "+ Add" when nothing is chosen, the value itself once something
+        // is. The accessible name keeps the noun either way — a control read out
+        // of its row has to say which band it belongs to.
+        label="Add"
+        ariaLabel={
+          programChipValue
+            ? `${CONTAINER_KINDS.program.label}: ${programChipValue}`
+            : CONTAINER_KINDS.program.label
+        }
+        value={programChipValue}
+        swatch={
+          memberPrograms[0]
+            ? memberPrograms[0].color ?? accentColorForName(memberPrograms[0].name)
+            : undefined
+        }
+        swatchShape="square"
+        contentClassName="w-56"
+        testId="item-dialog-program-chip"
+      >
+        {(close) => (
+          <div className="max-h-64 overflow-y-auto" data-chip-scroll>
+            {programs.map((program) => {
+              const on = memberProgramIds.includes(program.id);
+              return (
+                <ChipOption
+                  key={program.id}
+                  selected={on}
+                  onSelect={() => toggleProgram(program.id, !on)}
+                  testId="item-dialog-program-option"
+                  value={program.id}
+                >
+                  <ColorSquare color={program.color ?? accentColorForName(program.name)} />
+                  <span className="truncate">{program.name}</span>
+                  {on && <Check className="ml-auto size-3.5 shrink-0" />}
+                </ChipOption>
+              );
+            })}
+            {/* A door, gone while the console is off — see the routine
+                chip's row above for the whole argument. */}
+            {organizeOn && (
+              <ChipOption
+                tone="muted"
+                onSelect={() => {
+                  close();
+                  useUIStore.getState().openDialog({
+                    type: 'organize',
+                    section: 'programs',
+                  });
+                }}
+                testId="item-dialog-program-manage"
+              >
+                <Plus className="size-3.5" />
+                Organize programs…
+              </ChipOption>
+            )}
+          </div>
+        )}
+      </PropertyChip>
+    );
+
+    /* GOALS — and note the gate: `goalsAvailable && collectible`, with NO
+       `goals.length > 0`.
+
+       The two chips above carry that extra condition and it is the
+       programs feature's own recorded failure: with zero containers the
+       chip vanishes, and the chip's popover is one of the few doors to the
+       manager — so the surface that would let you make your first one is
+       hidden until you already have one. On mobile there is no palette and
+       no omnibar, which leaves the braindump's folder button as the only
+       other route. A goal is the container a user is most likely to want
+       before they own any, so its chip renders from zero and its popover
+       leads with the door. */
+    const goalControl = (
+      <PropertyChip
+        icon={Plus}
+        // The BAND beside this chip is the noun, so the chip is free to be the
+        // verb: "+ Add" when nothing is chosen, the value itself once something
+        // is. The accessible name keeps the noun either way — a control read out
+        // of its row has to say which band it belongs to.
+        label="Add"
+        ariaLabel={
+          goalChipValue
+            ? `${CONTAINER_KINDS.goal.label}: ${goalChipValue}`
+            : CONTAINER_KINDS.goal.label
+        }
+        value={goalChipValue}
+        swatch={
+          memberGoals[0]
+            ? memberGoals[0].color ?? accentColorForName(memberGoals[0].name)
+            : undefined
+        }
+        swatchShape="square"
+        contentClassName="w-64"
+        testId="item-dialog-goal-chip"
+      >
+        {(close) => (
+          <div className="max-h-64 overflow-y-auto" data-chip-scroll>
+            {activeGoals.map((goal) => {
+              const on = memberGoalIds.includes(goal.id);
+              const next = nextMilestone(goal, itemsById);
+              return (
+                <ChipOption
+                  key={goal.id}
+                  selected={on}
+                  onSelect={() => toggleGoal(goal.id, !on)}
+                  testId="item-dialog-goal-option"
+                  value={goal.id}
+                >
+                  <ColorSquare color={goal.color ?? accentColorForName(goal.name)} />
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate">{goal.name}</span>
+                    {/* The one ambient piece of forward pressure a dated
+                        milestone gets. Between creation and its target day
+                        it renders on no surface the user passes, so the
+                        first unprompted encounter would otherwise be the
+                        waiting tray, after it has already been missed. */}
+                    {next && (
+                      <span className="text-muted-foreground truncate text-[11px]">
+                        next: {next.title}
+                        {'startDate' in next && next.startDate
+                          ? ` · ${formatShort(next.startDate)}`
+                          : ''}
                       </span>
-                      {d.container === c.name && <Check className="ml-auto size-3.5 shrink-0" />}
-                    </ChipOption>
-                  ))}
+                    )}
+                  </span>
+                  {on && <Check className="ml-auto size-3.5 shrink-0" />}
+                </ChipOption>
+              );
+            })}
+
+            {endedGoals.length > 0 && (
+              <>
+                <div className="text-muted-foreground px-2 pt-2 pb-1 text-[10px] font-medium tracking-wide">
+                  ENDED
+                </div>
+                {endedGoals.map((goal) => (
                   <ChipOption
-                    tone="primary"
-                    onSelect={() => patch({ newContainer: { ...d.newContainer, show: true } })}
+                    key={goal.id}
+                    selected
+                    onSelect={() => toggleGoal(goal.id, false)}
+                    testId="item-dialog-goal-ended-option"
+                    value={goal.id}
                   >
-                    <Plus className="size-3.5" />
-                    {config.form.newContainerLabel}
+                    <ColorSquare color={goal.color ?? accentColorForName(goal.name)} />
+                    <span className="text-muted-foreground truncate">{goal.name}</span>
+                    <Check className="ml-auto size-3.5 shrink-0" />
                   </ChipOption>
-                </div>
-              )
-            }
-          </PropertyChip>
-        )}
-
-        {/* Routine membership. Multi-valued, so this is check-rows rather than
-            the single-select the container chip uses — joining a second routine
-            is an additional reason to appear, never a replacement.
-
-            Two write paths on purpose. In ADD mode the ids sit on the draft and
-            ride the create as a `memberships` payload, so one gesture is one
-            history entry. In EDIT mode they write LIVE through updateRoutine,
-            because membership is a join row rather than a column on the item,
-            and the panel's scoped-write draft machinery only tracks columns —
-            routing it through there would either drop the write or widen the
-            panel's write surface, and that invariant is load-bearing. */}
-        {collectionsAvailable && routines.length > 0 && collectible && (
-          <PropertyChip
-            icon={Repeat}
-            label="Routine"
-            value={routineChipValue}
-            swatch={memberRoutines[0]?.color ?? undefined}
-            swatchShape="square"
-            contentClassName="w-56"
-            testId="item-dialog-routine-chip"
-          >
-            {(close) => (
-              <div className="max-h-64 overflow-y-auto" data-chip-scroll>
-                {routines.map((routine) => {
-                  const on = memberIds.includes(routine.id);
-                  return (
-                    <ChipOption
-                      key={routine.id}
-                      selected={on}
-                      onSelect={() => toggleRoutine(routine.id, !on)}
-                      testId="item-dialog-routine-option"
-                      value={routine.id}
-                    >
-                      <ColorSquare color={routine.color ?? accentColorForName(routine.name)} />
-                      <span className="truncate">{routine.name}</span>
-                      {on && <Check className="ml-auto size-3.5 shrink-0" />}
-                    </ChipOption>
-                  );
-                })}
-                {/* The manager's home. It is NOT in the braindump header —
-                    that row is width-critical at the 280px minimum — so the
-                    routes in are here, the palette, and mobile's sheet. */}
-                <ChipOption
-                  tone="muted"
-                  onSelect={() => {
-                    close();
-                    // Replaces this dialog rather than stacking on it —
-                    // openDialog swaps the single active slot. Same escape the
-                    // type chip's "Organize types…" row makes.
-                    useUIStore.getState().openDialog({ type: 'organize', section: 'routines' });
-                  }}
-                  testId="item-dialog-routine-manage"
-                >
-                  <Plus className="size-3.5" />
-                  Organize routines…
-                </ChipOption>
-              </div>
+                ))}
+              </>
             )}
-          </PropertyChip>
+
+            {/* The Goals section of the console rides EXT_GOALS, not
+                EXT_ORGANIZE (lib/extension-gates.ts), so this door stays
+                open with the console switched off — otherwise Goals would
+                be an extension you can switch on and then never use. */}
+            <ChipOption
+              tone="muted"
+              onSelect={() => {
+                close();
+                useUIStore.getState().openDialog({ type: 'organize', section: 'goals' });
+              }}
+              testId="item-dialog-goal-manage"
+            >
+              <Plus className="size-3.5" />
+              {activeGoals.length === 0 ? 'Set up a goal…' : 'Organize goals…'}
+            </ChipOption>
+          </div>
         )}
+      </PropertyChip>
+    );
 
-        {/* Programs get their own chip rather than sharing the routine one.
-            They are different questions — "which routine is this part of" vs
-            "which stretch of life does this belong to" — and a merged picker
-            would have to invent a grouping the user never asked for. */}
-        {collectionsAvailable && programs.length > 0 && collectible && (
-          <PropertyChip
-            icon={CalendarRange}
-            label="Program"
-            value={programChipValue}
-            swatch={memberPrograms[0]?.color ?? undefined}
-            swatchShape="square"
-            contentClassName="w-56"
-            testId="item-dialog-program-chip"
-          >
-            {(close) => (
-              <div className="max-h-64 overflow-y-auto" data-chip-scroll>
-                {programs.map((program) => {
-                  const on = memberProgramIds.includes(program.id);
-                  return (
-                    <ChipOption
-                      key={program.id}
-                      selected={on}
-                      onSelect={() => toggleProgram(program.id, !on)}
-                      testId="item-dialog-program-option"
-                      value={program.id}
-                    >
-                      <ColorSquare color={program.color ?? accentColorForName(program.name)} />
-                      <span className="truncate">{program.name}</span>
-                      {on && <Check className="ml-auto size-3.5 shrink-0" />}
-                    </ChipOption>
-                  );
-                })}
-                <ChipOption
-                  tone="muted"
-                  onSelect={() => {
-                    close();
-                    useUIStore.getState().openDialog({
-                      type: 'organize',
-                      section: 'programs',
-                    });
-                  }}
-                  testId="item-dialog-program-manage"
-                >
-                  <Plus className="size-3.5" />
-                  Organize programs…
-                </ChipOption>
-              </div>
-            )}
-          </PropertyChip>
-        )}
-
-        {/* GOALS — and note the gate: `goalsAvailable && collectible`, with NO
-            `goals.length > 0`.
-
-            The two chips above carry that extra condition and it is the
-            programs feature's own recorded failure: with zero containers the
-            chip vanishes, and the chip's popover is one of the few doors to the
-            manager — so the surface that would let you make your first one is
-            hidden until you already have one. On mobile there is no palette and
-            no omnibar, which leaves the braindump's folder button as the only
-            other route. A goal is the container a user is most likely to want
-            before they own any, so its chip renders from zero and its popover
-            leads with the door. */}
-        {goalsAvailable && collectible && (
-          <PropertyChip
-            icon={Target}
-            label="Goal"
-            value={goalChipValue}
-            swatch={memberGoals[0]?.color ?? undefined}
-            swatchShape="square"
-            contentClassName="w-64"
-            testId="item-dialog-goal-chip"
-          >
-            {(close) => (
-              <div className="max-h-64 overflow-y-auto" data-chip-scroll>
-                {activeGoals.map((goal) => {
-                  const on = memberGoalIds.includes(goal.id);
-                  const next = nextMilestone(goal, itemsById);
-                  return (
-                    <ChipOption
-                      key={goal.id}
-                      selected={on}
-                      onSelect={() => toggleGoal(goal.id, !on)}
-                      testId="item-dialog-goal-option"
-                      value={goal.id}
-                    >
-                      <ColorSquare color={goal.color ?? accentColorForName(goal.name)} />
-                      <span className="flex min-w-0 flex-col">
-                        <span className="truncate">{goal.name}</span>
-                        {/* The one ambient piece of forward pressure a dated
-                            milestone gets. Between creation and its target day
-                            it renders on no surface the user passes, so the
-                            first unprompted encounter would otherwise be the
-                            waiting tray, after it has already been missed. */}
-                        {next && (
-                          <span className="text-muted-foreground truncate text-[11px]">
-                            next: {next.title}
-                            {'startDate' in next && next.startDate
-                              ? ` · ${formatShort(next.startDate)}`
-                              : ''}
-                          </span>
-                        )}
-                      </span>
-                      {on && <Check className="ml-auto size-3.5 shrink-0" />}
-                    </ChipOption>
-                  );
-                })}
-
-                {endedGoals.length > 0 && (
-                  <>
-                    <div className="text-muted-foreground px-2 pt-2 pb-1 text-[10px] font-medium tracking-wide">
-                      ENDED
-                    </div>
-                    {endedGoals.map((goal) => (
-                      <ChipOption
-                        key={goal.id}
-                        selected
-                        onSelect={() => toggleGoal(goal.id, false)}
-                        testId="item-dialog-goal-ended-option"
-                        value={goal.id}
-                      >
-                        <ColorSquare color={goal.color ?? accentColorForName(goal.name)} />
-                        <span className="text-muted-foreground truncate">{goal.name}</span>
-                        <Check className="ml-auto size-3.5 shrink-0" />
-                      </ChipOption>
-                    ))}
-                  </>
-                )}
-
-                <ChipOption
-                  tone="muted"
-                  onSelect={() => {
-                    close();
-                    useUIStore.getState().openDialog({ type: 'organize', section: 'goals' });
-                  }}
-                  testId="item-dialog-goal-manage"
-                >
-                  <Plus className="size-3.5" />
-                  {activeGoals.length === 0 ? 'Set up a goal…' : 'Organize goals…'}
-                </ChipOption>
-              </div>
-            )}
-          </PropertyChip>
-        )}
-
-        {config.dateAnchored && (
-          <PropertyChip
-            icon={CalendarIcon}
-            label="Date"
-            testId="item-dialog-date-chip"
-            value={d.startDate ? format(d.startDate, 'MMM d') : undefined}
-            contentClassName="w-auto p-0"
-          >
-            {(close) => (
-              <div>
-                <div className="p-1">
-                  {DATE_SHORTCUTS.map(({ label, days }) => {
-                    const date = addDays(startOfDay(new Date()), days);
-                    return (
-                      <ChipOption
-                        key={label}
-                        testId="item-dialog-date-shortcut"
-                        value={label.toLowerCase().replace(/\s+/g, '-')}
-                        onSelect={() => {
-                          patch({ startDate: date });
-                          close();
-                        }}
-                      >
-                        {label}
-                        <span className="text-muted-foreground ml-auto text-xs">
-                          {format(date, 'MMM d')}
-                        </span>
-                      </ChipOption>
-                    );
-                  })}
-                </div>
-                <div className="border-t">
-                  <Calendar
-                    mode="single"
-                    selected={d.startDate}
-                    onSelect={(date) => {
+    const dateChip = config.dateAnchored && (
+      <PropertyChip
+        icon={CalendarIcon}
+        label="Date"
+        testId="item-dialog-date-chip"
+        value={d.startDate ? format(d.startDate, 'MMM d') : undefined}
+        contentClassName="w-auto p-0"
+      >
+        {(close) => (
+          <div>
+            <div className="p-1">
+              {DATE_SHORTCUTS.map(({ label, days }) => {
+                const date = addDays(startOfDay(new Date()), days);
+                return (
+                  <ChipOption
+                    key={label}
+                    testId="item-dialog-date-shortcut"
+                    value={label.toLowerCase().replace(/\s+/g, '-')}
+                    onSelect={() => {
                       patch({ startDate: date });
                       close();
                     }}
-                    initialFocus
-                  />
-                </div>
-                {d.startDate && (
-                  <div className="border-t p-1">
-                    <ChipOption
-                      tone="muted"
-                      onSelect={() => {
-                        patch({ startDate: undefined });
-                        close();
-                      }}
-                    >
-                      <X className="size-3.5" />
-                      No date
-                    </ChipOption>
-                  </div>
-                )}
-              </div>
-            )}
-          </PropertyChip>
-        )}
-
-        {showTime && (
-          <PropertyChip
-            icon={Clock}
-            label="Time"
-            value={timeParts.length > 0 ? timeParts.join(' · ') : undefined}
-            contentClassName="w-56"
-          >
-            {(close) => (
-              <>
-                {mode === 'edit' && !config.dateAnchored && (
-                  <ChipOption
-                    tone="muted"
-                    selected={d.timeBucket === 'none'}
-                    onSelect={() => {
-                      patch({ timeBucket: 'none', startTime: '' });
-                      close();
-                    }}
                   >
-                    No specific bucket
+                    {label}
+                    <span className="text-muted-foreground ml-auto text-xs">
+                      {format(date, 'MMM d')}
+                    </span>
                   </ChipOption>
-                )}
-                {BUCKET_ORDER.map((b) => (
-                  <ChipOption
-                    key={b}
-                    selected={effectiveBucket === b}
-                    onSelect={() => patch({ timeBucket: b })}
-                  >
-                    {BUCKET_LABELS[b]}
-                    {effectiveBucket === b && <Check className="ml-auto size-3.5" />}
-                  </ChipOption>
-                ))}
-
-                {effectiveBucket !== 'none' && effectiveBucket !== 'anytime' && (
-                  <>
-                    <ChipSectionLabel>Specific time</ChipSectionLabel>
-                    <div className="px-2 pb-2">
-                      <Input
-                        type="time"
-                        value={d.startTime}
-                        onChange={(e) => patch({ startTime: e.target.value })}
-                        className="h-9 text-sm"
-                        data-sub-input
-                      />
-                    </div>
-                  </>
-                )}
-
-                {hasDuration && (
-                  <>
-                    <ChipSectionLabel>Duration</ChipSectionLabel>
-                    <div className="pb-1">
-                      {DURATION_ORDER.map((value) => (
-                        <ChipOption
-                          key={value}
-                          selected={d.duration === value}
-                          onSelect={() => {
-                            patch({ duration: value });
-                            close();
-                          }}
-                        >
-                          {DURATION_LABELS[value]}
-                          {d.duration === value && <Check className="ml-auto size-3.5" />}
-                        </ChipOption>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-          </PropertyChip>
-        )}
-
-        {config.counters.dailyCounts && (
-          <PropertyChip
-            icon={Repeat2}
-            label="Times per day"
-            value={`${d.timesPerDay}×`}
-            contentClassName="w-40"
-          >
-            {(close) =>
-              ['1', '2', '3', '4', '5'].map((n) => (
+                );
+              })}
+            </div>
+            <div className="border-t">
+              <Calendar
+                mode="single"
+                selected={d.startDate}
+                onSelect={(date) => {
+                  patch({ startDate: date });
+                  close();
+                }}
+                initialFocus
+              />
+            </div>
+            {d.startDate && (
+              <div className="border-t p-1">
                 <ChipOption
-                  key={n}
-                  selected={d.timesPerDay === n}
+                  tone="muted"
                   onSelect={() => {
-                    patch({ timesPerDay: n });
+                    patch({ startDate: undefined });
                     close();
                   }}
                 >
-                  {n}× a day
-                  {d.timesPerDay === n && <Check className="ml-auto size-3.5" />}
+                  <X className="size-3.5" />
+                  No date
                 </ChipOption>
-              ))
-            }
-          </PropertyChip>
-        )}
-
-        {config.allowedFrequencies.length > 1 && (
-          <PropertyChip
-            icon={Repeat}
-            label="Repeat"
-            value={repeatValue()}
-            contentClassName="w-[19rem]"
-          >
-            {(close) => (
-              <>
-                {Object.entries(REPEAT_FREQUENCY_LABELS)
-                  .filter(([value]) =>
-                    (config.allowedFrequencies as readonly string[]).includes(value)
-                  )
-                  .map(([value, label]) => (
-                    <div key={value}>
-                      <ChipOption
-                        selected={d.repeatFrequency === value}
-                        onSelect={() => {
-                          patch({
-                            repeatFrequency: value as RepeatFrequency,
-                            // Newly switching into Custom days with nothing
-                            // chosen yet pre-selects today — but an item that
-                            // already has custom days saved (or that the user
-                            // already started picking) keeps them untouched.
-                            ...(value === 'custom' && d.repeatDays.length === 0
-                              ? {
-                                  repeatDays: [
-                                    currentDayOfWeek(
-                                      userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
-                                    ),
-                                  ],
-                                }
-                              : null),
-                          });
-                          // The detail pickers live in this popover; only the
-                          // frequencies that carry no detail dismiss it.
-                          if (value !== 'custom' && value !== 'monthly') close();
-                        }}
-                      >
-                        {label}
-                        {d.repeatFrequency === value && <Check className="ml-auto size-3.5" />}
-                      </ChipOption>
-
-                      {value === 'custom' && d.repeatFrequency === 'custom' && (
-                        <div className="px-2 pt-1 pb-2">
-                          <div className="flex gap-1">
-                            {WEEKDAY_LABELS.map((day, index) => (
-                              <button
-                                key={day}
-                                type="button"
-                                onClick={() => toggleDay(index)}
-                                aria-pressed={d.repeatDays.includes(index)}
-                                className={cn(
-                                  'size-9 rounded-md text-xs font-medium transition-all',
-                                  'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
-                                  d.repeatDays.includes(index)
-                                    ? 'bg-primary text-primary-foreground translate-y-px shadow-[var(--shadow-key-pressed)]'
-                                    : 'bg-secondary text-secondary-foreground shadow-[var(--shadow-key-rest)] hover-wash'
-                                )}
-                              >
-                                {day}
-                              </button>
-                            ))}
-                          </div>
-                          {d.repeatDays.length === 0 && (
-                            <p className="text-destructive mt-1.5 text-xs">
-                              Select at least one day
-                            </p>
-                          )}
-                        </div>
-                      )}
-
-                      {value === 'monthly' && d.repeatFrequency === 'monthly' && (
-                        <div className="px-2 pt-1 pb-2">
-                          <div className="grid grid-cols-7 gap-1">
-                            {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
-                              <button
-                                key={day}
-                                type="button"
-                                onClick={() => patch({ repeatMonthDay: day })}
-                                className={cn(
-                                  'h-7 rounded-sm text-xs font-medium tabular-nums transition-colors',
-                                  'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
-                                  d.repeatMonthDay === day
-                                    ? 'bg-primary text-primary-foreground'
-                                    : 'text-muted-foreground hover-wash'
-                                )}
-                              >
-                                {day}
-                              </button>
-                            ))}
-                          </div>
-                          <p className="text-muted-foreground mt-1.5 text-[10px]">
-                            For months with fewer days, it will occur on the last day.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  ))}
-              </>
+              </div>
             )}
-          </PropertyChip>
+          </div>
         )}
+      </PropertyChip>
+    );
 
-        {/* Remind — the cue itself. Gated on the registry capability rather
-            than on `type === 'habit'`, so a custom type that declares
-            `remindable` gets the control without a branch here.
-            In EDIT mode it asks isRemindable(item), which adds the subtask
-            rule — the isCollectible pattern above, and for the same reason: a
-            subtask surfaces only inside its parent, so the scan discards a
-            reminder set on one and the control would have promised nothing. */}
-        {remindable && (
-          <PropertyChip
-            icon={Bell}
-            label="Remind"
-            value={d.reminderTime || undefined}
-            contentClassName="w-[19rem]"
-          >
-            {(close) => (
+    const timeChip = showTime && (
+      <PropertyChip
+        icon={Clock}
+        label="Time"
+        value={timeParts.length > 0 ? timeParts.join(' · ') : undefined}
+        contentClassName="w-56"
+      >
+        {(close) => (
+          <>
+            {mode === 'edit' && !config.dateAnchored && (
+              <ChipOption
+                tone="muted"
+                selected={d.timeBucket === 'none'}
+                onSelect={() => {
+                  patch({ timeBucket: 'none', startTime: '' });
+                  close();
+                }}
+              >
+                No specific bucket
+              </ChipOption>
+            )}
+            {BUCKET_ORDER.map((b) => (
+              <ChipOption
+                key={b}
+                selected={effectiveBucket === b}
+                onSelect={() => patch({ timeBucket: b })}
+              >
+                {BUCKET_LABELS[b]}
+                {effectiveBucket === b && <Check className="ml-auto size-3.5" />}
+              </ChipOption>
+            ))}
+
+            {effectiveBucket !== 'none' && effectiveBucket !== 'anytime' && (
               <>
-                <ChipSectionLabel>Nudge me at</ChipSectionLabel>
+                <ChipSectionLabel>Specific time</ChipSectionLabel>
                 <div className="px-2 pb-2">
                   <Input
                     type="time"
-                    value={d.reminderTime}
-                    onChange={(e) => patch({ reminderTime: e.target.value })}
+                    value={d.startTime}
+                    onChange={(e) => patch({ startTime: e.target.value })}
                     className="h-9 text-sm"
                     data-sub-input
                   />
                 </div>
+              </>
+            )}
 
-                {d.reminderTime && reminderNeedsDate && (
-                  <p className="text-muted-foreground px-2 pb-2 text-[10px]">
-                    Give this a date and it will fire. Without one there is no day
-                    for the reminder to land on.
-                  </p>
-                )}
-
-                {d.reminderTime && (
-                  <>
-                    <ChipSectionLabel>Right after</ChipSectionLabel>
-                    <div className="px-2 pb-2">
-                      <Input
-                        value={d.reminderAnchor}
-                        onChange={(e) => patch({ reminderAnchor: e.target.value })}
-                        placeholder="I pour my coffee"
-                        className="h-9 text-sm"
-                        data-sub-input
-                      />
-                      {/* The one piece of copy in this dialog that is trying to
-                          change what the user types. An event you already do is
-                          a better cue than a clock, and this field is what the
-                          notification actually says — so the hint has to appear
-                          where the sentence is being written, not in a doc. */}
-                      <p className="text-muted-foreground mt-1.5 text-[10px]">
-                        Optional, and worth it. Something you already do beats a
-                        time — it&apos;s what the reminder will say.
-                      </p>
-                    </div>
+            {hasDuration && (
+              <>
+                <ChipSectionLabel>Duration</ChipSectionLabel>
+                <div className="pb-1">
+                  {DURATION_ORDER.map((value) => (
                     <ChipOption
-                      tone="muted"
+                      key={value}
+                      selected={d.duration === value}
                       onSelect={() => {
-                        patch({ reminderTime: '', reminderAnchor: '' });
+                        patch({ duration: value });
                         close();
                       }}
                     >
-                      No reminder
+                      {DURATION_LABELS[value]}
+                      {d.duration === value && <Check className="ml-auto size-3.5" />}
                     </ChipOption>
-                  </>
-                )}
+                  ))}
+                </div>
               </>
             )}
-          </PropertyChip>
+          </>
         )}
-      </div>
+      </PropertyChip>
+    );
+
+    const timesPerDayChip = config.counters.dailyCounts && (
+      <PropertyChip
+        icon={Repeat2}
+        label="Times per day"
+        value={`${d.timesPerDay}×`}
+        contentClassName="w-40"
+      >
+        {(close) =>
+          ['1', '2', '3', '4', '5'].map((n) => (
+            <ChipOption
+              key={n}
+              selected={d.timesPerDay === n}
+              onSelect={() => {
+                patch({ timesPerDay: n });
+                close();
+              }}
+            >
+              {n}× a day
+              {d.timesPerDay === n && <Check className="ml-auto size-3.5" />}
+            </ChipOption>
+          ))
+        }
+      </PropertyChip>
+    );
+
+    const repeatChip = config.allowedFrequencies.length > 1 && (
+      <PropertyChip
+        icon={Repeat}
+        label="Repeat"
+        value={repeatValue()}
+        contentClassName="w-[19rem]"
+      >
+        {(close) => (
+          <>
+            {Object.entries(REPEAT_FREQUENCY_LABELS)
+              .filter(([value]) =>
+                (config.allowedFrequencies as readonly string[]).includes(value)
+              )
+              .map(([value, label]) => (
+                <div key={value}>
+                  <ChipOption
+                    selected={d.repeatFrequency === value}
+                    onSelect={() => {
+                      patch({
+                        repeatFrequency: value as RepeatFrequency,
+                        // Newly switching into Custom days with nothing
+                        // chosen yet pre-selects today — but an item that
+                        // already has custom days saved (or that the user
+                        // already started picking) keeps them untouched.
+                        ...(value === 'custom' && d.repeatDays.length === 0
+                          ? {
+                              repeatDays: [
+                                currentDayOfWeek(
+                                  userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+                                ),
+                              ],
+                            }
+                          : null),
+                      });
+                      // The detail pickers live in this popover; only the
+                      // frequencies that carry no detail dismiss it.
+                      if (value !== 'custom' && value !== 'monthly') close();
+                    }}
+                  >
+                    {label}
+                    {d.repeatFrequency === value && <Check className="ml-auto size-3.5" />}
+                  </ChipOption>
+
+                  {value === 'custom' && d.repeatFrequency === 'custom' && (
+                    <div className="px-2 pt-1 pb-2">
+                      <div className="flex gap-1">
+                        {WEEKDAY_LABELS.map((day, index) => (
+                          <button
+                            key={day}
+                            type="button"
+                            onClick={() => toggleDay(index)}
+                            aria-pressed={d.repeatDays.includes(index)}
+                            className={cn(
+                              'size-9 rounded-md text-xs font-medium transition-all',
+                              'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+                              d.repeatDays.includes(index)
+                                ? 'bg-primary text-primary-foreground translate-y-px shadow-[var(--shadow-key-pressed)]'
+                                : 'bg-secondary text-secondary-foreground shadow-[var(--shadow-key-rest)] hover-wash'
+                            )}
+                          >
+                            {day}
+                          </button>
+                        ))}
+                      </div>
+                      {d.repeatDays.length === 0 && (
+                        <p className="text-destructive mt-1.5 text-xs">
+                          Select at least one day
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {value === 'monthly' && d.repeatFrequency === 'monthly' && (
+                    <div className="px-2 pt-1 pb-2">
+                      <div className="grid grid-cols-7 gap-1">
+                        {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
+                          <button
+                            key={day}
+                            type="button"
+                            onClick={() => patch({ repeatMonthDay: day })}
+                            className={cn(
+                              'h-7 rounded-sm text-xs font-medium tabular-nums transition-colors',
+                              'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+                              d.repeatMonthDay === day
+                                ? 'bg-primary text-primary-foreground'
+                                : 'text-muted-foreground hover-wash'
+                            )}
+                          >
+                            {day}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="text-muted-foreground mt-1.5 text-[10px]">
+                        For months with fewer days, it will occur on the last day.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              ))}
+          </>
+        )}
+      </PropertyChip>
+    );
+
+    /* Remind — the cue itself. Gated on the registry capability rather
+       than on `type === 'habit'`, so a custom type that declares
+       `remindable` gets the control without a branch here.
+       In EDIT mode it asks isRemindable(item), which adds the subtask
+       rule — the isCollectible pattern above, and for the same reason: a
+       subtask surfaces only inside its parent, so the scan discards a
+       reminder set on one and the control would have promised nothing. */
+    const remindChip = remindable && (
+      <PropertyChip
+        icon={Bell}
+        label="Remind"
+        value={d.reminderTime || undefined}
+        contentClassName="w-[19rem]"
+      >
+        {(close) => (
+          <>
+            <ChipSectionLabel>Nudge me at</ChipSectionLabel>
+            <div className="px-2 pb-2">
+              <Input
+                type="time"
+                value={d.reminderTime}
+                onChange={(e) => patch({ reminderTime: e.target.value })}
+                className="h-9 text-sm"
+                data-sub-input
+              />
+            </div>
+
+            {d.reminderTime && reminderNeedsDate && (
+              <p className="text-muted-foreground px-2 pb-2 text-[10px]">
+                Give this a date and it will fire. Without one there is no day
+                for the reminder to land on.
+              </p>
+            )}
+
+            {d.reminderTime && (
+              <>
+                <ChipSectionLabel>Right after</ChipSectionLabel>
+                <div className="px-2 pb-2">
+                  <Input
+                    value={d.reminderAnchor}
+                    onChange={(e) => patch({ reminderAnchor: e.target.value })}
+                    placeholder="I pour my coffee"
+                    className="h-9 text-sm"
+                    data-sub-input
+                  />
+                  {/* The one piece of copy in this dialog that is trying to
+                      change what the user types. An event you already do is
+                      a better cue than a clock, and this field is what the
+                      notification actually says — so the hint has to appear
+                      where the sentence is being written, not in a doc. */}
+                  <p className="text-muted-foreground mt-1.5 text-[10px]">
+                    Optional, and worth it. Something you already do beats a
+                    time — it&apos;s what the reminder will say.
+                  </p>
+                </div>
+                <ChipOption
+                  tone="muted"
+                  onSelect={() => {
+                    patch({ reminderTime: '', reminderAnchor: '' });
+                    close();
+                  }}
+                >
+                  No reminder
+                </ChipOption>
+              </>
+            )}
+          </>
+        )}
+      </PropertyChip>
+    );
+
+    /**
+     * THE BANDS — and every one of them is an answer, not a list.
+     *
+     * Which container bands exist, and in what order, is lib/item-bands.ts's
+     * job: it iterates the container registry, orders by ROLE (what the item is
+     * about → what can switch it off → what it is for) and labels by KIND, so
+     * the noun on screen is `CONTAINER_KINDS[kind].label` and nothing here
+     * spells 'Project'. A fifth kind arrives as a row with no edit in this file.
+     *
+     * An empty band still renders — as its chip's unset state, which is the
+     * dashed "+ Add" affordance the whole dialog already uses for "you may".
+     * That is the rule the layout is built on: the surface's shape is what the
+     * item CAN be, so it does not jump as you fill it in, and a band you have
+     * never used is still a band you can find. What decides a band's existence
+     * is capability, never content — with the one gate exception documented in
+     * `visibleContainerBands`.
+     *
+     * 'When' is a literal because it names no container: it is a layout word
+     * for the schedule chips, and there is no registry field that owns it. The
+     * moment one of these bands names a thing the user can create, its noun
+     * comes from a registry — that is the line the container bands are on.
+     */
+    const bands = visibleContainerBands({
+      classifyKind: classifyKindForItemType(config.containerKind),
+      collectible,
+      collectionsAvailable,
+      goalsAvailable,
+      goalsEnabled: goalsOn,
+      organizeEnabled: organizeOn,
+      counts: {
+        project: containers.length,
+        routine: routines.length,
+        program: programs.length,
+        goal: goals.length,
+      },
+    });
+    /**
+     * NOT `Partial`. container-registry.ts warns that widening `ContainerKind`
+     * lights up almost nothing — there are no switches over it — so this record
+     * is deliberately one of the few places that WILL fail to compile: a fifth
+     * kind gets a band from the registry for free, and an unlisted control would
+     * render that band empty with no affordance in it, which is the one state
+     * the empty-band rule exists to prevent.
+     */
+    const bandControls: Record<ContainerKind, ReactNode> = {
+      project: containerControl,
+      routine: routineControl,
+      program: programControl,
+      goal: goalControl,
+    };
+    const hasWhen = !!(dateChip || timeChip || timesPerDayChip || repeatChip || remindChip);
+
+    return (
+      <ItemBandGroup>
+        {hasWhen && (
+          <ItemBand label="When" testId="item-band-when">
+            {dateChip}
+            {timeChip}
+            {timesPerDayChip}
+            {repeatChip}
+            {remindChip}
+          </ItemBand>
+        )}
+        {bands.map((band) => (
+          <ItemBand key={band.kind} label={band.label} testId={bandTestId(band.kind)}>
+            {bandControls[band.kind]}
+          </ItemBand>
+        ))}
+      </ItemBandGroup>
     );
   };
 
@@ -2014,6 +2183,60 @@ export function ItemDialog({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [presentation, open, onOpenChange]);
+
+  /**
+   * WHERE THE CURSOR GOES WHEN THE PANEL CLOSES.
+   *
+   * Radix's FocusScope used to return focus for the modal; the bare <aside>
+   * (Phase 8) has nothing that does, so closing the panel dropped the cursor on
+   * <body> and the next Tab restarted at the top of the document — several
+   * hundred stops away from the row the user was working on. Logged in the
+   * plan's "Open after Phase 8" list; this is that entry.
+   *
+   * Two rules, and both are about NOT stealing:
+   *
+   *  · Captured on the closed→open edge only. The panel RETARGETS to another
+   *    item without ever closing (the ui-store dialog slot is the selection),
+   *    so re-capturing on every payload change would remember the third row you
+   *    clicked rather than where the session actually started.
+   *  · Restored only when nothing else has claimed the cursor. By the time this
+   *    runs the panel's subtree is gone and the browser has already parked focus
+   *    on <body>; anything ELSE holding it means the user moved on themselves —
+   *    clicked a braindump row, pressed a toolbar button — and pulling the
+   *    cursor back off that is a worse bug than the one being fixed.
+   *
+   * `focus()` unqualified, matching ConfirmDialog: the opener is a row on the
+   * canvas the panel was docked beside, so it is almost always still on screen,
+   * and a focus ring the user cannot see is not a restoration.
+   *
+   * SAYS WHAT IT PINS: the edge rule is held by TWO things — this dependency
+   * list (which does not re-run on a retarget) and the `!returnFocusTo.current`
+   * guard — and neither is discriminable on its own, measured rather than
+   * assumed: mutating either alone leaves tests/unit/item-bands.test.tsx green,
+   * mutating both turns the retarget case red. Either mechanism suffices; both
+   * are kept because the deps list is the kind of thing a later edit widens
+   * without noticing, and then the guard is the only thing left. The `!== body`
+   * half is defensive in the same way: focusing `<body>` is a no-op, so it costs
+   * a property read to keep the handler's contract readable.
+   */
+  const returnFocusTo = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!isPanel) return;
+    if (open) {
+      const opener = document.activeElement as HTMLElement | null;
+      if (!returnFocusTo.current && opener && opener !== document.body) {
+        returnFocusTo.current = opener;
+      }
+      return;
+    }
+    const target = returnFocusTo.current;
+    // Released either way, so a closed panel never pins a removed row in memory.
+    returnFocusTo.current = null;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    if (!target?.isConnected) return;
+    target.focus();
+  }, [isPanel, open]);
 
   // One form renders at a time now: the active tab in add mode, the item's own
   // type in edit mode (the registry NAME, not the envelope discriminant).
@@ -2174,21 +2397,25 @@ export function ItemDialog({
             ))}
             {itemTypesAvailable && (
               <>
-                <div className="bg-border -mx-1 my-1 h-px" />
-                <ChipOption
-                  tone="muted"
-                  onSelect={() => {
-                    close();
-                    // Replaces this dialog rather than stacking on it: openDialog
-                    // swaps the single active slot.
-                    useUIStore
-                      .getState()
-                      .openDialog({ type: 'organize', section: 'types' });
-                  }}
-                >
-                  <Plus className="size-3.5" />
-                  Organize types…
-                </ChipOption>
+                {organizeOn && (
+                  <>
+                    <div className="bg-border -mx-1 my-1 h-px" />
+                    <ChipOption
+                      tone="muted"
+                      onSelect={() => {
+                        close();
+                        // Replaces this dialog rather than stacking on it: openDialog
+                        // swaps the single active slot.
+                        useUIStore
+                          .getState()
+                          .openDialog({ type: 'organize', section: 'types' });
+                      }}
+                    >
+                      <Plus className="size-3.5" />
+                      Organize types…
+                    </ChipOption>
+                  </>
+                )}
               </>
             )}
           </>
@@ -2349,15 +2576,17 @@ export function ItemDialog({
                     <div className="min-w-0 flex-1">{titleInput}</div>
                     {headerActions}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     {typeControl}
+                    {renderPriorityChip(activeTypeName, activeDraft)}
                     {modeLabel}
                   </div>
                 </div>
               ) : (
                 <>
-                  <div className="flex items-center gap-2 pr-8">
+                  <div className="flex flex-wrap items-center gap-2 pr-8">
                     {typeControl}
+                    {renderPriorityChip(activeTypeName, activeDraft)}
                     {modeLabel}
                     {headerActions}
                   </div>

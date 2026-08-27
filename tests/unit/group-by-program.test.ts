@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { groupRows, type GroupableRow, type RowGroup } from '@/lib/grouping';
-import type { Task, Habit, Routine, Program } from '@/lib/planner-types';
+import type { Task, HabitItem, Routine, Program } from '@/lib/planner-types';
 
 /**
  * Group-by-program — the routine grouping's sibling, with the one thing routine
@@ -18,8 +18,8 @@ import type { Task, Habit, Routine, Program } from '@/lib/planner-types';
 const task = (id: string, over: Partial<Task> = {}): Task =>
   ({ id, title: `Task ${id}`, status: 'pending', isScheduled: true, order: 0, timeBucket: 'morning', ...over }) as Task;
 
-const habit = (id: string, over: Partial<Habit> = {}): Habit =>
-  ({ id, title: `Habit ${id}`, group: 'G', streak: 0, status: 'pending', completedDates: [], skippedDates: [], repeatFrequency: 'daily', timeBucket: 'morning', ...over }) as Habit;
+const habit = (id: string, over: Partial<HabitItem> = {}): HabitItem =>
+  ({ id, title: `HabitItem ${id}`, project: 'G', streak: 0, status: 'pending', completedDates: [], skippedDates: [], repeatFrequency: 'daily', timeBucket: 'morning', ...over }) as HabitItem;
 
 const routine = (id: string, name: string, itemIds: string[]): Routine => ({ id, name, itemIds });
 
@@ -29,7 +29,7 @@ const program = (id: string, name: string, itemIds: string[], routineIds: string
 /** Habits then tasks — the row order `flattenDayRows` hands every surface. */
 function groups(
   tasks: Task[],
-  habits: Habit[],
+  habits: HabitItem[],
   programs: Program[],
   routines: Routine[] = []
 ): RowGroup<GroupableRow>[] {

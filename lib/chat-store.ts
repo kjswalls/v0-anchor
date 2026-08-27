@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { usePlannerStore } from './planner-store';
 import { useAISettingsStore } from './ai-settings-store';
 import { buildAnchorContext } from './ai-context';
+import { goalsEnabled } from './extension-gates';
 import { buildBeaconSystemPrompt } from './beacon-system-prompt';
 import { stripReasoningTags } from './chat-utils';
 import { parseSseFrames } from './sse';
@@ -239,10 +240,17 @@ export function createChatStore(config: ChatThreadConfig) {
         let controller: AbortController | null = null;
 
         try {
-          const { items, projects, habitGroups, itemTypes, routines, programs, goals, userTimezone } =
+          const { items, projects, itemTypes, routines, programs, goals, userTimezone } =
             usePlannerStore.getState();
           const context = buildAnchorContext({
-            items, projects, habitGroups, routines, programs, goals, focusItemId, userTimezone,
+            items, projects, routines, programs,
+            // Beacon is told about goals only while the user has the idea
+            // switched on. `buildAnchorContext` already renders nothing for an
+            // empty list, so this removes a LINE from the context rather than
+            // changing its shape — the byte-pinned no-goal output is what an
+            // account with Goals off now gets. Nothing is written either way.
+            goals: goalsEnabled() ? goals : [],
+            focusItemId, userTimezone,
           });
           // Fresh values via getState() to avoid stale closures.
           const { provider, apiKey, model, systemPrompt } = useAISettingsStore.getState();
@@ -415,6 +423,34 @@ function forEachItemThreadKey(fn: (key: string) => void) {
 }
 
 /**
+ * Drop every transcript this browser holds — the global Beacon thread and every
+ * per-item thread, in memory and on disk.
+ *
+ * The most sensitive thing in this app's localStorage after the Beacon API key,
+ * and the one Kirby's original report did not name: `anchor-chat-history` and
+ * every `anchor-item-chat-<id>` hold the VERBATIM conversation, question and
+ * answer, under browser-global keys. The 24h TTL is a quota measure, not a
+ * privacy one — it is not a sign-out, and it does not fire for a thread nobody
+ * reopens until the boot sweep below happens to reach it.
+ *
+ * Clearing the instantiated stores is not enough on its own: a thread that was
+ * never opened this session exists only on disk, which is why the raw key walk
+ * runs too. That is the same pair the provider-change subscriber at the bottom
+ * of this file already needed, now named once and called from both.
+ */
+export function clearChatState(): void {
+  useChatStore.getState().clear();
+  itemChatStores.forEach((store) => store.getState().clear());
+  forEachItemThreadKey((key) => {
+    try {
+      localStorage.removeItem(key);
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
+/**
  * Drop expired item transcripts at boot.
  *
  * The 24h TTL is only checked when a thread is OPENED, so a transcript for an
@@ -444,14 +480,12 @@ if (typeof window !== 'undefined') {
   useAISettingsStore.subscribe((state) => {
     if (state.provider !== prevProvider) {
       prevProvider = state.provider;
-      useChatStore.getState().clear();
+      // Item threads follow the same rule as the global one — a thread must
+      // never interleave replies from two different providers — which is
+      // exactly what clearChatState does, so it is shared with the sign-out
+      // path rather than repeated here.
+      clearChatState();
       useChatStore.getState().syncOpenclawInfo();
-      // Item threads follow the same rule — a thread must never interleave
-      // replies from two different providers. Clearing the instantiated
-      // stores isn't enough: transcripts for threads not opened THIS session
-      // live only in localStorage and would hydrate into the new provider.
-      itemChatStores.forEach((store) => store.getState().clear());
-      forEachItemThreadKey((key) => localStorage.removeItem(key));
     }
   });
 }

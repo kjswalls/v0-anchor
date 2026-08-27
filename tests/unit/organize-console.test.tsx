@@ -1,7 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
 import { CONSOLE_SECTIONS, isConsoleSection } from '@/components/planner/organize/console-rail';
+import { enableGoalsAndOrganize } from './support/extensions';
 
 /**
  * The Organize console's frame (memory/plans/organize-console.md, Phase 2).
@@ -36,14 +37,23 @@ const tick = async () =>
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
 
+/**
+ * The console and both its gated halves are switched ON for this file. Every
+ * test below is about the FRAME, not about the extension gate — the gate has
+ * its own file (extension-gates-organize.test.tsx), and defaulting it on here
+ * would make that file the only thing standing between a broken gate and green.
+ */
+beforeEach(enableGoalsAndOrganize);
+
 describe('the Organize console frame', () => {
   afterEach(cleanup);
 
-  it('exposes all seven sections as tabs, in the decided order', () => {
+  it('exposes all six sections as tabs, in the decided order', () => {
     render(<OrganizeConsole open onOpenChange={() => {}} />);
-    // Item types ABOVE Habit groups — decision 7. The order is asserted rather
-    // than assumed because it is free to change now and awkward once the
-    // habit-groups-into-routines fold starts.
+    // 'Habit groups' sat below 'Item types' until migration 039 (decision 7 put
+    // it there to make a later fold cheap). The fold happened, and it went to
+    // PROJECTS rather than to routines: a habit group described what a habit is
+    // about, which is what a project is, not when it counts.
     //
     // Goals sit LAST in CONTAINERS: routines and programs answer "is this on
     // today", goals answer "why is any of it here", and the daily questions
@@ -54,7 +64,6 @@ describe('the Organize console frame', () => {
       'Goals',
       'Projects',
       'Item types',
-      'Habit groups',
       'Trash',
     ]);
   });
@@ -66,7 +75,7 @@ describe('the Organize console frame', () => {
     // and that would be a silent dependency on matcher behaviour rather than on
     // the DOM being right.
     expect(tab('Routines')).toHaveAccessibleName('Routines');
-    expect(tab('Habit groups')).toHaveAccessibleName('Habit groups');
+    expect(tab('Item types')).toHaveAccessibleName('Item types');
     expect(screen.queryByRole('tab', { name: /CONTAINERS|LABELS/ })).toBeNull();
   });
 
@@ -109,8 +118,8 @@ describe('the Organize console frame', () => {
     const { rerender } = render(
       <OrganizeConsole open onOpenChange={() => {}} section="routines" />
     );
-    fireEvent.mouseDown(tab('Habit groups'), { button: 0 });
-    expect(tab('Habit groups')).toHaveAttribute('aria-selected', 'true');
+    fireEvent.mouseDown(tab('Item types'), { button: 0 });
+    expect(tab('Item types')).toHaveAttribute('aria-selected', 'true');
 
     rerender(<OrganizeConsole open={false} onOpenChange={() => {}} section="routines" />);
     rerender(<OrganizeConsole open onOpenChange={() => {}} section="routines" />);
@@ -124,7 +133,7 @@ describe('the Organize console frame', () => {
     tab('Routines').focus();
     fireEvent.focus(tab('Routines'));
 
-    for (const next of ['Programs', 'Goals', 'Projects', 'Item types', 'Habit groups', 'Trash']) {
+    for (const next of ['Programs', 'Goals', 'Projects', 'Item types', 'Trash']) {
       fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
       await tick();
       expect(tab(next)).toHaveFocus();
@@ -172,12 +181,20 @@ describe('console section slugs', () => {
     expect(isConsoleSection(undefined)).toBe(false);
   });
 
-  it('keeps the five legacy tab values verbatim, so no call site translates', () => {
-    // Every existing openDialog({ tab }) literal must keep working — this is a
+  it('keeps the surviving legacy tab values verbatim, so no call site translates', () => {
+    // Every existing openDialog({ tab }) literal must keep working — that was a
     // variant rename, not a value migration.
     const ids = CONSOLE_SECTIONS.map((s) => s.id);
-    for (const legacy of ['routines', 'programs', 'projects', 'groups', 'types']) {
+    for (const legacy of ['routines', 'programs', 'projects', 'types']) {
       expect(ids).toContain(legacy);
     }
+  });
+
+  it('retires the groups slug rather than aliasing it', () => {
+    // 039 removed the section. A slug that survived as a dead value would not
+    // fail loudly — `sectionMeta` falls through to the FIRST section — so
+    // 'groups' would silently open Routines. `isConsoleSection` rejecting it is
+    // what lets a caller find out.
+    expect(isConsoleSection('groups')).toBe(false);
   });
 });

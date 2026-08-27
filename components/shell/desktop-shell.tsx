@@ -4,6 +4,7 @@ import { useCallback, useMemo } from 'react';
 import { Sidebar } from '@/components/sidebar/sidebar';
 import { ViewRouter } from '@/components/views/view-router';
 import { ProgramNotice } from '@/components/views/program-notice';
+import { DayHeaderNotice } from '@/components/notices/notice-slot';
 import { HeaderCapsule } from '@/components/canvas/header-capsule';
 import { WeekScale } from '@/components/canvas/week-scale';
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
@@ -105,6 +106,13 @@ export function DesktopShell() {
               unbounded line here would push WeekScale off the row's right end
               before it ever thought about eliding. */}
           <ProgramNotice className="mt-2 h-8 min-w-0 max-w-[260px]" />
+          {/* "Today's review is waiting" — beside the date it is about, on the
+              same argument and in the same row as the line above it. Free, for
+              the same reason: the row's height is max(children) and the capsule
+              already sets that at 96. It goes dark on any other date and the
+              line falls back to the dock. WeekScale only renders in week scope,
+              so in day scope these two share the row with room to spare. */}
+          <DayHeaderNotice className="mt-2 h-8 min-w-0 max-w-[280px]" />
           <WeekScale className="ml-auto" />
         </div>
 

@@ -89,7 +89,7 @@ test.describe('organize — projects, types and groups', () => {
 
   async function createLabel(
     page: import('@playwright/test').Page,
-    kind: 'project' | 'group' | 'type',
+    kind: 'project' | 'type',
     name: string
   ) {
     await page.getByTestId(`${kind}-new-name`).fill(name);
@@ -234,45 +234,49 @@ test.describe('organize — projects, types and groups', () => {
     // removeHabitGroup REASSIGNS rather than unassigns, and the old dialog's copy
     // claimed the opposite. The console names the destination; this proves the
     // sentence and the write agree.
-    // THE HABIT GOES IN THE DOOMED GROUP. An empty group exercises the "nothing
+    // THE HABIT GOES IN THE DOOMED CONTAINER. An empty one exercises the "nothing
     // moves" arm, where the destination clause never renders and the write
     // rewrites no rows — the test would then stay green with the reassignment
     // pointed anywhere, or removed.
+    //
+    // ONE CLASSIFY KIND since migration 039, so this drives the PROJECTS section
+    // and the habit is an ordinary member of a project. What still makes it a
+    // reassignment rather than an unfile is the registry's `containerRequired`.
     const title = testTitle('org-group');
     const doomed = scope.title('Doomed');
     const habitId = await createTestHabit(page, { title, timeBucket: 'morning', group: doomed });
     try {
       await reloadApp(page);
-      await openConsole(page, 'Habit groups');
-      // A DESTINATION HAS TO EXIST, and on this account none does. removeHabitGroup
-      // sends members to `habitGroups.find(g => g.id !== deleted)?.name ?? 'Personal'`,
-      // and the dedicated e2e user owns zero habit groups — so the fallback fires
-      // and names a group with no row, which is a real behaviour (covered in
+      await openConsole(page, 'Projects');
+      // A DESTINATION HAS TO EXIST, and on this account none may. `unfiled` sends
+      // a required-container member to `projects.find(p => p.id !== deleted)?.name
+      // ?? 'Personal'`, so with no sibling the fallback fires and names a
+      // container with no row — a real behaviour (covered in
       // tests/unit/container-ids.test.ts) but not the one this test is about.
       // Creating a sibling first makes the reassignment observable instead of
       // depending on whatever the shared account happens to hold.
-      await createLabel(page, 'group', scope.title('Haven'));
-      await createLabel(page, 'group', doomed);
+      await createLabel(page, 'project', scope.title('Haven'));
+      await createLabel(page, 'project', doomed);
 
-      await page.getByTestId('group-delete').click();
+      await page.getByTestId('project-delete').click();
       // Asserted on the confirm itself rather than by walking up from the button
       // with an xpath — the prompt is the surface the user actually reads, and
       // `confirm-dialog` is a stable id the shell owns. The tail is asserted
       // separately because labels.tsx appends it to BOTH arms, so on its own it
       // cannot tell the two apart.
       const copy = (await page.getByTestId('confirm-dialog').textContent())!;
-      expect(copy).toContain('Its 1 habit moves to');
-      expect(copy).toContain('⌘Z brings the group back');
+      expect(copy).toContain('The habit moves to');
+      expect(copy).toContain('⌘Z brings it back');
       const destination = /moves to “([^”]+)”/.exec(copy)?.[1];
       expect(destination).toBeTruthy();
 
       // The count the destination row shows, BEFORE the delete. Read in-session
       // and asserted in-session: the reassignment is deliberately store-only —
-      // dbDeleteHabitGroup stamps deleted_at and `items."group"` is free text
-      // with no FK or trigger, so a reload would re-read the dead name and this
+      // dbDeleteProject stamps deleted_at and `items.project` is free text with
+      // no FK or trigger, so a reload would re-read the dead name and this
       // assertion would go red on correct code.
       const destRow = page
-        .locator('[data-testid="group-row"]')
+        .locator('[data-testid="project-row"]')
         .filter({ hasText: destination! })
         .first();
       // Asserted before reading, so a missing destination fails in 10s naming
@@ -286,7 +290,7 @@ test.describe('organize — projects, types and groups', () => {
       await expect(destRow).toContainText(String(before + 1));
       await closeConsole(page);
 
-      // And nothing was deleted — a group delete never deletes work.
+      // And nothing was deleted — a container delete never deletes work.
       await expect(itemCard(page, habitId)).toHaveCount(1);
     } finally {
       await cleanupTestData(page, [], [habitId]);

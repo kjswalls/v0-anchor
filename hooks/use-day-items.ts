@@ -6,6 +6,7 @@ import { useViewStore } from '@/lib/view-store';
 import { toDateStr } from '@/lib/recurrence';
 import { deriveDayItems, type DayItems } from '@/lib/day-items';
 import { inactiveItemIdsOn } from '@/lib/active';
+import { useGoalFilterIds } from '@/lib/extension-gates';
 
 /**
  * Store-connected wrapper around deriveDayItems — the single data path for
@@ -29,6 +30,7 @@ export function useDayItemsForDates(dates: Date[]): DayItems[] {
     items,
     routines,
     programs,
+    goals,
     showCompletedTasks,
     showPausedOnGrid,
     userTimezone,
@@ -37,6 +39,23 @@ export function useDayItemsForDates(dates: Date[]): DayItems[] {
   const canvasFilters = useViewStore((s) => s.canvasFilters);
 
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  /**
+   * The goal clause, resolved to item ids ONCE for every column.
+   *
+   * Membership is dateless — a goal holds the same items on Monday as on
+   * Friday — so unlike `inactiveItemIds` below there is nothing per-date to
+   * resolve, and a week of columns shares one set. `null` means the clause is
+   * inert (nothing selected, nothing selected that is still a live goal, or —
+   * since the Goals extension — the whole feature switched off); see
+   * lib/goals.ts and lib/extension-gates.ts.
+   *
+   * THE GATE IS HERE, at the canvas's one data path, rather than in each of the
+   * six view mounts. Inert and not empty is what makes switching Goals off
+   * safe on a surface that was filtered by one: `passesGoalFilter` reads `null`
+   * as "do not narrow", so every row the clause was hiding comes straight back.
+   */
+  const goalMemberIds = useGoalFilterIds(goals, canvasFilters.goals);
 
   /**
    * The memo key for `dates`, since a fresh array every render would defeat it.
@@ -74,6 +93,7 @@ export function useDayItemsForDates(dates: Date[]): DayItems[] {
           typeFilter,
           showCompletedTasks,
           filters: canvasFilters,
+          goalMemberIds,
           // Resolved against THIS column's date, not the store's selectedDate: a
           // week view renders seven days at once, and a pause that ends mid-week
           // — or a program's range starting on Wednesday — must show the handoff
@@ -97,7 +117,7 @@ export function useDayItemsForDates(dates: Date[]): DayItems[] {
     // array as well would re-derive on every render for the array-literal
     // callers, which is every caller.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dateKey, tasks, habits, projects, items, routines, programs, timezone, typeFilter, showCompletedTasks, showPausedOnGrid, canvasFilters]
+    [dateKey, tasks, habits, projects, items, routines, programs, timezone, typeFilter, showCompletedTasks, showPausedOnGrid, canvasFilters, goalMemberIds]
   );
 }
 

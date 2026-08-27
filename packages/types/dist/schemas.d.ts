@@ -472,6 +472,15 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     aiStatusAt?: string | undefined;
 }>;
 export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
+    group: z.ZodString;
+    /**
+     * Stable id of the group named by `group` (migration 027).
+     *
+     * Post-039 this is the PROJECT's id — the habit_groups row it used to name
+     * became a projects row keeping its uuid, which is what lets this field mean
+     * the same thing to an old plugin build without a translation table.
+     */
+    groupId: z.ZodOptional<z.ZodString>;
     /**
      * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
      * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
@@ -498,13 +507,6 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     pausedUntil: z.ZodOptional<z.ZodString>;
     id: z.ZodString;
     title: z.ZodString;
-    group: z.ZodString;
-    /**
-     * Stable id of the group named by `group` (migration 027). The habit-side
-     * twin of `projectId` — see its note on taskShape for why the name stays and
-     * why this has to live in the shape rather than only in the DB.
-     */
-    groupId: z.ZodOptional<z.ZodString>;
     streak: z.ZodNumber;
     status: z.ZodEnum<["pending", "done", "skipped"]>;
     completedDates: z.ZodArray<z.ZodString, "many">;
@@ -613,7 +615,7 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     currentDayCount?: number | undefined;
 }>;
 export declare const TASK_FIELDS: (keyof z.infer<typeof TaskSchema>)[];
-export declare const HABIT_FIELDS: (keyof z.infer<typeof HabitSchema>)[];
+export declare const HABIT_FIELDS: (keyof z.infer<typeof HabitItemSchema>)[];
 export declare const PROJECT_FIELDS: (keyof z.infer<typeof ProjectSchema>)[];
 export declare const HABIT_GROUP_FIELDS: (keyof z.infer<typeof HabitGroupSchema>)[];
 export declare const ROUTINE_FIELDS: (keyof z.infer<typeof RoutineSchema>)[];
@@ -831,6 +833,18 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
 }>;
 export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     /**
+     * Optional, exactly like the task side's — one CLASSIFY axis means one field
+     * shape, and every consumer reads `item.project` off the union without
+     * narrowing. "A habit must be filed somewhere" is a CAPABILITY
+     * (`containerRequired`), enforced by the dialog and the seed fallback, not by
+     * this field's presence: the legacy column was NOT NULL and produced '' for
+     * the unset case, so making the type require a string only ever moved that ''
+     * around. `toLegacyHabit` restores the required `group: string` on the way out.
+     */
+    project: z.ZodOptional<z.ZodString>;
+    /** See taskShape.projectId: the name stays authoritative, the id survives renames. */
+    projectId: z.ZodOptional<z.ZodString>;
+    /**
      * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
      * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
      * items.reminder_at column was left alone rather than reused.
@@ -856,13 +870,6 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     pausedUntil: z.ZodOptional<z.ZodString>;
     id: z.ZodString;
     title: z.ZodString;
-    group: z.ZodString;
-    /**
-     * Stable id of the group named by `group` (migration 027). The habit-side
-     * twin of `projectId` — see its note on taskShape for why the name stays and
-     * why this has to live in the shape rather than only in the DB.
-     */
-    groupId: z.ZodOptional<z.ZodString>;
     streak: z.ZodNumber;
     status: z.ZodEnum<["pending", "done", "skipped"]>;
     completedDates: z.ZodArray<z.ZodString, "many">;
@@ -886,7 +893,6 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     skippedDates: string[];
     id: string;
     title: string;
-    group: string;
     streak: number;
     dailyCounts: Record<string, number>;
     repeatDays?: number[] | undefined;
@@ -898,8 +904,9 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
+    project?: string | undefined;
     notes?: string | undefined;
-    groupId?: string | undefined;
+    projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }, {
@@ -910,7 +917,6 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     skippedDates: string[];
     id: string;
     title: string;
-    group: string;
     streak: number;
     dailyCounts: Record<string, number>;
     repeatDays?: number[] | undefined;
@@ -922,8 +928,9 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
+    project?: string | undefined;
     notes?: string | null | undefined;
-    groupId?: string | undefined;
+    projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }>, {
@@ -934,7 +941,6 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     skippedDates: string[];
     id: string;
     title: string;
-    group: string;
     streak: number;
     dailyCounts: Record<string, number>;
     repeatDays?: number[] | undefined;
@@ -946,8 +952,9 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
+    project?: string | undefined;
     notes?: string | undefined;
-    groupId?: string | undefined;
+    projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }, {
@@ -958,7 +965,6 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     skippedDates: string[];
     id: string;
     title: string;
-    group: string;
     streak: number;
     dailyCounts: Record<string, number>;
     repeatDays?: number[] | undefined;
@@ -970,8 +976,9 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
+    project?: string | undefined;
     notes?: string | null | undefined;
-    groupId?: string | undefined;
+    projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }>;
@@ -1346,6 +1353,18 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatusAt?: string | undefined;
 }>, z.ZodObject<{
     /**
+     * Optional, exactly like the task side's — one CLASSIFY axis means one field
+     * shape, and every consumer reads `item.project` off the union without
+     * narrowing. "A habit must be filed somewhere" is a CAPABILITY
+     * (`containerRequired`), enforced by the dialog and the seed fallback, not by
+     * this field's presence: the legacy column was NOT NULL and produced '' for
+     * the unset case, so making the type require a string only ever moved that ''
+     * around. `toLegacyHabit` restores the required `group: string` on the way out.
+     */
+    project: z.ZodOptional<z.ZodString>;
+    /** See taskShape.projectId: the name stays authoritative, the id survives renames. */
+    projectId: z.ZodOptional<z.ZodString>;
+    /**
      * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
      * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
      * items.reminder_at column was left alone rather than reused.
@@ -1371,13 +1390,6 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     pausedUntil: z.ZodOptional<z.ZodString>;
     id: z.ZodString;
     title: z.ZodString;
-    group: z.ZodString;
-    /**
-     * Stable id of the group named by `group` (migration 027). The habit-side
-     * twin of `projectId` — see its note on taskShape for why the name stays and
-     * why this has to live in the shape rather than only in the DB.
-     */
-    groupId: z.ZodOptional<z.ZodString>;
     streak: z.ZodNumber;
     status: z.ZodEnum<["pending", "done", "skipped"]>;
     completedDates: z.ZodArray<z.ZodString, "many">;
@@ -1401,7 +1413,6 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     skippedDates: string[];
     id: string;
     title: string;
-    group: string;
     streak: number;
     dailyCounts: Record<string, number>;
     repeatDays?: number[] | undefined;
@@ -1413,8 +1424,9 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
+    project?: string | undefined;
     notes?: string | undefined;
-    groupId?: string | undefined;
+    projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }, {
@@ -1425,7 +1437,6 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     skippedDates: string[];
     id: string;
     title: string;
-    group: string;
     streak: number;
     dailyCounts: Record<string, number>;
     repeatDays?: number[] | undefined;
@@ -1437,8 +1448,9 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
+    project?: string | undefined;
     notes?: string | null | undefined;
-    groupId?: string | undefined;
+    projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
 }>, z.ZodObject<{
@@ -1599,6 +1611,30 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
 }>]>, {
+    type: "habit";
+    status: "pending" | "done" | "skipped";
+    repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom";
+    completedDates: string[];
+    skippedDates: string[];
+    id: string;
+    title: string;
+    streak: number;
+    dailyCounts: Record<string, number>;
+    repeatDays?: number[] | undefined;
+    repeatMonthDay?: number | undefined;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+    startTime?: string | undefined;
+    duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
+    project?: string | undefined;
+    notes?: string | undefined;
+    projectId?: string | undefined;
+    timesPerDay?: number | undefined;
+    currentDayCount?: number | undefined;
+} | {
     type: "task";
     status: "pending" | "completed" | "cancelled";
     id: string;
@@ -1630,30 +1666,6 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
-} | {
-    type: "habit";
-    status: "pending" | "done" | "skipped";
-    repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom";
-    completedDates: string[];
-    skippedDates: string[];
-    id: string;
-    title: string;
-    group: string;
-    streak: number;
-    dailyCounts: Record<string, number>;
-    repeatDays?: number[] | undefined;
-    repeatMonthDay?: number | undefined;
-    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
-    startTime?: string | undefined;
-    duration?: number | undefined;
-    pausedAt?: string | undefined;
-    pausedUntil?: string | undefined;
-    reminderTime?: string | undefined;
-    reminderAnchor?: string | undefined;
-    notes?: string | undefined;
-    groupId?: string | undefined;
-    timesPerDay?: number | undefined;
-    currentDayCount?: number | undefined;
 } | {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -1688,6 +1700,30 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
 }, {
+    type: "habit";
+    status: "pending" | "done" | "skipped";
+    repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | "weekly";
+    completedDates: string[];
+    skippedDates: string[];
+    id: string;
+    title: string;
+    streak: number;
+    dailyCounts: Record<string, number>;
+    repeatDays?: number[] | undefined;
+    repeatMonthDay?: number | undefined;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+    startTime?: string | undefined;
+    duration?: number | undefined;
+    pausedAt?: string | undefined;
+    pausedUntil?: string | undefined;
+    reminderTime?: string | undefined;
+    reminderAnchor?: string | undefined;
+    project?: string | undefined;
+    notes?: string | null | undefined;
+    projectId?: string | undefined;
+    timesPerDay?: number | undefined;
+    currentDayCount?: number | undefined;
+} | {
     type: "task";
     status: "pending" | "completed" | "cancelled";
     id: string;
@@ -1719,30 +1755,6 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
     aiStatusAt?: string | undefined;
-} | {
-    type: "habit";
-    status: "pending" | "done" | "skipped";
-    repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | "weekly";
-    completedDates: string[];
-    skippedDates: string[];
-    id: string;
-    title: string;
-    group: string;
-    streak: number;
-    dailyCounts: Record<string, number>;
-    repeatDays?: number[] | undefined;
-    repeatMonthDay?: number | undefined;
-    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
-    startTime?: string | undefined;
-    duration?: number | undefined;
-    pausedAt?: string | undefined;
-    pausedUntil?: string | undefined;
-    reminderTime?: string | undefined;
-    reminderAnchor?: string | undefined;
-    notes?: string | null | undefined;
-    groupId?: string | undefined;
-    timesPerDay?: number | undefined;
-    currentDayCount?: number | undefined;
 } | {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -2013,6 +2025,14 @@ export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     currentDayCount: z.ZodOptional<z.ZodNumber>;
     reminderTime: z.ZodOptional<z.ZodString>;
     /**
+     * Stable id of the group named by `group` (migration 027).
+     *
+     * Post-039 this is the PROJECT's id — the habit_groups row it used to name
+     * became a projects row keeping its uuid, which is what lets this field mean
+     * the same thing to an old plugin build without a translation table.
+     */
+    groupId: z.ZodOptional<z.ZodString>;
+    /**
      * The implementation-intention phrase the cue is rehearsed as — "after I pour
      * my coffee". Free text, never parsed; rendered into the notification body.
      */
@@ -2030,12 +2050,6 @@ export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
      * sweep's resume grace.
      */
     pausedUntil: z.ZodOptional<z.ZodString>;
-    /**
-     * Stable id of the group named by `group` (migration 027). The habit-side
-     * twin of `projectId` — see its note on taskShape for why the name stays and
-     * why this has to live in the shape rather than only in the DB.
-     */
-    groupId: z.ZodOptional<z.ZodString>;
     timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
     startTime: z.ZodOptional<z.ZodString>;
     notes: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
@@ -3394,6 +3408,15 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiStatusAt?: string | undefined;
     }>, "many">;
     habits: z.ZodArray<z.ZodEffects<z.ZodObject<{
+        group: z.ZodString;
+        /**
+         * Stable id of the group named by `group` (migration 027).
+         *
+         * Post-039 this is the PROJECT's id — the habit_groups row it used to name
+         * became a projects row keeping its uuid, which is what lets this field mean
+         * the same thing to an old plugin build without a translation table.
+         */
+        groupId: z.ZodOptional<z.ZodString>;
         /**
          * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
          * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
@@ -3420,13 +3443,6 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         pausedUntil: z.ZodOptional<z.ZodString>;
         id: z.ZodString;
         title: z.ZodString;
-        group: z.ZodString;
-        /**
-         * Stable id of the group named by `group` (migration 027). The habit-side
-         * twin of `projectId` — see its note on taskShape for why the name stays and
-         * why this has to live in the shape rather than only in the DB.
-         */
-        groupId: z.ZodOptional<z.ZodString>;
         streak: z.ZodNumber;
         status: z.ZodEnum<["pending", "done", "skipped"]>;
         completedDates: z.ZodArray<z.ZodString, "many">;
@@ -3732,6 +3748,18 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiStatusAt?: string | undefined;
     }>, z.ZodObject<{
         /**
+         * Optional, exactly like the task side's — one CLASSIFY axis means one field
+         * shape, and every consumer reads `item.project` off the union without
+         * narrowing. "A habit must be filed somewhere" is a CAPABILITY
+         * (`containerRequired`), enforced by the dialog and the seed fallback, not by
+         * this field's presence: the legacy column was NOT NULL and produced '' for
+         * the unset case, so making the type require a string only ever moved that ''
+         * around. `toLegacyHabit` restores the required `group: string` on the way out.
+         */
+        project: z.ZodOptional<z.ZodString>;
+        /** See taskShape.projectId: the name stays authoritative, the id survives renames. */
+        projectId: z.ZodOptional<z.ZodString>;
+        /**
          * Local wall-clock 'HH:mm' for this item's daily cue, or absent for no
          * reminder. NOT a timestamp: see migration 032 on why the instant-shaped
          * items.reminder_at column was left alone rather than reused.
@@ -3757,13 +3785,6 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         pausedUntil: z.ZodOptional<z.ZodString>;
         id: z.ZodString;
         title: z.ZodString;
-        group: z.ZodString;
-        /**
-         * Stable id of the group named by `group` (migration 027). The habit-side
-         * twin of `projectId` — see its note on taskShape for why the name stays and
-         * why this has to live in the shape rather than only in the DB.
-         */
-        groupId: z.ZodOptional<z.ZodString>;
         streak: z.ZodNumber;
         status: z.ZodEnum<["pending", "done", "skipped"]>;
         completedDates: z.ZodArray<z.ZodString, "many">;
@@ -3787,7 +3808,6 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         skippedDates: string[];
         id: string;
         title: string;
-        group: string;
         streak: number;
         dailyCounts: Record<string, number>;
         repeatDays?: number[] | undefined;
@@ -3799,8 +3819,9 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
         reminderAnchor?: string | undefined;
+        project?: string | undefined;
         notes?: string | undefined;
-        groupId?: string | undefined;
+        projectId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
     }, {
@@ -3811,7 +3832,6 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         skippedDates: string[];
         id: string;
         title: string;
-        group: string;
         streak: number;
         dailyCounts: Record<string, number>;
         repeatDays?: number[] | undefined;
@@ -3823,8 +3843,9 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
         reminderAnchor?: string | undefined;
+        project?: string | undefined;
         notes?: string | null | undefined;
-        groupId?: string | undefined;
+        projectId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
     }>, z.ZodObject<{
@@ -3985,6 +4006,30 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
     }>]>, {
+        type: "habit";
+        status: "pending" | "done" | "skipped";
+        repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom";
+        completedDates: string[];
+        skippedDates: string[];
+        id: string;
+        title: string;
+        streak: number;
+        dailyCounts: Record<string, number>;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
+        project?: string | undefined;
+        notes?: string | undefined;
+        projectId?: string | undefined;
+        timesPerDay?: number | undefined;
+        currentDayCount?: number | undefined;
+    } | {
         type: "task";
         status: "pending" | "completed" | "cancelled";
         id: string;
@@ -4016,30 +4061,6 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
-    } | {
-        type: "habit";
-        status: "pending" | "done" | "skipped";
-        repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom";
-        completedDates: string[];
-        skippedDates: string[];
-        id: string;
-        title: string;
-        group: string;
-        streak: number;
-        dailyCounts: Record<string, number>;
-        repeatDays?: number[] | undefined;
-        repeatMonthDay?: number | undefined;
-        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
-        startTime?: string | undefined;
-        duration?: number | undefined;
-        pausedAt?: string | undefined;
-        pausedUntil?: string | undefined;
-        reminderTime?: string | undefined;
-        reminderAnchor?: string | undefined;
-        notes?: string | undefined;
-        groupId?: string | undefined;
-        timesPerDay?: number | undefined;
-        currentDayCount?: number | undefined;
     } | {
         type: "custom";
         status: "pending" | "completed" | "cancelled";
@@ -4074,6 +4095,30 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
     }, {
+        type: "habit";
+        status: "pending" | "done" | "skipped";
+        repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | "weekly";
+        completedDates: string[];
+        skippedDates: string[];
+        id: string;
+        title: string;
+        streak: number;
+        dailyCounts: Record<string, number>;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
+        project?: string | undefined;
+        notes?: string | null | undefined;
+        projectId?: string | undefined;
+        timesPerDay?: number | undefined;
+        currentDayCount?: number | undefined;
+    } | {
         type: "task";
         status: "pending" | "completed" | "cancelled";
         id: string;
@@ -4105,30 +4150,6 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
-    } | {
-        type: "habit";
-        status: "pending" | "done" | "skipped";
-        repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | "weekly";
-        completedDates: string[];
-        skippedDates: string[];
-        id: string;
-        title: string;
-        group: string;
-        streak: number;
-        dailyCounts: Record<string, number>;
-        repeatDays?: number[] | undefined;
-        repeatMonthDay?: number | undefined;
-        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
-        startTime?: string | undefined;
-        duration?: number | undefined;
-        pausedAt?: string | undefined;
-        pausedUntil?: string | undefined;
-        reminderTime?: string | undefined;
-        reminderAnchor?: string | undefined;
-        notes?: string | null | undefined;
-        groupId?: string | undefined;
-        timesPerDay?: number | undefined;
-        currentDayCount?: number | undefined;
     } | {
         type: "custom";
         status: "pending" | "completed" | "cancelled";
@@ -4420,6 +4441,30 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
     }[];
     userTimezone?: string | undefined;
     items?: ({
+        type: "habit";
+        status: "pending" | "done" | "skipped";
+        repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom";
+        completedDates: string[];
+        skippedDates: string[];
+        id: string;
+        title: string;
+        streak: number;
+        dailyCounts: Record<string, number>;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
+        project?: string | undefined;
+        notes?: string | undefined;
+        projectId?: string | undefined;
+        timesPerDay?: number | undefined;
+        currentDayCount?: number | undefined;
+    } | {
         type: "task";
         status: "pending" | "completed" | "cancelled";
         id: string;
@@ -4451,30 +4496,6 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
-    } | {
-        type: "habit";
-        status: "pending" | "done" | "skipped";
-        repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom";
-        completedDates: string[];
-        skippedDates: string[];
-        id: string;
-        title: string;
-        group: string;
-        streak: number;
-        dailyCounts: Record<string, number>;
-        repeatDays?: number[] | undefined;
-        repeatMonthDay?: number | undefined;
-        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
-        startTime?: string | undefined;
-        duration?: number | undefined;
-        pausedAt?: string | undefined;
-        pausedUntil?: string | undefined;
-        reminderTime?: string | undefined;
-        reminderAnchor?: string | undefined;
-        notes?: string | undefined;
-        groupId?: string | undefined;
-        timesPerDay?: number | undefined;
-        currentDayCount?: number | undefined;
     } | {
         type: "custom";
         status: "pending" | "completed" | "cancelled";
@@ -4627,6 +4648,30 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
     }[];
     userTimezone?: string | undefined;
     items?: ({
+        type: "habit";
+        status: "pending" | "done" | "skipped";
+        repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | "weekly";
+        completedDates: string[];
+        skippedDates: string[];
+        id: string;
+        title: string;
+        streak: number;
+        dailyCounts: Record<string, number>;
+        repeatDays?: number[] | undefined;
+        repeatMonthDay?: number | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        duration?: number | undefined;
+        pausedAt?: string | undefined;
+        pausedUntil?: string | undefined;
+        reminderTime?: string | undefined;
+        reminderAnchor?: string | undefined;
+        project?: string | undefined;
+        notes?: string | null | undefined;
+        projectId?: string | undefined;
+        timesPerDay?: number | undefined;
+        currentDayCount?: number | undefined;
+    } | {
         type: "task";
         status: "pending" | "completed" | "cancelled";
         id: string;
@@ -4658,30 +4703,6 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
         aiStatusAt?: string | undefined;
-    } | {
-        type: "habit";
-        status: "pending" | "done" | "skipped";
-        repeatFrequency: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | "weekly";
-        completedDates: string[];
-        skippedDates: string[];
-        id: string;
-        title: string;
-        group: string;
-        streak: number;
-        dailyCounts: Record<string, number>;
-        repeatDays?: number[] | undefined;
-        repeatMonthDay?: number | undefined;
-        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
-        startTime?: string | undefined;
-        duration?: number | undefined;
-        pausedAt?: string | undefined;
-        pausedUntil?: string | undefined;
-        reminderTime?: string | undefined;
-        reminderAnchor?: string | undefined;
-        notes?: string | null | undefined;
-        groupId?: string | undefined;
-        timesPerDay?: number | undefined;
-        currentDayCount?: number | undefined;
     } | {
         type: "custom";
         status: "pending" | "completed" | "cancelled";

@@ -9,12 +9,17 @@ import { ProjectBlock } from '@/components/views/project-block';
 import { useCurrentBucket } from '@/hooks/use-current-bucket';
 import { useDayItems } from '@/hooks/use-day-items';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useDragStore } from '@/lib/drag-store';
+import { isDropTargetOffered } from '@/lib/dnd/drop-targets';
 import { useViewStore, type BucketStyle } from '@/lib/view-store';
+import { useCanvasGroupBy } from '@/lib/extension-gates';
 import { openEditFor, openAddDialog } from '@/lib/ui-store';
 import { BUCKET_ORDER } from '@/lib/day-items';
 import { groupRows, type GroupableRow, type RowGroup } from '@/lib/grouping';
 import { groupBySupport } from '@/lib/view-options';
-import type { Task, Habit, Project, TimeBucket } from '@/lib/planner-types';
+import { sinkCompleted } from '@/lib/sort-rows';
+import { toDateStr } from '@/lib/recurrence';
+import type { Task, HabitItem, Project, TimeBucket } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -23,11 +28,62 @@ import { cn } from '@/lib/utils';
  *   {bucket}                      whole-card highlight + fallback drop
  *   unscheduled:{bucket}          untimed section (drop → no time)
  *   scheduled:{bucket}:{pos}:{refType}:{refId} + scheduled:{bucket}:empty
+ *   spine:{bucket}:{above|below}:{itemId}   the same gap box, for a finger:
+ *                                 assigns the bucket, no time (drop-targets.ts)
  */
 
-function ScheduledDropZone({ dropId, isActive }: { dropId: string; isActive: boolean }) {
-  const { isOver, setNodeRef } = useDroppable({ id: dropId });
-  if (!isActive) return null;
+/**
+ * The gap between two timed rows: ONE box, two meanings, chosen by input type.
+ *
+ * A cursor gets `scheduled:{bucket}:{before|after}:{ref}` — schedule at that
+ * row's time ±30 min, unchanged in every respect. A finger gets
+ * `spine:{bucket}:{above|below}:{id}` — assign this bucket, no time. Which of
+ * the two is offered is not decided here; it is `OFFERED_TO` in
+ * lib/dnd/drop-targets.ts, and this component just asks. The input comes from
+ * the drag store, i.e. from the activator event of the gesture actually in
+ * progress — never a media query, so a touchscreen laptop's mouse keeps the
+ * timed sliver while the same machine's finger does not.
+ *
+ * SUBSTITUTING rather than dropping the box is load-bearing, and the reason is
+ * geometric. Collision is `closestCenter`, which compares centres and not
+ * containment, so these boxes are what give the timed spine a droppable centre
+ * every ~44px. Mount nothing for touch and the lowest centre a tall bucket card
+ * owns becomes the card's own middle — everything below the midpoint between
+ * that and the next card's centre then resolves to the NEXT BUCKET, which is a
+ * silent wrong-bucket write in the view whose whole job is bucket placement.
+ * Same box, same rect, same centre: touch geometry is main's, to the pixel, and
+ * only the command changes. `tests/unit/dnd-touch-drop-geometry.test.tsx` holds
+ * the band shut.
+ */
+function TimedGapDropZone({
+  bucket,
+  position,
+  refType,
+  refId,
+  isActive,
+}: {
+  bucket: TimeBucket;
+  position: 'before' | 'after';
+  refType: 'task' | 'habit';
+  refId: string;
+  isActive: boolean;
+}) {
+  const sliverId = `scheduled:${bucket}:${position}:${refType}:${refId}`;
+  const spineId = `spine:${bucket}:${position === 'before' ? 'above' : 'below'}:${refId}`;
+  // Both registered unconditionally — hooks cannot be conditional, and a
+  // droppable with no node attached has no rect, so the unused one cannot be
+  // collided with. Exactly one is offered to any given input; the table is what
+  // guarantees that, and a test asserts it.
+  const sliver = useDroppable({ id: sliverId });
+  const spine = useDroppable({ id: spineId });
+  const input = useDragStore((s) => s.input);
+
+  if (!isActive || !input) return null;
+  const timed = isDropTargetOffered(sliverId, input);
+  const zone = timed ? sliver : isDropTargetOffered(spineId, input) ? spine : null;
+  if (!zone) return null;
+  const { isOver, setNodeRef } = zone;
+
   return (
     <div
       ref={setNodeRef}
@@ -35,21 +91,37 @@ function ScheduledDropZone({ dropId, isActive }: { dropId: string; isActive: boo
       // which made it both untestable and invisible to a test aiming nearby —
       // collision is closestCenter, so a drop meant for unscheduled:{bucket}
       // can silently resolve here instead and assign a TIME.
-      data-dnd-id={dropId}
+      data-dnd-id={timed ? sliverId : spineId}
       data-dnd-over={isOver ? 'true' : 'false'}
+      // Identical geometry either way, hover included. That is deliberate: the
+      // touch path must keep main's rects exactly, or the spine's centres move.
       className={cn('-my-0.5 flex h-2 items-center transition-all', isOver && 'my-1 h-6')}
     >
-      {/* A solid 2px rule, not a dashed box. The dashed rectangle was the only
-          drop affordance in the view that looked nothing like the view; a rule
-          where the row will land is the same gesture the schedule grid uses.
-          Lime never takes alpha — see the NowMarker. */}
-      <span
-        aria-hidden
-        className={cn(
-          'h-[2px] w-full rounded-[1px] transition-colors',
-          isOver ? 'bg-primary' : 'bg-transparent'
-        )}
-      />
+      {timed ? (
+        /* A solid 2px rule, not a dashed box. The dashed rectangle was the only
+           drop affordance in the view that looked nothing like the view; a rule
+           where the row will land is the same gesture the schedule grid uses.
+           Lime never takes alpha — see the NowMarker. */
+        <span
+          aria-hidden
+          className={cn(
+            'h-[2px] w-full rounded-[1px] transition-colors',
+            isOver ? 'bg-primary' : 'bg-transparent'
+          )}
+        />
+      ) : (
+        /* Not a rule: this drop sets no time, so a line drawn between two rows
+           would promise a position the row will not take. The armed tray fill
+           is the affordance the empty-bucket tray already uses for "this bucket
+           takes it, untimed". */
+        <span
+          aria-hidden
+          className={cn(
+            'h-full w-full rounded-md transition-colors',
+            isOver ? 'bg-[var(--bkt-tray-armed)]' : 'bg-transparent'
+          )}
+        />
+      )}
     </div>
   );
 }
@@ -82,11 +154,19 @@ function EmptyBucketDropZone({ bucket }: { bucket: TimeBucket }) {
 interface DayBucketProps {
   bucket: TimeBucket;
   tasks: Task[];
-  habits: Habit[];
+  habits: HabitItem[];
   recurringProjects: Project[];
   activeId: string | null;
   isCurrent: boolean;
   variant: BucketStyle;
+  /**
+   * The rendered day, in the USER's zone. Threaded down rather than re-resolved
+   * per card: a recurring row's completion is per-date, and `toDateStr` builds
+   * an uncached Intl.DateTimeFormat per call (see the note in
+   * hooks/use-day-items.ts) — four cards would pay for it four times to reach
+   * the same answer.
+   */
+  dateStr: string;
 }
 
 /**
@@ -102,10 +182,11 @@ function defaultBucketGroups(rows: GroupableRow[]): RowGroup<GroupableRow>[] {
   ].filter((g) => g.rows.length > 0);
 }
 
-function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurrent, variant }: DayBucketProps) {
-  const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
+function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurrent, variant, dateStr }: DayBucketProps) {
+  const canvasGroupBy = useCanvasGroupBy();
   const routines = usePlannerStore((s) => s.routines);
   const programs = usePlannerStore((s) => s.programs);
+  const goals = usePlannerStore((s) => s.goals);
   const dragging = !!activeId;
 
   // Whole-card droppable: highlight + fallback drop target (bare bucket id)
@@ -141,10 +222,33 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
     ...untimedHabits.map((h) => ({ itemType: 'habit' as const, item: h })),
     ...untimedTasks.map((t) => ({ itemType: 'task' as const, item: t })),
   ];
-  const untimedGroups =
+  /**
+   * Finished rows sink to the foot of each untimed section — the SAME half of
+   * the card grouping already governs, and stopping at the same line for the
+   * same reason.
+   *
+   * This is not the "sort control that silently governs half a card" that
+   * lib/sort-rows.ts records as considered and rejected. That objection is about
+   * a menu value claiming a surface and then reaching half of it. There is no
+   * control here and nothing claimed; what the sink must not do is overwrite an
+   * order the USER authored, and the two halves differ on exactly that. The
+   * untimed section's order is "habits, then tasks, then whatever the derivation
+   * emitted" — nobody chose it. The timed spine's order IS each row's own
+   * `startTime`, which the user set and which `inferDropTime` reads back:
+   * `scheduled:{bucket}:before|after:{type}:{id}` resolves to ±30 min from that
+   * row's time (lib/dnd/CONTRACT.md), so a completed 9am row pushed below an
+   * 11am one would make "drop above the 11am row" assign 10:30 — a time on the
+   * far side of the row the pointer was actually above.
+   *
+   * So the spine keeps its clock and only the untimed rows move. A completed
+   * timed row staying put is not the sink failing there; it is that the spine's
+   * position already means something else.
+   */
+  const untimedGroups = (
     canvasGroupBy !== 'none' && groupBySupport('day', 'buckets', canvasGroupBy).honoured
-      ? groupRows(untimedRows, canvasGroupBy, { routines, programs })
-      : defaultBucketGroups(untimedRows);
+      ? groupRows(untimedRows, canvasGroupBy, { routines, programs, goals })
+      : defaultBucketGroups(untimedRows)
+  ).map((g) => ({ ...g, rows: sinkCompleted(g.rows, dateStr) }));
 
   // Timed rows flat, sorted by time (already time-sorted from deriveDayItems)
   const timedRows = [
@@ -227,14 +331,20 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
 
             {timedRows.map((entry, idx) => (
               <div key={entry.item.id}>
-                <ScheduledDropZone
-                  dropId={`scheduled:${bucket}:before:${entry.type}:${entry.item.id}`}
+                <TimedGapDropZone
+                  bucket={bucket}
+                  position="before"
+                  refType={entry.type}
+                  refId={entry.item.id}
                   isActive={dragging}
                 />
                 <TaskRow row={{ itemType: entry.type, item: entry.item } as never} />
                 {idx === timedRows.length - 1 && (
-                  <ScheduledDropZone
-                    dropId={`scheduled:${bucket}:after:${entry.type}:${entry.item.id}`}
+                  <TimedGapDropZone
+                    bucket={bucket}
+                    position="after"
+                    refType={entry.type}
+                    refId={entry.item.id}
                     isActive={dragging}
                   />
                 )}
@@ -258,7 +368,12 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
 
 export function DayBuckets({ activeId }: { activeId: string | null }) {
   const { tasksByBucket, habitsByBucket, recurringProjects } = useDayItems();
-  const { selectedDate, navDirection } = usePlannerStore();
+  const { selectedDate, navDirection, userTimezone } = usePlannerStore();
+  // Resolved once for all four cards — see the note on DayBucketProps.dateStr.
+  const dateStr = toDateStr(
+    selectedDate,
+    userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
+  );
   // No `mounted` flag — useCurrentBucket returns null on the first render,
   // which is the hydration guard the flag used to duplicate.
   const currentBucket = useCurrentBucket(selectedDate);
@@ -296,6 +411,7 @@ export function DayBuckets({ activeId }: { activeId: string | null }) {
             activeId={activeId}
             isCurrent={currentBucket === bucket}
             variant={bucketStyle}
+            dateStr={dateStr}
           />
         ))}
       </div>

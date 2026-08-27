@@ -83,11 +83,27 @@ Custom types travel under a closed `{type:'custom', customType}` envelope app-si
 discriminated-union narrowing keeps working, but the DB stores the bare slug in
 `items.type`. `itemDbType()` in [lib/db.ts](lib/db.ts) is the boundary.
 
+**One CLASSIFY kind.** [lib/container-registry.ts](lib/container-registry.ts) sorts the
+container tables into three ROLES — classify (project), gate (routine, program), aspire
+(goal) — and there is exactly ONE classify kind since migration 039 folded habit groups
+into projects. Every type answers with `items.project`; `containerRequired` is what still
+makes a habit different. The `habit_groups` TABLE is frozen ballast — never query it. The
+`items."group"` COLUMN is ballast too, but `itemFromRow` ([lib/db.ts](lib/db.ts)) still reads
+it in exactly one place, as a fallback (`row.project ?? row.group`), so a build landing ahead
+of the migration — a fresh clone, a rolled-back 039 — shows a habit's container instead of
+blanking it. That read is load-bearing, not dead code. The name falls back; the id never does.
+The user-facing noun lives only in `CONTAINER_KINDS.project.label`, so moving
+it is a string edit. The kind folds case (`caseFold: true`), which is why `Work` and
+`work` are one container to every lookup.
+
 **Legacy projections are permanent.** `/api/agent/context` still serves `tasks[]` and
 `habits[]` as exact-legacy-schema views over items, and webhooks still emit
 `tasks.updated`/`habits.updated`. The OpenClaw plugin `safeParse`s these and *throws* on
 drift, so status vocabularies (`pending|completed|cancelled` for tasks,
 `pending|done|skipped` for habits) are external contracts — don't merge or translate them.
+`habits[].group` and the required `habitGroups[]` array are the same kind of contract: a
+habit answers with `project` internally and `toLegacyHabit` renames it on the way out
+(lib/db.ts), while `habitGroups[]` is a projection of the one container list.
 
 **Reminders reach outward; everything else in the app waits to be opened.** A cue at the
 habit's own hour, a streak-at-risk last call, and a nightly settlement all run unattended
@@ -165,6 +181,14 @@ expected to be safe to re-run.
   launcher, `/` opens it in command mode, ⌘I focuses the dock — all in
   `lib/commands/registry.ts`, whose shortcut ids are frozen by a test (add, never rename).
   Tests scope by `data-omnibar-variant` since both shells share testids.
+- **The shortcuts table is one component in two shells, too.** The bindings are settings
+  records (`SHORTCUT_RECORDS` in [lib/settings/manifest.ts](lib/settings/manifest.ts),
+  derived 1:1 from `DEFAULT_SHORTCUTS` — never a second copy of the list), and
+  `components/settings/shortcuts-panel.tsx` renders them in the Keyboard settings pane and
+  in the ⌘/ overlay off a `variant: 'pane' | 'overlay'`. A shortcut id is now BOTH the
+  persistence key for a rebinding and the second half of a permanent settings id
+  (`keys.<shortcutId>`), so renaming one breaks two things at once. Tests scope by
+  `data-shortcuts-variant`. See [keyboard-shortcuts.md](memory/plans/keyboard-shortcuts.md).
 - **Design source of truth is the Figma file, not the mockup PNGs in the repo.** Pull
   specs live via the Figma MCP; the checked-in PNGs drift.
 - Some settings persist but are read by no view. That's deliberate — leave them alone
@@ -179,6 +203,9 @@ Longer-running design docs live in [memory/plans/](memory/plans/) and are commit
 [unified-items.md](memory/plans/unified-items.md) carries the phase ledger and the locked
 design decisions for the items refactor — read it before touching item types, the
 registry, or the agent API.
+[keyboard-shortcuts.md](memory/plans/keyboard-shortcuts.md) records why the shortcuts
+table lives in the settings manifest and renders in two shells — read it before touching
+`lib/commands/keys.ts`, the `keys` control kind, or anything that derives a binding list.
 [long-term-goals.md](memory/plans/long-term-goals.md) does the same for **goals** — the
 third container role (`aspire`), where milestones and check-ins are ordinary items wearing
 a membership role. Read it before touching `lib/goals.ts`, the goals store slice, or

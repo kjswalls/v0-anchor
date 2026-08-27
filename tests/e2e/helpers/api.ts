@@ -203,6 +203,9 @@ export async function createTestHabit(
     headers: authHeaders(),
     data: {
       title: testTitle('habit'),
+      // `group`, not `project` — this is the AGENT body, and its vocabulary is
+      // pinned (HabitCreateSchema). The server renames it to the item's
+      // `project` at the boundary; see fromLegacyHabit in lib/db.ts.
       group: 'Personal',
       status: 'pending',
       repeatFrequency: 'daily',
@@ -406,6 +409,9 @@ export async function fetchTestGoalMembers(
  * case-sensitive startsWith would leave every custom type behind.
  */
 export async function cleanupTestLabels(prefix: string): Promise<void> {
+  // `habit_groups` is frozen ballast since migration 039 and nothing creates
+  // rows in it any more — swept anyway, so a run against a database that still
+  // holds pre-collapse fixtures cleans up after itself.
   await sweepByNamePrefix(['projects', 'habit_groups'], prefix);
   await sweepByNamePrefix(['item_types'], prefix.toLowerCase());
 }

@@ -19,7 +19,7 @@ const TZ = 'America/New_York';
 const ctx: ActivationContext = { userTimezone: TZ };
 
 const habit = (over: Partial<Item> = {}): Item => ({
-  type: 'habit', id: 'h', title: 'Vitamins', group: 'G', streak: 0, status: 'pending',
+  type: 'habit', id: 'h', title: 'Vitamins', project: 'G', streak: 0, status: 'pending',
   completedDates: [], skippedDates: [], dailyCounts: {}, repeatFrequency: 'daily',
   ...over,
 } as Item);

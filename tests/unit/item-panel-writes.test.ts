@@ -44,7 +44,9 @@ describe('panel writes are scoped to what was touched', () => {
   it('sends one field when one field changed', () => {
     expect(taskUpdatesFromDraft(draft, ['priority'])).toEqual({ priority: 'high' });
     expect(taskUpdatesFromDraft(draft, ['notes'])).toEqual({ notes: 'three slides, no more' });
-    expect(habitUpdatesFromDraft(draft, ['container'])).toEqual({ group: 'Work' });
+    // `project`, not `group` — one CLASSIFY kind since migration 039, and the
+    // store speaks in items. `group` survives only in the agent projection.
+    expect(habitUpdatesFromDraft(draft, ['container'])).toEqual({ project: 'Work' });
   });
 
   it('never leaks an untouched field into the payload', () => {

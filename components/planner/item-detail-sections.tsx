@@ -21,6 +21,7 @@ import { useExtensionsStore } from '@/lib/extensions-store';
 import { EXT_HABIT_HEATMAP, resolveEnabled } from '@/lib/extension-registry';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import { agentStatusView } from '@/lib/agent-status';
+import { BandLabel } from '@/components/planner/item-bands';
 import { isBulkPaste, MAX_BULK_ITEMS, splitBulkLinesWithMeta } from '@/lib/bulk-add';
 import { toast } from 'sonner';
 import type { Item, TaskItem } from '@/lib/planner-types';
@@ -36,13 +37,13 @@ import { cn } from '@/lib/utils';
  * zero work here.
  */
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
-      {children}
-    </p>
-  );
-}
+/**
+ * The sections' heading is the BAND label — one component, so the chips above
+ * (Project, Routine, Program, Goal, When) and the sections below read as one
+ * grammar instead of two that happen to look alike. See components/planner/
+ * item-bands.tsx.
+ */
+const SectionLabel = BandLabel;
 
 // ── Subtasks ─────────────────────────────────────────────────────────────────
 

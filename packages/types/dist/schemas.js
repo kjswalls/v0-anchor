@@ -307,16 +307,23 @@ const taskShape = {
     ...pauseFields,
     ...reminderFields,
 };
-const habitShape = {
+/**
+ * Everything a habit carries EXCEPT the container it answers with.
+ *
+ * Split out because the two shapes built from it disagree about exactly that
+ * one field, and about nothing else (migration 039). The legacy `HabitSchema`
+ * — the pinned external contract — keeps `group`/`groupId`; the unified
+ * ItemSchema's habit branch carries `project`/`projectId` like every other
+ * type, because there is one CLASSIFY kind now.
+ *
+ * So `habits[]` is no longer a plain field subset of an item: it is a
+ * projection that RENAMES one field on the way out. That rename is the entire
+ * cost of the collapse at this boundary, and it is paid in one place
+ * (`legacyHabit` in app/api/agent/context/route.ts) rather than spread.
+ */
+const habitCoreShape = {
     id: z.string(),
     title: z.string(),
-    group: z.string(),
-    /**
-     * Stable id of the group named by `group` (migration 027). The habit-side
-     * twin of `projectId` — see its note on taskShape for why the name stays and
-     * why this has to live in the shape rather than only in the DB.
-     */
-    groupId: z.string().optional(),
     streak: z.number(),
     status: HabitStatusSchema,
     completedDates: z.array(z.string()),
@@ -344,27 +351,69 @@ const habitShape = {
     ...pauseFields,
     ...reminderFields,
 };
+/**
+ * The legacy habit shape — `group` is a NAME, exactly as it has always been.
+ *
+ * FROZEN. `HabitSchema` is what the OpenClaw plugin `safeParse`s (it throws on
+ * drift), `HabitCreateSchema`/`HabitUpdateSchema` are the agent's write
+ * vocabulary, and `AnchorContextResponseSchema.habits` is typed off it. The
+ * collapse happened underneath this, not to it.
+ */
+const habitShape = {
+    ...habitCoreShape,
+    group: z.string(),
+    /**
+     * Stable id of the group named by `group` (migration 027).
+     *
+     * Post-039 this is the PROJECT's id — the habit_groups row it used to name
+     * became a projects row keeping its uuid, which is what lets this field mean
+     * the same thing to an old plugin build without a translation table.
+     */
+    groupId: z.string().optional(),
+};
+/** The unified habit branch — one CLASSIFY kind, so it answers with `project`. */
+const habitItemShape = {
+    ...habitCoreShape,
+    /**
+     * Optional, exactly like the task side's — one CLASSIFY axis means one field
+     * shape, and every consumer reads `item.project` off the union without
+     * narrowing. "A habit must be filed somewhere" is a CAPABILITY
+     * (`containerRequired`), enforced by the dialog and the seed fallback, not by
+     * this field's presence: the legacy column was NOT NULL and produced '' for
+     * the unset case, so making the type require a string only ever moved that ''
+     * around. `toLegacyHabit` restores the required `group: string` on the way out.
+     */
+    project: z.string().optional(),
+    /** See taskShape.projectId: the name stays authoritative, the id survives renames. */
+    projectId: z.string().optional(),
+};
 export const TaskSchema = z.object(taskShape).superRefine(requireCustomDays);
 export const HabitSchema = z.object(habitShape).superRefine(requireCustomDays);
 // Canonical field lists (schema-derived, so they can never drift from the
 // shapes) — used for per-type diffing/patching, e.g. undo/redo sync.
 export const TASK_FIELDS = Object.keys(taskShape);
-export const HABIT_FIELDS = Object.keys(habitShape);
+// The ITEM shape, not the legacy one: this list drives `diffItem` and the
+// per-type update allowlists, both of which speak in items. Keyed off the
+// legacy shape it would put `group` into every undo patch and drop `project`.
+export const HABIT_FIELDS = Object.keys(habitItemShape);
 export const PROJECT_FIELDS = Object.keys(ProjectSchema.shape);
 export const HABIT_GROUP_FIELDS = Object.keys(HabitGroupSchema.shape);
 export const ROUTINE_FIELDS = Object.keys(RoutineSchema.shape);
 export const PROGRAM_FIELDS = Object.keys(ProgramSchema.shape);
 export const GOAL_FIELDS = Object.keys(GoalSchema.shape);
 // ── Unified Item ───────────────────────────────────────────────────────────────
-// One entity, discriminated by `type`. The task/habit branches are structurally
-// identical to Task/Habit so projections (item → legacy shape) are plain field
-// subsets. User-defined types (errand, …) travel under a CLOSED 'custom'
+// One entity, discriminated by `type`. The task branch is structurally
+// identical to Task, so that projection (item → legacy shape) is a plain field
+// subset. The HABIT branch is not, and has not been since migration 039: an
+// item answers with `project` on the one CLASSIFY axis, while `habits[]` must
+// keep emitting `group`. That single rename is the projection.
+// User-defined types (errand, …) travel under a CLOSED 'custom'
 // envelope with the type's machine name in `customType` — an open type: string
 // branch would destroy TypeScript's discriminated narrowing at every
 // `item.type === '…'` site in the app. The DB stores the slug itself in
 // items.type; the app maps slug ↔ envelope at the row boundary.
 const taskItemObject = z.object({ type: z.literal('task'), ...taskShape });
-const habitItemObject = z.object({ type: z.literal('habit'), ...habitShape });
+const habitItemObject = z.object({ type: z.literal('habit'), ...habitItemShape });
 const customItemObject = z.object({
     type: z.literal('custom'),
     /**

@@ -51,6 +51,7 @@ import { OrganizeConsole } from '@/components/planner/organize/organize-console'
 import { whenGone } from '@/components/planner/organize/sections/trash';
 import { heldByTrash, useTrashedNames } from '@/components/planner/organize/use-trashed-names';
 import { usePlannerStore } from '@/lib/planner-store';
+import { enableGoalsAndOrganize } from './support/extensions';
 import type { TrashEntry } from '@/lib/db';
 
 const DELETED = '2026-08-12T10:00:00.000Z';
@@ -58,6 +59,8 @@ const DELETED = '2026-08-12T10:00:00.000Z';
 const restoreFromTrash = vi.fn();
 
 beforeEach(() => {
+  // Trash lives in the console, and the console ships off.
+  enableGoalsAndOrganize();
   listDeleted.mockReset();
   createProject.mockReset();
   createProject.mockResolvedValue(undefined);
@@ -68,7 +71,6 @@ beforeEach(() => {
     isLoading: false,
     items: [],
     projects: [],
-    habitGroups: [],
     routines: [],
     programs: [],
     itemTypes: [],

@@ -32,7 +32,6 @@ beforeAll(() => {
 vi.mock('@/lib/db', () => ({
   fetchItems: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
-  fetchHabitGroups: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   createItemType: vi.fn(async () => {}),
   updateItemType: vi.fn(async () => {}),
@@ -46,10 +45,6 @@ vi.mock('@/lib/db', () => ({
   updateProject: vi.fn(async () => {}),
   deleteProject: vi.fn(async () => {}),
   restoreProject: vi.fn(async () => {}),
-  createHabitGroup: vi.fn(async () => {}),
-  updateHabitGroup: vi.fn(async () => {}),
-  deleteHabitGroup: vi.fn(async () => {}),
-  restoreHabitGroup: vi.fn(async () => {}),
   fetchRoutines: vi.fn(async () => []),
   createRoutine: vi.fn(async () => {}),
   updateRoutine: vi.fn(async () => {}),
@@ -73,8 +68,9 @@ import { Braindump } from '@/components/sidebar/braindump';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
-import type { Item } from '@/lib/planner-types';
+import type { Goal, Item } from '@/lib/planner-types';
 import type { SortBy } from '@/lib/sort-rows';
+import { enableGoalsAndOrganize } from './support/extensions';
 
 /**
  * Two unscheduled tasks whose STORE order is the reverse of their alphabetical
@@ -114,7 +110,6 @@ function seed(braindumpSortBy: SortBy) {
       { id: 'p1', name: 'Work', emoji: '💼' },
       { id: 'p2', name: 'Home', emoji: '🏠' },
     ],
-    habitGroups: [],
     routines: [],
     programs: [],
   });
@@ -186,7 +181,11 @@ describe('braindump: grouping owns the outer order', () => {
   });
 });
 
-beforeEach(() => seed('default'));
+// Group by Goal rides the Goals extension, which ships off.
+beforeEach(() => {
+  enableGoalsAndOrganize();
+  seed('default');
+});
 
 describe('braindump: grouping by a gate', () => {
   it('sections unscheduled items by their routine, with a pause switch on the header', () => {
@@ -209,7 +208,6 @@ describe('braindump: grouping by a gate', () => {
       tasks: [zebra] as never,
       habits: [],
       projects: [],
-      habitGroups: [],
       routines: [{ id: 'r', name: 'Mornings', itemIds: ['z'] }],
       programs: [],
     });
@@ -224,5 +222,100 @@ describe('braindump: grouping by a gate', () => {
     // reading ON (the routine is not paused).
     expect(screen.getByText('Mornings')).toBeTruthy();
     expect(screen.getByTestId('gate-switch').getAttribute('data-gate-on')).toBe('on');
+  });
+});
+
+describe('braindump: the aspire axis', () => {
+  /**
+   * Mounted rather than reimplemented, for the reason the gate case above was:
+   * the wiring is the defect surface. `groupRows` and `goalFilterItemIds` are
+   * covered on their own; what these pin is that braindump.tsx actually hands
+   * them the store's goals — with an empty context the section falls to "No
+   * goal", and with no resolution the filter narrows nothing at all.
+   */
+  const zebra = {
+    type: 'task',
+    id: 'z',
+    title: 'Zebra',
+    status: 'pending',
+    isScheduled: false,
+    order: 0,
+  } as unknown as Item;
+  const apple = {
+    type: 'task',
+    id: 'a',
+    title: 'Apple',
+    status: 'pending',
+    isScheduled: false,
+    order: 1,
+  } as unknown as Item;
+
+  const seedGoal = (over: Partial<Goal> = {}) => {
+    usePlannerStore.setState({
+      userId: 'user-1',
+      userTimezone: 'UTC',
+      items: [zebra, apple],
+      tasks: [zebra, apple] as never,
+      habits: [],
+      projects: [],
+      routines: [],
+      programs: [],
+      goals: [
+        {
+          id: 'g1',
+          name: 'Learn Chinese',
+          state: 'active',
+          memberIds: [],
+          milestoneIds: ['z'],
+          checkinIds: [],
+          ...over,
+        },
+      ],
+    });
+  };
+
+  it('sections by goal, and gives the heading NO pause switch', () => {
+    seedGoal();
+    useViewStore.setState({
+      braindumpGroupBy: 'goal',
+      braindumpSortBy: 'default',
+      braindumpFilters: EMPTY_VIEW_FILTERS,
+    });
+    renderBraindump();
+
+    // A milestone-role member sections under its goal like any other member.
+    expect(screen.getByText('Learn Chinese')).toBeTruthy();
+    expect(screen.getByText('No goal')).toBeTruthy();
+    // The gate headings carry `data-testid="gate-switch"`; an aspire heading has
+    // nothing to switch, because a goal suppresses nothing.
+    expect(screen.queryByTestId('gate-switch')).toBeNull();
+  });
+
+  it('narrows the list to one goal, milestone role included', () => {
+    seedGoal();
+    useViewStore.setState({
+      braindumpGroupBy: 'none',
+      braindumpSortBy: 'default',
+      braindumpFilters: { ...EMPTY_VIEW_FILTERS, goals: ['g1'] },
+    });
+    renderBraindump();
+
+    expect(screen.getByText('Zebra')).toBeTruthy();
+    expect(screen.queryByText('Apple')).toBeNull();
+  });
+
+  it('leaves the list whole when the selected goal has ended', () => {
+    // Inert, not empty. The clause still counts on the trigger and the row that
+    // clears it is still in the menu; what it must not do is blank the surface.
+    seedGoal({ state: 'achieved' });
+    useViewStore.setState({
+      braindumpGroupBy: 'none',
+      braindumpSortBy: 'default',
+      braindumpFilters: { ...EMPTY_VIEW_FILTERS, goals: ['g1'] },
+    });
+    renderBraindump();
+
+    expect(screen.getByText('Zebra')).toBeTruthy();
+    expect(screen.getByText('Apple')).toBeTruthy();
   });
 });

@@ -5,6 +5,9 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { STATIC_COMMANDS, SHELL_SHORTCUTS } from './commands/registry';
 import { COMMAND_GROUPS } from './commands/types';
+// Type-only, so it is erased at compile time and lib/local-state.ts importing
+// this store back does not make a runtime cycle.
+import type { ClearScope } from './local-state';
 
 export interface ShortcutBinding {
   id: string;
@@ -12,8 +15,25 @@ export interface ShortcutBinding {
   description: string;
   /** Keys pressed concurrently (up to 3), e.g. ['ctrl', 'shift', 'z'] or ['n']. */
   keys: string[];
-  /** Section heading in the shortcuts modal. */
+  /** Section heading in the shortcuts table. */
   groupHeading: string;
+  /**
+   * One sentence naming where the binding applies, for the ones that do not
+   * apply everywhere. See CommandShortcutSpec.context.
+   */
+  context?: string;
+  /**
+   * The owning command's search terms, space separated, or '' for the two
+   * shell-owned bindings.
+   *
+   * Carried here rather than looked up because THIS LIST IS THE SEAM: the
+   * settings manifest builds one presentable record per entry and never
+   * imports the command registry, so the registry stays the only declaration
+   * of what a binding is and the manifest stays the only declaration of how it
+   * is presented. A manifest that reached back into STATIC_COMMANDS for one
+   * field would be a second derivation of the binding list.
+   */
+  keywords: string;
 }
 
 const GROUP_HEADINGS = new Map(COMMAND_GROUPS.map((g) => [g.id, g.heading]));
@@ -38,6 +58,8 @@ export const DEFAULT_SHORTCUTS: ShortcutBinding[] = [
     description: command.description ?? '',
     keys: command.shortcut!.keys,
     groupHeading: GROUP_HEADINGS.get(command.group) ?? 'Other',
+    context: command.shortcut!.context,
+    keywords: command.keywords ?? '',
   })),
   ...SHELL_SHORTCUTS.map((shortcut) => ({
     id: shortcut.id,
@@ -45,6 +67,8 @@ export const DEFAULT_SHORTCUTS: ShortcutBinding[] = [
     description: shortcut.description,
     keys: [...shortcut.keys],
     groupHeading: 'Item under the cursor',
+    context: shortcut.context,
+    keywords: '',
   })),
 ];
 
@@ -59,7 +83,38 @@ interface KeyboardShortcutsStore {
    */
   overrides: Record<string, string[]>;
   updateShortcut: (id: string, keys: string[]) => void;
+  /**
+   * Drop ONE binding's override, so it follows the default again.
+   *
+   * Not the same as `updateShortcut(id, defaultKeys)`, and the difference only
+   * shows up later: writing a copy of today's default PINS the user to it, so
+   * the day a release moves ⌘/ somewhere better, everyone who ever pressed the
+   * row's reset button silently keeps the old key with no override visible to
+   * explain it. Removing the entry is what makes "reset" mean "follow Anchor".
+   */
+  resetShortcut: (id: string) => void;
   resetShortcuts: () => void;
+  /**
+   * Drop this account's rebindings — see lib/local-state.ts.
+   *
+   * The same assignment as `resetShortcuts`, kept as its own action because it
+   * answers a different question. `resetShortcuts` is a button in the shortcuts
+   * modal; this is the registry's entry point, and the registry has to be able
+   * to ask every store the same thing by the same name.
+   *
+   * `anchor-keyboard-shortcuts` is browser-global and never synced, so on a
+   * shared browser one person's ⌘K lands somewhere the next person never put
+   * it. That is worth clearing on a known change of user.
+   *
+   * It is INERT in lib/local-state.ts' sense, though, and that decides the
+   * unstamped case: the payload is an id→keys map — registry ids on one side,
+   * key names on the other — with no free text and nothing drawn from the
+   * account's own rows, so it cannot identify or describe whoever set it. Since
+   * there is no server copy to restore from, wiping it on a browser whose owner
+   * we merely cannot VOUCH for would be permanent loss for no privacy gain. So
+   * it clears under scope 'all' only.
+   */
+  clearUserScopedState: (scope: ClearScope) => void;
 }
 
 export const useKeyboardShortcutsStore = create<KeyboardShortcutsStore>()(
@@ -70,7 +125,20 @@ export const useKeyboardShortcutsStore = create<KeyboardShortcutsStore>()(
       updateShortcut: (id, keys) =>
         set((state) => ({ overrides: { ...state.overrides, [id]: keys } })),
 
+      resetShortcut: (id) =>
+        set((state) => {
+          if (!(id in state.overrides)) return state;
+          const next = { ...state.overrides };
+          delete next[id];
+          return { overrides: next };
+        }),
+
       resetShortcuts: () => set({ overrides: {} }),
+
+      clearUserScopedState: (scope) => {
+        if (scope !== 'all') return;
+        set({ overrides: {} });
+      },
     }),
     {
       name: 'anchor-keyboard-shortcuts',
@@ -112,5 +180,30 @@ export function getShortcutBindings(): ShortcutBinding[] {
   const { overrides } = useKeyboardShortcutsStore.getState();
   return DEFAULT_SHORTCUTS.map((binding) =>
     overrides[binding.id] ? { ...binding, keys: overrides[binding.id] } : binding
+  );
+}
+
+/**
+ * What ONE id is currently bound to — the default, with this user's override
+ * applied. Empty for an id no binding owns, which is the honest answer for a
+ * surface that hardcoded the wrong name.
+ */
+export function shortcutKeysFor(id: string): string[] {
+  return getShortcutBindings().find((binding) => binding.id === id)?.keys ?? [];
+}
+
+/**
+ * Reactive `shortcutKeysFor`, for a surface that PRINTS one binding.
+ *
+ * There is exactly one today — the resting shortcuts button in AppShell, whose
+ * hint was the literal string '⌘ + /'. Every shortcut is rebindable, so a
+ * hardcoded hint starts lying the moment someone moves that one, on the single
+ * control whose entire job is to say what the key is.
+ */
+export function useShortcutKeys(id: string): string[] {
+  const overrides = useKeyboardShortcutsStore((s) => s.overrides);
+  return useMemo(
+    () => overrides[id] ?? DEFAULT_SHORTCUTS.find((binding) => binding.id === id)?.keys ?? [],
+    [overrides, id]
   );
 }

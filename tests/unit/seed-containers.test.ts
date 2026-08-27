@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { planSeed, runFirstRunSeed, type SeedDeps } from '@/lib/seed-containers';
-import { DEFAULT_HABIT_GROUPS, DEFAULT_PROJECTS } from '@/lib/planner-types';
+import { DEFAULT_PROJECTS } from '@/lib/planner-types';
 import type { Item } from '@/lib/planner-types';
 
 /**
@@ -13,8 +13,12 @@ import type { Item } from '@/lib/planner-types';
  * function makes alone.
  *
  * The live data is the reason the rule is not "sections are empty, so seed": one
- * account carries 763 items, zero container rows, and 119 habits whose `group`
- * text reads "Personal" with nothing behind it.
+ * account carries 763 items, zero container rows, and 119 habits whose
+ * container text reads "Personal" with nothing behind it.
+ *
+ * ONE LIST since migration 039 collapsed the two CLASSIFY kinds. The plan used
+ * to carry `projects` and `groups` separately and the account was left alone if
+ * EITHER was non-empty; that subtlety is simply the rule now.
  */
 
 const task = (over: Partial<Item> = {}): Item =>
@@ -23,19 +27,16 @@ const task = (over: Partial<Item> = {}): Item =>
 const habit = (over: Partial<Item> = {}): Item =>
   ({
     id: 'h1', type: 'habit', title: 'H', status: 'pending', repeatFrequency: 'daily',
-    completedDates: [], skippedDates: [], streak: 0, group: 'Personal', order: 0, isScheduled: false,
+    completedDates: [], skippedDates: [], streak: 0, project: 'Personal', order: 0, isScheduled: false,
     ...over,
   }) as Item;
 
-const empty = { items: [], projects: [], habitGroups: [] };
+const empty = { items: [], projects: [] };
 
 describe('an account that already has containers', () => {
-  it('is left alone entirely, even with only one of the two kinds', () => {
-    // Deliberately NOT "no projects → seed projects". An account with habit
-    // groups and no projects has made a choice, and first-run seeding is not
-    // the place to second-guess it.
+  it('is left alone entirely', () => {
     expect(planSeed({ ...empty, projects: [{ name: 'Work' }] }).reason).toBe('none');
-    expect(planSeed({ ...empty, habitGroups: [{ name: 'Morning' }] }).reason).toBe('none');
+    expect(planSeed({ ...empty, projects: [{ name: 'Morning' }] }).reason).toBe('none');
   });
 
   it('keeps its dangling names dangling', () => {
@@ -48,9 +49,8 @@ describe('an account that already has containers', () => {
     const plan = planSeed({
       items: [task({ project: 'Housework' })],
       projects: [{ name: 'Work' }],
-      habitGroups: [],
     });
-    expect(plan).toEqual({ reason: 'none', projects: [], groups: [] });
+    expect(plan).toEqual({ reason: 'none', projects: [] });
   });
 });
 
@@ -59,20 +59,21 @@ describe('a brand-new account', () => {
     const plan = planSeed(empty);
     expect(plan.reason).toBe('new-account');
     expect(plan.projects).toEqual(DEFAULT_PROJECTS);
-    expect(plan.groups).toEqual(DEFAULT_HABIT_GROUPS);
   });
 
-  it('ships no name in both lists, so no filter chip is ambiguous', () => {
-    // lib/filters.ts documents the cost: a saved filter stores a bare name and
-    // the two namespaces are separate, so "Work" in both lists cannot be
-    // resolved. The old constants collided on all three.
-    const plan = planSeed(empty);
-    const projects = new Set(plan.projects.map((p) => p.name));
-    expect(plan.groups.some((g) => projects.has(g.name))).toBe(false);
+  it('ships no name twice, so no filter chip is ambiguous', () => {
+    // The two starter lists were made disjoint when projects and habit groups
+    // were separate namespaces (a chip reading "Work" could not say which it
+    // meant). That is what made concatenating them safe in 039 — and the
+    // uniqueness has to hold now for a plainer reason: one namespace, one
+    // unique index, and a duplicate name is a 23505 on first load.
+    const names = planSeed(empty).projects.map((p) => p.name);
+    expect(new Set(names).size).toBe(names.length);
+    expect(names).toHaveLength(6);
   });
 
   it('ships icon TOKENS, not the bare emoji the constants had for a year', () => {
-    for (const seed of [...planSeed(empty).projects, ...planSeed(empty).groups]) {
+    for (const seed of planSeed(empty).projects) {
       expect(seed.emoji).toMatch(/^icon:[A-Z]/);
     }
   });
@@ -92,9 +93,7 @@ describe('a brand-new account', () => {
     expect(planSeed({ ...empty, trashedProjectNames: ['Anything'] })).toEqual({
       reason: 'none',
       projects: [],
-      groups: [],
     });
-    expect(planSeed({ ...empty, trashedGroupNames: ['Anything'] }).reason).toBe('none');
   });
 });
 
@@ -104,11 +103,10 @@ describe('an account with items but no containers — the adopt case', () => {
     // account that has visibly never used projects.
     const plan = planSeed({
       ...empty,
-      items: [habit({ group: 'Personal' }), habit({ id: 'h2', group: 'Personal' })],
+      items: [habit({ project: 'Personal' }), habit({ id: 'h2', project: 'Personal' })],
     });
     expect(plan.reason).toBe('adopt');
-    expect(plan.groups.map((g) => g.name)).toEqual(['Personal']);
-    expect(plan.projects).toEqual([]);
+    expect(plan.projects.map((p) => p.name)).toEqual(['Personal']);
   });
 
   it('adopts project names too, from task-like items', () => {
@@ -119,8 +117,8 @@ describe('an account with items but no containers — the adopt case', () => {
   it('leaves adopted glyphs unset, so nothing on screen changes', () => {
     // CategoryIcon's name hash is the glyph the app has drawn for that name all
     // along. Picking one here would restyle 119 rows as a side effect of a repair.
-    const plan = planSeed({ ...empty, items: [habit({ group: 'Personal' })] });
-    expect(plan.groups[0].emoji).toBe('');
+    const plan = planSeed({ ...empty, items: [habit({ project: 'Personal' })] });
+    expect(plan.projects[0].emoji).toBe('');
   });
 
   it('does not case-fold, because the unique index does not', () => {
@@ -128,14 +126,14 @@ describe('an account with items but no containers — the adopt case', () => {
     // leave the other half of the items dangling with no sign of why.
     const plan = planSeed({
       ...empty,
-      items: [habit({ group: 'Personal' }), habit({ id: 'h2', group: 'personal' })],
+      items: [habit({ project: 'Personal' }), habit({ id: 'h2', project: 'personal' })],
     });
-    expect(plan.groups.map((g) => g.name).sort()).toEqual(['Personal', 'personal']);
+    expect(plan.projects.map((p) => p.name).sort()).toEqual(['Personal', 'personal']);
   });
 
   it('de-dupes, so 119 items naming one group make one container', () => {
-    const items = Array.from({ length: 119 }, (_, i) => habit({ id: `h${i}`, group: 'Personal' }));
-    expect(planSeed({ ...empty, items }).groups).toHaveLength(1);
+    const items = Array.from({ length: 119 }, (_, i) => habit({ id: `h${i}`, project: 'Personal' }));
+    expect(planSeed({ ...empty, items }).projects).toHaveLength(1);
   });
 
   it('drops blank and whitespace-only names', () => {
@@ -143,9 +141,8 @@ describe('an account with items but no containers — the adopt case', () => {
     // "" is not something any surface can render or the user can delete.
     const plan = planSeed({
       ...empty,
-      items: [habit({ group: '' }), habit({ id: 'h2', group: '   ' }), task({ project: '' })],
+      items: [habit({ project: '' }), habit({ id: 'h2', project: '   ' }), task({ project: '' })],
     });
-    expect(plan.groups).toEqual([]);
     expect(plan.projects).toEqual([]);
   });
 
@@ -160,18 +157,18 @@ describe('an account with items but no containers — the adopt case', () => {
      */
     const plan = planSeed({
       ...empty,
-      items: [habit({ group: ' Personal' }), habit({ id: 'h2', group: 'Personal' })],
+      items: [habit({ project: ' Personal' }), habit({ id: 'h2', project: 'Personal' })],
     });
-    expect(plan.groups.map((g) => g.name).sort()).toEqual([' Personal', 'Personal']);
+    expect(plan.projects.map((p) => p.name).sort()).toEqual([' Personal', 'Personal']);
   });
 
   it('skips a name the bin is holding, and adopts the rest', () => {
     const plan = planSeed({
       ...empty,
-      items: [habit({ group: 'Personal' }), habit({ id: 'h2', group: 'Work' })],
-      trashedGroupNames: ['Personal'],
+      items: [habit({ project: 'Personal' }), habit({ id: 'h2', project: 'Work' })],
+      trashedProjectNames: ['Personal'],
     });
-    expect(plan.groups.map((g) => g.name)).toEqual(['Work']);
+    expect(plan.projects.map((p) => p.name)).toEqual(['Work']);
   });
 
   it('NEVER falls through to the starter set', () => {
@@ -181,7 +178,6 @@ describe('an account with items but no containers — the adopt case', () => {
     const plan = planSeed({ ...empty, items: [task({ project: undefined })] });
     expect(plan.reason).toBe('adopt');
     expect(plan.projects).toEqual([]);
-    expect(plan.groups).toEqual([]);
   });
 });
 
@@ -200,14 +196,13 @@ describe('runFirstRunSeed', () => {
       }),
       trashedNames: vi.fn(async () => {
         calls.push('read-bin');
-        return { projects: [], groups: [] };
+        return { projects: [] };
       }),
       snapshot: () => ({
         userId: 'u1',
         isLoading: false,
         items: [] as Item[],
         projects: [] as { name: string }[],
-        habitGroups: [] as { name: string }[],
         ...state,
       }),
       commit: vi.fn(() => {
@@ -289,7 +284,6 @@ describe('runFirstRunSeed', () => {
       isLoading: false,
       items: [] as Item[],
       projects: [] as { name: string }[],
-      habitGroups: [] as { name: string }[],
     });
     const flip = () => {
       userId = 'u2';
@@ -297,7 +291,7 @@ describe('runFirstRunSeed', () => {
     if (at === 'bin') {
       deps.trashedNames = vi.fn(async () => {
         flip();
-        return { projects: [], groups: [] };
+        return { projects: [] };
       });
     } else {
       deps.markSeeded = vi.fn(async () => flip());
@@ -360,12 +354,11 @@ describe('runFirstRunSeed', () => {
     const plan = vi.mocked(deps.commit).mock.calls[0][0];
     expect(plan.reason).toBe('none');
     expect(plan.projects).toEqual([]);
-    expect(plan.groups).toEqual([]);
   });
 
   it('feeds the bin into the plan, so a held name is never created', async () => {
     const { deps } = harness({
-      trashedNames: vi.fn(async () => ({ projects: [{ name: 'Work' }], groups: [] })),
+      trashedNames: vi.fn(async () => ({ projects: [{ name: 'Work' }] })),
     });
     await runFirstRunSeed('u1', deps);
     const plan = vi.mocked(deps.commit).mock.calls[0][0];

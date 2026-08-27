@@ -34,11 +34,11 @@ const CAP_H = 18;
  */
 function useLaneAccent(key: string): string | undefined {
   const getProjectColor = usePlannerStore((s) => s.getProjectColor);
-  const getHabitGroupColor = usePlannerStore((s) => s.getHabitGroupColor);
 
-  const kind = containerKindOf(key);
-  if (kind === 'project') return getProjectColor(containerName(key));
-  if (kind === 'group') return getHabitGroupColor(containerName(key));
+  // One CLASSIFY kind since 039, so `containerKindOf` answering at all is the
+  // whole test — it is still what tells a container ref apart from the other
+  // section keys sharing this keyspace.
+  if (containerKindOf(key)) return getProjectColor(containerName(key));
   if (key.startsWith('priority:')) {
     const p = key.slice('priority:'.length);
     return p === 'none' ? undefined : `var(--priority-${p})`;

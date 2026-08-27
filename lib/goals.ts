@@ -112,6 +112,71 @@ export function milestoneItemIds(goals: readonly Goal[]): Set<string> {
   return ids;
 }
 
+/* ── display selection ────────────────────────────────────────────────────── */
+
+/**
+ * The goals a DISPLAY surface may organise by — live work only.
+ *
+ * The same cut `goalRolesByItem` makes for the role glyph, and for the same
+ * reason: an achieved goal's members are history, and a section heading (or a
+ * filter row) naming a goal that is finished offers to organise today's work by
+ * something that is over. Ended goals stay browsable in the console, which is
+ * where the record lives.
+ *
+ * A row whose only goal has ended is not hidden by this — it falls into the
+ * grouping's loose "No goal" bucket. Nothing an aspire container does may
+ * remove a row from a surface; see lib/container-registry.ts.
+ */
+export function displayGoals(goals: readonly Goal[]): Goal[] {
+  return goals.filter(isGoalActive);
+}
+
+/**
+ * Every item one goal holds, whatever role it holds it in.
+ *
+ * `goalRoleEntries`' order — milestones (their own timeline order), then
+ * check-ins, then plain members — so a grouped section leads with the
+ * checkpoints the goal is measured by. No dedupe is needed: `goal_items`'
+ * primary key is `(goal_id, item_id)`, so the three arrays are disjoint on read
+ * (see packages/types GoalSchema).
+ */
+export function goalItemIds(goal: Goal): string[] {
+  return goalRoleEntries(goal).map((e) => e.itemId);
+}
+
+/**
+ * The item ids a goal SELECTION admits — or `null` when the clause cannot
+ * narrow anything, which every caller must read as "inert", not as "empty".
+ *
+ * ALL THREE ROLES are in. The role says what an item does FOR the goal, not
+ * whether it serves it, so a "Learn Chinese" filter that dropped the HSK 3
+ * milestone and the Sunday check-in would hide the two things the goal is
+ * actually measured by. (A milestone's `startDate` is its TARGET date, so on
+ * the canvas it appears on the day it is aimed at, and an undated one stays in
+ * the braindump where the plan puts it — both are the same rows those surfaces
+ * already showed, now narrowed rather than moved.)
+ *
+ * `null` for a selection that names no ACTIVE goal — a goal achieved or
+ * abandoned while it was selected, or one deleted out from under the filter.
+ * The alternative is an empty set, which empties the surface completely with
+ * nothing on it to say why: the exact failure mode lib/view-store.ts's
+ * `renameContainerRef` exists to prevent for a stale container ref. A goal that
+ * is live and simply holds none of these rows still narrows to nothing, which
+ * is truthful — that goal has no work here.
+ */
+export function goalFilterItemIds(
+  goals: readonly Goal[],
+  selectedGoalIds: readonly string[],
+): ReadonlySet<string> | null {
+  if (selectedGoalIds.length === 0) return null;
+  const selected = new Set(selectedGoalIds);
+  const live = displayGoals(goals).filter((goal) => selected.has(goal.id));
+  if (live.length === 0) return null;
+  const ids = new Set<string>();
+  for (const goal of live) for (const id of goalItemIds(goal)) ids.add(id);
+  return ids;
+}
+
 /* ── progress ─────────────────────────────────────────────────────────────── */
 
 export interface GoalProgress {

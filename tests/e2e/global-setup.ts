@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { testEnv, STORAGE_STATE, SETUP_ARTIFACT, TEST_TITLE_PREFIX, BASE_URL } from './helpers/env';
-import { passwordGrant, sessionCookies, seededViewState } from './helpers/session';
+import { passwordGrant, sessionCookies, seededLocalStorage } from './helpers/session';
 
 /**
  * Runs ONCE before the whole suite.
@@ -76,6 +76,42 @@ export default async function globalSetup() {
   if (!settingsRes.ok) {
     throw new Error(
       `Failed to seed user_settings (${settingsRes.status}): ${await settingsRes.text()}`
+    );
+  }
+
+  // 2b. Switch on the extensions the specs drive.
+  //
+  // Goals and the Organize console are EXTENSIONS and they ship OFF
+  // (lib/extension-registry.ts). goals.spec.ts and organize.spec.ts drive both,
+  // and half a dozen other specs reach the console through a door, so without
+  // these two rows the suite tests a correctly-gated app and reads as a
+  // regression in every feature at once.
+  //
+  // Seeded here rather than per spec for the same reason the settings above are:
+  // it is shared-account setup, and a spec that flipped a toggle would race
+  // every spec running beside it.
+  //
+  // `on_conflict=user_id,slug` IS LOAD BEARING and is the one thing that makes
+  // this re-runnable. PostgREST's merge-duplicates conflict-targets the PRIMARY
+  // KEY unless told otherwise, and unlike user_settings above — whose PK IS
+  // `user_id` — user_extensions has a surrogate `id uuid default
+  // gen_random_uuid()` with the natural key as a separate unique constraint
+  // (026_user_extensions.sql). Without the parameter every run mints a fresh id,
+  // the PK never conflicts, the insert proceeds, and run two violates
+  // `user_extensions_user_id_slug_key` → 409 → this throws → globalSetup dies
+  // and the whole suite fails permanently. lib/db.ts's own writer for this table
+  // passes `{ onConflict: 'user_id,slug' }` for exactly this reason.
+  const extRes = await rest('user_extensions?on_conflict=user_id,slug', {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify([
+      { user_id: userId, slug: 'goals', enabled: true },
+      { user_id: userId, slug: 'organize', enabled: true },
+    ]),
+  });
+  if (!extRes.ok) {
+    throw new Error(
+      `Failed to seed user_extensions (${extRes.status}): ${await extRes.text()}`
     );
   }
 
@@ -156,7 +192,10 @@ export default async function globalSetup() {
         // test starts on default view prefs instead of the seeded ones and the
         // failures read as view bugs.
         origin: BASE_URL,
-        localStorage: [seededViewState()],
+        // Includes the ownership stamp, without which lib/local-state.ts reads
+        // this browser as unattributed and clears what it can — see
+        // seededOwnerState().
+        localStorage: seededLocalStorage(userId),
       },
     ],
   };

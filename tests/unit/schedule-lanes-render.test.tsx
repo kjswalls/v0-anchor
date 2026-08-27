@@ -58,7 +58,6 @@ beforeAll(() => {
 vi.mock('@/lib/db', () => ({
   fetchItems: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
-  fetchHabitGroups: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   createItem: vi.fn(async () => {}),
   updateItem: vi.fn(async () => {}),
@@ -118,7 +117,6 @@ function seed(canvasGroupBy: GroupBy, over: Partial<Task>[] = []) {
       { id: 'p2', name: 'Home', emoji: '🏠' },
       { id: 'p3', name: 'Admin', emoji: '🗂' },
     ],
-    habitGroups: [],
     routines: [],
     programs: [],
     showCompletedTasks: true,
@@ -239,11 +237,11 @@ describe('focus recedes the other lanes', () => {
     seed('project');
     mount(<DaySchedule activeId={null} />);
 
-    fireEvent.click(caps().find((el) => el.dataset.lane === 'project:Work')!);
+    fireEvent.click(caps().find((el) => el.dataset.lane === 'project:work')!);
 
     const receded = blockPanes().filter((el) => el.dataset.receded === 'true');
     expect(receded.map((el) => el.dataset.blockId).sort()).toEqual(['a', 'h']);
-    expect(caps().find((el) => el.dataset.lane === 'project:Work')).toHaveAttribute(
+    expect(caps().find((el) => el.dataset.lane === 'project:work')).toHaveAttribute(
       'aria-pressed',
       'true'
     );
@@ -259,7 +257,7 @@ describe('focus recedes the other lanes', () => {
     stubbedFieldWidth = MIN_CHANNEL_PX * 6;
     seed('project');
     mount(<DaySchedule activeId={null} />);
-    fireEvent.click(caps().find((el) => el.dataset.lane === 'project:Work')!);
+    fireEvent.click(caps().find((el) => el.dataset.lane === 'project:work')!);
 
     const off = blockPanes().find((el) => el.dataset.receded === 'true')!;
     expect(off.className).toContain('bg-[var(--grp-off-pane)]');
@@ -273,7 +271,7 @@ describe('focus recedes the other lanes', () => {
     seed('project');
     mount(<DaySchedule activeId={null} />);
 
-    const workCap = () => caps().find((el) => el.dataset.lane === 'project:Work')!;
+    const workCap = () => caps().find((el) => el.dataset.lane === 'project:work')!;
     fireEvent.click(workCap());
     fireEvent.click(workCap());
 
@@ -288,14 +286,14 @@ describe('focus recedes the other lanes', () => {
     stubbedFieldWidth = MIN_CHANNEL_PX * 6;
     seed('project');
     mount(<DaySchedule activeId={null} />);
-    fireEvent.click(caps().find((el) => el.dataset.lane === 'project:Work')!);
+    fireEvent.click(caps().find((el) => el.dataset.lane === 'project:work')!);
     expect(blockPanes().filter((el) => el.dataset.receded === 'true')).toHaveLength(2);
 
     cleanup();
     useViewStore.setState({ canvasGroupBy: 'priority' });
     mount(<DaySchedule activeId={null} />);
 
-    expect(useScheduleFocusStore.getState().focusedKey).toBe('project:Work');
+    expect(useScheduleFocusStore.getState().focusedKey).toBe('project:work');
     expect(blockPanes().filter((el) => el.dataset.receded === 'true')).toHaveLength(0);
   });
 });
@@ -355,7 +353,7 @@ describe('Week × Schedule — focus, never lanes', () => {
     seed('project');
     mount(<WeekSchedule activeId={null} />);
 
-    fireEvent.click(caps().find((el) => el.dataset.lane === 'project:Work')!);
+    fireEvent.click(caps().find((el) => el.dataset.lane === 'project:work')!);
 
     const receded = blockPanes().filter((el) => el.dataset.receded === 'true');
     expect(receded.map((el) => el.dataset.blockId).sort()).toEqual(['a', 'h']);

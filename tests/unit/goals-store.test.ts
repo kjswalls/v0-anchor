@@ -16,7 +16,6 @@ vi.mock('@/lib/db', async (importOriginal) => {
     ...actual,
     fetchItems: vi.fn(async () => []),
     fetchProjects: vi.fn(async () => []),
-    fetchHabitGroups: vi.fn(async () => []),
     fetchItemTypes: vi.fn(async () => []),
     fetchRoutines: vi.fn(async () => []),
     fetchPrograms: vi.fn(async () => []),
@@ -81,7 +80,6 @@ beforeEach(() => {
     routines: [],
     programs: [],
     projects: [],
-    habitGroups: [],
     goalsAvailable: true,
     // Reset with the rest of it. Nothing set this until the UTC+14 case below,
     // and the moment something did it leaked forward into every later test in

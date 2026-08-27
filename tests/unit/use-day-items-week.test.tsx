@@ -28,7 +28,6 @@ import { renderHook, cleanup } from '@testing-library/react';
 vi.mock('@/lib/db', () => ({
   fetchItems: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
-  fetchHabitGroups: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   createItemType: vi.fn(async () => {}),
   updateItemType: vi.fn(async () => {}),
@@ -42,10 +41,6 @@ vi.mock('@/lib/db', () => ({
   updateProject: vi.fn(async () => {}),
   deleteProject: vi.fn(async () => {}),
   restoreProject: vi.fn(async () => {}),
-  createHabitGroup: vi.fn(async () => {}),
-  updateHabitGroup: vi.fn(async () => {}),
-  deleteHabitGroup: vi.fn(async () => {}),
-  restoreHabitGroup: vi.fn(async () => {}),
   fetchRoutines: vi.fn(async () => []),
   createRoutine: vi.fn(async () => {}),
   updateRoutine: vi.fn(async () => {}),
@@ -70,7 +65,8 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { EMPTY_VIEW_FILTERS, type ViewFilters } from '@/lib/filters';
 import type { DayItems } from '@/lib/day-items';
-import type { Item } from '@/lib/planner-types';
+import type { Goal, Item } from '@/lib/planner-types';
+import { enableGoalsAndOrganize } from './support/extensions';
 
 /** Mon 13th → Sun 19th July 2026. UTC throughout so dateStr is unambiguous. */
 const WEEK = ['13', '14', '15', '16', '17', '18', '19'].map(
@@ -90,7 +86,7 @@ const HABIT: Item = {
   type: 'habit',
   id: 'h-stretch',
   title: 'Stretch',
-  group: 'Health',
+  project: 'Health',
   status: 'pending',
   streak: 0,
   completedDates: [],
@@ -127,7 +123,7 @@ const FRI_TASK: Item = {
   project: 'Side',
 } as unknown as Item;
 
-function seed(opts: { showPausedOnGrid?: boolean; filters?: ViewFilters } = {}) {
+function seed(opts: { showPausedOnGrid?: boolean; filters?: ViewFilters; goals?: Goal[] } = {}) {
   const items = [HABIT, WED_TASK, FRI_TASK];
   usePlannerStore.setState({
     userId: 'user-1',
@@ -141,6 +137,7 @@ function seed(opts: { showPausedOnGrid?: boolean; filters?: ViewFilters } = {}) 
     programs: [],
     showCompletedTasks: true,
     showPausedOnGrid: opts.showPausedOnGrid ?? false,
+    goals: opts.goals ?? [],
   });
   useViewStore.setState({
     typeFilter: 'all',
@@ -156,7 +153,11 @@ const idsOf = (d: DayItems): string[] => [
 
 const week = () => renderHook(() => useDayItemsForDates(WEEK)).result.current;
 
-beforeEach(() => vi.clearAllMocks());
+// The GOAL clause below is the Goals extension's, and it ships off.
+beforeEach(() => {
+  enableGoalsAndOrganize();
+  vi.clearAllMocks();
+});
 afterEach(cleanup);
 
 describe('useDayItemsForDates', () => {
@@ -202,14 +203,66 @@ describe('useDayItemsForDates', () => {
     expect(days.flatMap(idsOf)).toEqual(['t-wed']);
   });
 
-  it('keeps a habit that answers the container axis with its group', () => {
-    seed({ filters: { ...EMPTY_VIEW_FILTERS, containers: ['group:Health'] } });
+  it('keeps a habit that answers the container axis like everything else', () => {
+    // `project:`, not the retired `group:` prefix — 039. A stored blob still
+    // holding the old one is rewritten by `normalizeFilters` on read.
+    seed({ filters: { ...EMPTY_VIEW_FILTERS, containers: ['project:Health'] } });
     const days = week();
 
     // Live columns keep the habit; both tasks go (neither is in a group).
     expect(days.map((d) => idsOf(d))).toEqual([
       [], [], [], ['h-stretch'], ['h-stretch'], ['h-stretch'], ['h-stretch'],
     ]);
+  });
+
+  it('narrows every column by the GOAL clause, resolved once for the week', () => {
+    // The wiring case: `deriveDayItems` cannot ask an item row about
+    // `goal_items`, so the hook resolves the selection and hands one id set to
+    // all seven columns. Membership is dateless, which is why one set is right
+    // here where the pause exclusion above needs one per column.
+    seed({
+      filters: { ...EMPTY_VIEW_FILTERS, goals: ['g1'] },
+      goals: [
+        {
+          id: 'g1',
+          name: 'Learn Chinese',
+          state: 'active',
+          memberIds: ['h-stretch'],
+          milestoneIds: ['t-fri'],
+          checkinIds: [],
+        },
+      ],
+    });
+    const days = week();
+
+    // The member habit and the MILESTONE task both survive; Wednesday's
+    // unrelated task does not. A milestone's startDate is its target date, so
+    // it shows on the day it is aimed at — Friday.
+    expect(days[WED].tasksByBucket.morning).toEqual([]);
+    expect(days[FRI].tasksByBucket.morning.map((t) => t.id)).toEqual(['t-fri']);
+    expect(days.flatMap(idsOf).sort()).toEqual([
+      'h-stretch', 'h-stretch', 'h-stretch', 'h-stretch', 't-fri',
+    ]);
+  });
+
+  it('leaves every column whole when the selected goal has ENDED', () => {
+    // Inert rather than empty — see lib/goals.ts. A blank week with a filter
+    // naming a goal that is finished is the stale-ref failure all over again.
+    seed({
+      filters: { ...EMPTY_VIEW_FILTERS, goals: ['g1'] },
+      goals: [
+        {
+          id: 'g1',
+          name: 'Learn Chinese',
+          state: 'achieved',
+          memberIds: ['h-stretch'],
+          milestoneIds: [],
+          checkinIds: [],
+        },
+      ],
+    });
+
+    expect(week().flatMap(idsOf)).toContain('t-wed');
   });
 
   it('reuses the memo across renders, and re-derives when an instant moves', () => {

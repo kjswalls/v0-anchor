@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 /**
  * Server-side container-id resolution (migration 027).
  *
- * THE AGENT PATH HAS NO STORE. planner-store's projectIdFor/groupIdFor resolve
+ * THE AGENT PATH HAS NO STORE. planner-store's projectIdFor resolves
  * every client write against containers already in memory, but
  * /api/agent/tasks and /api/agent/habits never touch Zustand — and both create
  * schemas deliberately `.omit()` the id, because an agent holds no id↔name map.
@@ -81,7 +81,7 @@ const task: Item = {
   type: 'task', id: 't1', title: 'x', status: 'pending', isScheduled: false, order: 0,
 };
 const habit: Item = {
-  type: 'habit', id: 'h1', title: 'y', group: 'Wellness', streak: 0, status: 'pending',
+  type: 'habit', id: 'h1', title: 'y', project: 'Wellness', streak: 0, status: 'pending',
   completedDates: [], skippedDates: [], dailyCounts: {}, repeatFrequency: 'daily',
 };
 
@@ -90,8 +90,13 @@ beforeEach(() => {
   updated.length = 0;
   selectErrors = false;
   rows = {
-    projects: [{ id: 'pr-work', name: 'Work', user_id: 'u1' }],
-    habit_groups: [{ id: 'gr-well', name: 'Wellness', user_id: 'u1' }],
+    // One table since 039 collapsed the two CLASSIFY kinds. `habit_groups` is
+    // deliberately absent: a lookup that still read it would find nothing here
+    // and the habit cases below would go red rather than silently pass.
+    projects: [
+      { id: 'pr-work', name: 'Work', user_id: 'u1' },
+      { id: 'gr-well', name: 'Wellness', user_id: 'u1' },
+    ],
   };
 });
 
@@ -103,7 +108,7 @@ describe('create resolves the container name to an id', () => {
 
   it('links a habit the agent filed by name', async () => {
     await createItem('u1', habit);
-    expect(itemsInsert()).toMatchObject({ group: 'Wellness', group_id: 'gr-well' });
+    expect(itemsInsert()).toMatchObject({ project: 'Wellness', project_id: 'gr-well' });
   });
 
   it('writes no id column when there is no name to resolve', async () => {
@@ -174,23 +179,29 @@ describe('an agent re-file moves the id with the name', () => {
     expect(itemsUpdate()).toMatchObject({ project: null, project_id: null });
   });
 
-  it('does the same on the habit side', async () => {
+  it('does the same on the habit side, through the LEGACY field name', async () => {
+    // The agent's vocabulary is pinned: `HabitUpdateSchema` still takes `group`,
+    // and `fromLegacyHabitUpdates` renames it to `project` at the boundary. A
+    // patch that reached the allowlist still spelled `group` would write
+    // nothing at all, silently.
     await updateHabit('h1', { group: 'Wellness' });
-    expect(itemsUpdate()).toMatchObject({ group: 'Wellness', group_id: 'gr-well' });
+    expect(itemsUpdate()).toMatchObject({ project: 'Wellness', project_id: 'gr-well' });
   });
 
-  it('folds case for habit groups, as every other group lookup does', async () => {
-    // groupIdFor, getHabitGroupEmoji, getHabitGroupColor and addHabitGroup's
-    // de-dupe all normalise. Exact-only here does not merely fail to link — it
-    // writes NULL over an id that was already correct, putting the habit
-    // outside the rename fan-out.
+  it('folds case, as every other container lookup does', async () => {
+    // projectIdFor, getProjectEmoji, getProjectColor and addProject's de-dupe
+    // all normalise. Exact-only here does not merely fail to link — it writes
+    // NULL over an id that was already correct, putting the item outside the
+    // rename fan-out.
     await updateHabit('h1', { group: 'wellness' });
-    expect(itemsUpdate()).toMatchObject({ group: 'wellness', group_id: 'gr-well' });
+    expect(itemsUpdate()).toMatchObject({ project: 'wellness', project_id: 'gr-well' });
   });
 
-  it('keeps projects exact, matching the store resolver', async () => {
+  it('folds on the TASK side too, which is what 039 changed', async () => {
+    // Projects compared exactly before the kinds merged, so this asserted a
+    // NULL id. One kind means one policy and the folding half is the survivor.
     await updateTask('t1', { project: 'work' });
-    expect(itemsUpdate()).toMatchObject({ project: 'work', project_id: null });
+    expect(itemsUpdate()).toMatchObject({ project: 'work', project_id: 'pr-work' });
   });
 
   it('does not re-query when the caller already sent both halves', async () => {

@@ -38,6 +38,8 @@ function seed(over: Record<string, unknown> = {}) {
     tasks: items.filter((i) => i.type === 'task' && visibleIds.has(i.id as string)),
     habits: [],
     projects: [],
+    // The context response's habitGroups[] is a projection of projects[] since
+    // 039, and the plugin still caches it under its own name.
     habitGroups: [],
     items,
     routines: [],

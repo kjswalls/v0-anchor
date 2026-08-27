@@ -17,7 +17,14 @@ import { useEODStore } from '@/lib/eod-store';
 import { useReminderStore } from '@/lib/reminder-store';
 import { useAISettingsStore, type AIProvider } from '@/lib/ai-settings-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
-import { EXT_COMPLETION_CONFETTI, EXT_HABIT_HEATMAP, extensionManifest } from '@/lib/extension-registry';
+import {
+  EXT_COMPLETION_CONFETTI,
+  EXT_GOALS,
+  EXT_HABIT_HEATMAP,
+  EXT_ORGANIZE,
+  OFFICIAL_EXTENSIONS,
+  extensionManifest,
+} from '@/lib/extension-registry';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { useGatewayStore } from '../gateway-store';
 import { EXTENSION_SETTINGS } from '@/lib/extension-settings';
@@ -25,6 +32,12 @@ import { STAKE_SETTINGS } from '@/lib/stakes/stake-config';
 import { usePaletteStore } from '@/lib/palette-store';
 import { THEME_PALETTES, isThemePalette } from '@/lib/theme-palettes';
 import { saveSettings } from '@/lib/settings-service';
+import {
+  DEFAULT_SHORTCUTS,
+  shortcutKeysFor,
+  useKeyboardShortcutsStore,
+} from '@/lib/keyboard-shortcuts-store';
+import { decodeKeys, encodeKeys, formatKeys, isApplePlatform } from '@/lib/commands/keys';
 import type { TimeBucket } from '@/lib/planner-types';
 
 /**
@@ -52,15 +65,65 @@ import type { TimeBucket } from '@/lib/planner-types';
  * manifest is what stops search deep-linking to a control that does nothing.
  * See memory/plans/deferred-settings-features.md for the ones that are coming
  * back once the feature behind them exists.
+ *
+ * PANES ARE TWO LEVELS, and only under Extensions. The rail is the map and it
+ * stays at seven entries; an extension gets a pane of its OWN below it, at
+ * `extensions/<slug>`. Every one of those is generated from the catalog in
+ * lib/extension-registry.ts — there is no hand-written pane per extension and
+ * there must never be one, because the whole promise of the extension surface
+ * is that adding one is adding config. See EXTENSION_PANES for the rest.
  */
 
-export type PaneId = 'day' | 'look' | 'rituals' | 'beacon' | 'keyboard' | 'extensions' | 'anchor';
+/** The rail. Closed, hand-declared, and the only level that appears in it. */
+export type RootPaneId =
+  | 'day'
+  | 'look'
+  | 'rituals'
+  | 'beacon'
+  | 'keyboard'
+  | 'extensions'
+  | 'anchor';
+
+/**
+ * One extension's own pane.
+ *
+ * OPEN by construction, because the set of extensions is data — closing it
+ * would mean editing this union every time the catalog grows, which is the
+ * hand-written pane this design exists to avoid. `isPaneId` is still the
+ * runtime gate: the template literal admits `extensions/anything` to the type,
+ * and only a slug with a catalog entry survives the route.
+ */
+export type ExtensionPaneId = `extensions/${string}`;
+
+export type PaneId = RootPaneId | ExtensionPaneId;
+
+/** The pane id an extension's settings live at. Slug in, route segment out. */
+export function extensionPaneId(slug: string): ExtensionPaneId {
+  return `extensions/${slug}`;
+}
+
+export function isExtensionPane(pane: string): pane is ExtensionPaneId {
+  return pane.startsWith('extensions/');
+}
+
+/** The slug back out of a sub-pane id, or null for anything else. */
+export function extensionSlugFromPane(pane: string): string | null {
+  return isExtensionPane(pane) ? pane.slice('extensions/'.length) : null;
+}
 
 export interface SettingsPane {
   id: PaneId;
   name: string;
   icon: LucideIcon;
   blurb: string;
+  /**
+   * Set on a sub-pane only: the rail entry it belongs under.
+   *
+   * The rail renders PANES and nothing else, so this is what lets a sub-pane
+   * still light the right rail row, roll its search hits up into that row's
+   * count, and name itself "Extensions · Beeminder" in a result group.
+   */
+  parent?: RootPaneId;
 }
 
 export const PANES: SettingsPane[] = [
@@ -98,7 +161,10 @@ export const PANES: SettingsPane[] = [
     id: 'extensions',
     name: 'Extensions',
     icon: Blocks,
-    blurb: 'Optional pieces of Anchor — on when you want them.',
+    // The rail entry is now an INDEX — the blurb says so, because the pane
+    // stopped being the place the switches are and became the place they are
+    // listed from.
+    blurb: 'Optional pieces of Anchor — on when you want them. Open one to set it up.',
   },
   {
     id: 'anchor',
@@ -107,6 +173,60 @@ export const PANES: SettingsPane[] = [
     blurb: 'The account, the tour, and how to reach us.',
   },
 ];
+
+/**
+ * One pane per extension, generated from the catalog.
+ *
+ * This is the whole answer to "each extension may have a lot of config": an
+ * extension's toggle, its config fields and its credential fields are a page of
+ * their own at /settings/extensions/<slug>, deep-linkable and searchable like
+ * any other pane, and /settings/extensions is the index that lists them.
+ *
+ * DERIVED, never declared. The catalog is the source of the id, the name, the
+ * icon and the blurb, so adding an extension still means adding a manifest
+ * entry, a field list and a deliver() — the three things CLAUDE.md says an
+ * extension is — and nothing here. A hand-written pane per extension would put
+ * a fourth edit in that list and would drift from the catalog the first time
+ * someone renamed one.
+ *
+ * Every entry needs at least one record (its own toggle), or the route is a
+ * room with nothing in it. That is asserted in tests/unit/settings-manifest.
+ * test.ts rather than papered over by hiding the pane: an extension a user
+ * cannot switch on is a bug in the extension, not a pane to quietly drop.
+ */
+export const EXTENSION_PANES: SettingsPane[] = OFFICIAL_EXTENSIONS.map((extension) => ({
+  id: extensionPaneId(extension.slug),
+  name: extension.name,
+  icon: extension.icon,
+  blurb: extension.description,
+  parent: 'extensions',
+}));
+
+/**
+ * Every pane, rail order first and each sub-pane immediately under its parent.
+ *
+ * Search results group by walking this, so the order here IS the order a
+ * multi-pane result list reads in — "Extensions" then its extensions, not the
+ * extensions scattered after Anchor.
+ */
+export const ALL_PANES: SettingsPane[] = PANES.flatMap((pane) => [
+  pane,
+  ...EXTENSION_PANES.filter((sub) => sub.parent === pane.id),
+]);
+
+/** Sub-panes of a rail entry, in catalog order. */
+export function subPanesOf(parent: RootPaneId): SettingsPane[] {
+  return ALL_PANES.filter((pane) => pane.parent === parent);
+}
+
+/**
+ * The rail row a pane lights up — itself, or its parent when it's a sub-pane.
+ * The rail never grows an entry per extension; it just stays lit while you're
+ * inside one.
+ */
+export function railPaneFor(pane: PaneId): RootPaneId {
+  return paneById(pane)?.parent ?? (pane as RootPaneId);
+}
 
 /**
  * The capabilities a record can't reach through a store singleton.
@@ -130,7 +250,6 @@ export interface SettingCtx {
   };
   /** Actions the page owns because they need a router or a locally-mounted modal. */
   actions?: {
-    openShortcuts: () => void;
     openBugReport: () => void;
     replayTour: () => void;
     signOut: () => void;
@@ -138,7 +257,14 @@ export interface SettingCtx {
   };
 }
 
-export type ControlKind = 'switch' | 'enum' | 'time' | 'text' | 'action' | 'info';
+/**
+ * `keys` is a key BINDING, recorded rather than chosen: the control listens for
+ * one chord and stores it. Its value travels as an encoded string (see
+ * encodeKeys in lib/commands/keys.ts) so it fits `read`/`write` like every
+ * other record, which is what lets one binding be searched, deep-linked,
+ * marked modified and reset by exactly the machinery every other setting uses.
+ */
+export type ControlKind = 'switch' | 'enum' | 'time' | 'text' | 'action' | 'info' | 'keys';
 
 /**
  * Which shape a `text` control takes.
@@ -197,6 +323,19 @@ export interface SettingRecord {
   desktopOnly?: boolean;
   /** Present but not actionable, with the reason shown inline. */
   unavailable?: (ctx: SettingCtx) => string | null;
+  /**
+   * The store behind this row cannot answer for it YET — a fetch is still in
+   * flight for the signed-in account.
+   *
+   * Distinct from `unavailable`, and the difference is the whole point.
+   * Unavailable is a fact about the deployment and reads as "you can't have
+   * this"; pending is a fact about this second, and a row that renders its
+   * `read()` during it is not showing a value — it is showing a DEFAULT while
+   * claiming to show the user's setting. SettingRow answers a pending row with
+   * a placeholder in the control slot and disables the write path, so the row
+   * reads as loading instead of as off.
+   */
+  pending?: (ctx: SettingCtx) => boolean;
   read: (ctx: SettingCtx) => string | boolean;
   write: (value: string | boolean, ctx: SettingCtx) => void;
   defaultValue: string | boolean;
@@ -221,6 +360,32 @@ const palette = () => usePaletteStore.getState();
 /** Shared by every extension toggle: rows stay visible, with the reason inline. */
 const extUnavailable = () =>
   ext().available ? null : 'Needs a database update that has not landed here yet.';
+
+/**
+ * The extensions store has not answered for this account yet.
+ *
+ * `available` is not this question — it is false only once a fetch PROVED the
+ * table isn't deployed, and starts true. In the window before the store's two
+ * queries resolve, `isEnabled()` falls through to `resolveEnabled`'s manifest
+ * default and `configs` is empty, so every row here would render a value no
+ * account ever chose: a Beeminder toggle the server has ON draws as OFF, and a
+ * click on it writes that OFF into the user's row and silently takes a live
+ * stakes integration down. The config fields fail the other way — the store's
+ * own `configsLoaded` guard drops the keystroke with nothing but a console
+ * line, because the write is whole-object and would replace a four-key server
+ * row with the one key in memory.
+ *
+ * This used to be unreachable by accident: the settings page gated its entire
+ * render on planner-store's `isLoading`, the seven-table item load, which the
+ * extensions fetch always won. That gate is now the single-row settings read
+ * (lib/settings/hydration.ts) and the extensions fetch races it, so the window
+ * is real and each row states its own readiness.
+ *
+ * `available &&` so a missing table stays UNAVAILABLE rather than becoming a
+ * spinner that never resolves — hydrate leaves `configsLoaded` false in that
+ * case too, and "needs a database update" is the truer of the two answers.
+ */
+const extPending = () => ext().available && !ext().configsLoaded;
 
 /**
  * The master switch a delivery channel or stake adapter actually rides on.
@@ -288,18 +453,20 @@ function channelRecords(): SettingRecord[] {
     const manifest = extensionManifest(spec.slug);
     if (!manifest) continue;
     const toggleId = `extensions.${spec.slug}`;
+    const pane = extensionPaneId(spec.slug);
     const master = masterSwitchFor(spec.slug);
     const gated = () =>
       extUnavailable() ?? (master.on() ? null : `needs ${master.label}, in Rituals`);
 
     records.push({
       id: toggleId,
-      pane: 'extensions',
+      pane,
       label: manifest.name,
       description: manifest.description,
       control: 'switch',
       keywords: usable(manifest.name, [...spec.keywords, 'remind', 'nudge', 'notification']),
       unavailable: gated,
+      pending: extPending,
       read: () => ext().isEnabled(spec.slug),
       write: (v, ctx) => {
         if (ctx.userId) ext().setEnabled(ctx.userId, spec.slug, Boolean(v));
@@ -310,7 +477,7 @@ function channelRecords(): SettingRecord[] {
     for (const field of spec.config) {
       records.push({
         id: `${toggleId}.${field.key}`,
-        pane: 'extensions',
+        pane,
         label: field.label,
         description: field.description,
         control: 'text',
@@ -322,6 +489,7 @@ function channelRecords(): SettingRecord[] {
         // that merely restates one is what the manifest's own rule forbids.
         keywords: usable(field.label, [...spec.keywords, ...(field.keywords ?? [])]),
         unavailable: gated,
+        pending: extPending,
         read: () => String(ext().configs[spec.slug]?.[field.key] ?? ''),
         write: (v, ctx) => {
           if (ctx.userId) ext().setConfigValue(ctx.userId, spec.slug, field.key, String(v).trim());
@@ -333,7 +501,7 @@ function channelRecords(): SettingRecord[] {
     for (const field of spec.secrets) {
       records.push({
         id: `${toggleId}.${field.key}`,
-        pane: 'extensions',
+        pane,
         label: field.label,
         description: field.description,
         control: 'text',
@@ -361,6 +529,130 @@ function channelRecords(): SettingRecord[] {
 
   return records;
 }
+
+/* ------------------------------------------------------------- shortcuts */
+
+/**
+ * A keyboard binding, as a settings record.
+ *
+ * THE SEAM, stated once. lib/commands/registry.ts declares what a command IS,
+ * including the binding it owns; lib/keyboard-shortcuts-store.ts folds those
+ * plus the two shell-owned bindings into DEFAULT_SHORTCUTS, which is the list
+ * the keydown dispatcher reads and the list a user's rebinding is keyed
+ * against. This maps 1:1 over THAT list and adds nothing to it — no keys, no
+ * ids, no labels of its own. There is a test that the two lists have the same
+ * ids in the same order, because a second hand-maintained copy of the binding
+ * table is exactly the failure this arrangement exists to prevent.
+ *
+ * Why records at all, rather than a bespoke table: everything the settings
+ * surface already does for a record it now does for a binding — search across
+ * label, description and keywords; `?focus=keys.undo` scrolling to the row and
+ * ringing it; the lime modified bar; per-row reset. None of that was reachable
+ * while the whole pane was one button that opened a dialog.
+ *
+ * The VALUE is the encoded chord ("mod k"), normalized on both sides, so
+ * `isModified` — a plain `read() !== defaultValue` — is true exactly when the
+ * user has actually moved the binding somewhere else. Rebinding ⌘K to ⌃K on
+ * Windows encodes to the same string and correctly reads as unmodified.
+ */
+export interface ShortcutSettingRecord extends SettingRecord {
+  /** The id the binding is persisted under. Frozen — see commands.test.ts. */
+  shortcutId: string;
+  /** Section heading, shared by both shells that render these records. */
+  section: string;
+}
+
+/**
+ * The words someone reaches for when they want to change a key, on every row.
+ *
+ * The manifest's rule is that keywords are hand-authored, and these are — once,
+ * for a set that is generated. A per-binding list would be nineteen hand-written
+ * lists that all say "hotkey", and the binding's own vocabulary already arrives
+ * from the command it belongs to.
+ */
+const SHORTCUT_KEYWORDS = ['shortcut', 'keybinding', 'hotkey', 'binding', 'rebind', 'remap'];
+
+const shortcuts = () => useKeyboardShortcutsStore.getState();
+
+export const SHORTCUT_RECORDS: ShortcutSettingRecord[] = DEFAULT_SHORTCUTS.map((binding) => {
+  const label = binding.label;
+  const keywords = [
+    ...new Set(
+      [...SHORTCUT_KEYWORDS, ...binding.keywords.split(/\s+/)]
+        .map((word) => word.toLowerCase())
+        .filter(Boolean)
+    ),
+    // The manifest's own rule: a keyword that merely restates the label adds
+    // nothing (labels are indexed already) and trips the structural test.
+  ].filter((word) => word !== label.toLowerCase());
+
+  return {
+    // `keys.<shortcutId>`, verbatim. The shortcut id is already permanent —
+    // it is the key a rebinding is stored under and commands.test.ts freezes
+    // the list — so reusing it means the deep link and the persisted binding
+    // cannot drift. A camel-cased variant would be a SECOND name for the same
+    // thing, derived by a transform that can collide (`new_task` / `newTask`).
+    id: `keys.${binding.id}`,
+    shortcutId: binding.id,
+    pane: 'keyboard' as const,
+    section: binding.groupHeading,
+    label,
+    // The context sentence is appended rather than rendered apart, because a
+    // flat table's lie is one of OMISSION — the row says nothing about where
+    // it works — and one sentence in the place people already read fixes it.
+    // It is indexed too, which is what makes "week" find the column bindings.
+    description: [binding.description, binding.context].filter(Boolean).join(' ') || undefined,
+    control: 'keys' as const,
+    // NOT desktopOnly. The pane would be empty on every phone, and the rail
+    // would still advertise it — a dead room, which the manifest test forbids.
+    // An iPad with a keyboard makes the table useful anyway.
+    keywords,
+    read: () => encodeKeys(shortcutKeysFor(binding.id)),
+    write: (value) => {
+      const keys = decodeKeys(String(value));
+      // Reset writes the DEFAULT back through this path. Storing it would pin
+      // the user to today's default forever — see resetShortcut's note.
+      if (encodeKeys(keys) === encodeKeys(binding.keys)) shortcuts().resetShortcut(binding.id);
+      else if (keys.length) shortcuts().updateShortcut(binding.id, keys);
+    },
+    defaultValue: encodeKeys(binding.keys),
+    display: (value) =>
+      formatKeys(decodeKeys(String(value)), isApplePlatform()).join(' ') || 'No shortcut',
+  };
+});
+
+/**
+ * The records grouped for display, in first-appearance order — which is
+ * registry order, which is the order the palette lists the same commands in.
+ *
+ * Shared by both shells so the settings pane and the ⌘/ overlay cannot group
+ * or order the same set differently.
+ */
+export const SHORTCUT_SECTIONS: { heading: string; records: ShortcutSettingRecord[] }[] = (() => {
+  const sections: { heading: string; records: ShortcutSettingRecord[] }[] = [];
+  for (const record of SHORTCUT_RECORDS) {
+    const existing = sections.find((section) => section.heading === record.section);
+    if (existing) existing.records.push(record);
+    else sections.push({ heading: record.section, records: [record] });
+  }
+  return sections;
+})();
+
+/**
+ * A SettingCtx for a surface that renders ONLY shortcut records.
+ *
+ * Every `keys` record reads and writes through the keyboard-shortcuts store
+ * alone — it never touches ctx, and there is a test that proves it by handing
+ * each one a ctx that throws on any property access. That is what lets the ⌘/
+ * overlay render the very same records from anywhere in the app, with none of
+ * the theme, push-subscription and router plumbing the settings ROUTE assembles
+ * for the rest of the manifest.
+ */
+export const SHORTCUT_ONLY_CTX: SettingCtx = {
+  theme: undefined,
+  setTheme: () => {},
+  userId: null,
+};
 
 /* ---------------------------------------------------------------- records */
 
@@ -893,22 +1185,12 @@ export const SETTINGS: SettingRecord[] = [
     defaultValue: 'gpt-4o-mini',
   },
 
-  /* ── Keyboard ─────────────────────────────────────────────────────────── */
-  {
-    id: 'keys.shortcuts',
-    pane: 'keyboard',
-    label: 'Keyboard shortcuts',
-    description: 'Every binding, rebindable. The same table ⌘/ opens.',
-    control: 'action',
-    // NOT desktopOnly, despite the obvious temptation: it is the only record in
-    // the Keyboard pane, so hiding it on mobile leaves a pane the rail still
-    // advertises and search can no longer reach — a dead room. An iPad with a
-    // keyboard makes the table useful anyway.
-    keywords: ['keybinding', 'hotkey', 'remap', 'shortcut', 'keys', 'bindings'],
-    read: () => 'Open',
-    write: (_v, ctx) => ctx.actions?.openShortcuts(),
-    defaultValue: 'Open',
-  },
+  /* ── Keyboard ─────────────────────────────────────────────────────────────
+     Generated, one record per binding — see SHORTCUT_RECORDS below. The pane
+     used to hold a single `action` row whose whole job was to open a modal,
+     which meant the bindings themselves were unsearchable, undeep-linkable and
+     visible only from inside a dialog. */
+  ...SHORTCUT_RECORDS,
 
   /* ── Anchor ───────────────────────────────────────────────────────────── */
   {
@@ -945,18 +1227,64 @@ export const SETTINGS: SettingRecord[] = [
   },
 
   /* ── Extensions ───────────────────────────────────────────────────────── */
-  // One switch per manifest entry in lib/extension-registry.ts. Persistence is
-  // the user_extensions table (migration 026), NOT a user_settings column —
-  // per-extension columns are the missing-column reset footgun. No dbColumn,
-  // so data-setting falls back to the record id.
+  // One switch per manifest entry in lib/extension-registry.ts, each in the
+  // extension's OWN pane (see EXTENSION_PANES) rather than in a shared list.
+  // Persistence is the user_extensions table (migration 026), NOT a
+  // user_settings column — per-extension columns are the missing-column reset
+  // footgun. No dbColumn, so data-setting falls back to the record id.
+  //
+  // These two are hand-written where the channels and stakes below are
+  // generated, and they stay that way: their ids predate the slug convention
+  // (`extensions.habitHeatmap`, not `extensions.habit-heatmap`) and an id is a
+  // permanent deep link. `pane` is derived from the slug all the same, so the
+  // pane and the catalog entry cannot drift apart.
+  //
+  // Goals and the Organize console are hand-written for a different reason than
+  // the two below: they have no ChannelSettingsSpec, because they are not
+  // channels — there is nothing to credential and nothing to configure. One
+  // switch each is the whole surface, which is exactly what the extension index
+  // renders a row from.
+  {
+    id: 'extensions.goals',
+    pane: extensionPaneId(EXT_GOALS),
+    label: 'Goals',
+    description:
+      'Long-term goals with milestones and check-ins, a Goal filter and a Goal grouping. Switching it off hides the goal layer and keeps every goal, every item and every membership.',
+    control: 'switch',
+    keywords: ['goal', 'milestone', 'check-in', 'checkin', 'ambition', 'target', 'long term'],
+    unavailable: extUnavailable,
+    pending: extPending,
+    read: () => ext().isEnabled(EXT_GOALS),
+    write: (v, ctx) => {
+      if (ctx.userId) ext().setEnabled(ctx.userId, EXT_GOALS, Boolean(v));
+    },
+    defaultValue: false,
+  },
+  {
+    id: 'extensions.organize',
+    pane: extensionPaneId(EXT_ORGANIZE),
+    label: 'Organize console',
+    description:
+      'The console for routines, programs, projects, item types, habit groups and recently deleted. Switching it off closes the console; nothing in it is deleted.',
+    control: 'switch',
+    keywords: ['organize', 'organise', 'console', 'manage', 'containers', 'trash', 'bulk'],
+    unavailable: extUnavailable,
+    pending: extPending,
+    read: () => ext().isEnabled(EXT_ORGANIZE),
+    write: (v, ctx) => {
+      if (ctx.userId) ext().setEnabled(ctx.userId, EXT_ORGANIZE, Boolean(v));
+    },
+    defaultValue: false,
+  },
   {
     id: 'extensions.habitHeatmap',
-    pane: 'extensions',
+    pane: extensionPaneId(EXT_HABIT_HEATMAP),
     label: 'Habit heatmap',
     description: 'A six-month completion grid in the item panel, for anything with a streak.',
     control: 'switch',
     keywords: ['heatmap', 'history', 'streak', 'grid', 'completion', 'habits'],
     unavailable: extUnavailable,
+    pending: extPending,
     read: () => ext().isEnabled(EXT_HABIT_HEATMAP),
     write: (v, ctx) => {
       if (ctx.userId) ext().setEnabled(ctx.userId, EXT_HABIT_HEATMAP, Boolean(v));
@@ -965,12 +1293,13 @@ export const SETTINGS: SettingRecord[] = [
   },
   {
     id: 'extensions.confetti',
-    pane: 'extensions',
+    pane: extensionPaneId(EXT_COMPLETION_CONFETTI),
     label: 'Completion confetti',
     description: 'A small burst when you complete something. Purely celebratory.',
     control: 'switch',
     keywords: ['celebrate', 'party', 'fun', 'burst', 'reward', 'dopamine'],
     unavailable: extUnavailable,
+    pending: extPending,
     read: () => ext().isEnabled(EXT_COMPLETION_CONFETTI),
     write: (v, ctx) => {
       if (ctx.userId) ext().setEnabled(ctx.userId, EXT_COMPLETION_CONFETTI, Boolean(v));
@@ -990,7 +1319,9 @@ export const SETTINGS: SettingRecord[] = [
  * destination record and a manager surface rather than a new pane — the budget
  * is a mechanism, not a promise someone has to keep defending. (Extensions
  * spent the budget once, deliberately: its rows are durable opt-in switches
- * with no manager surface to point a destination at.)
+ * with no manager surface to point a destination at. It has since grown a
+ * level BELOW itself, one pane per extension — which costs the rail nothing,
+ * because the rail still shows one Extensions entry and always will.)
  */
 export interface DestinationRecord {
   id: string;
@@ -1017,17 +1348,18 @@ export const DESTINATIONS: DestinationRecord[] = [
     // Names the real surface. "Planner" was true of a dialog reachable from two
     // unrelated places; these five now live in one console with a name.
     where: 'Organize',
-    keywords: ['project', 'folder', 'colour', 'color', 'container', 'manage'],
+    // ONE DESTINATION since migration 039. `dest.groups` pointed at a
+    // 'groups' console section that no longer exists — and a destination
+    // naming a dead section does not fail, it falls through `sectionMeta` to
+    // the FIRST section, so searching "habit group" would have opened Routines.
+    // Its keywords are folded in here so the search still answers, which is the
+    // whole point of a destination record.
+    keywords: [
+      'project', 'folder', 'colour', 'color', 'container', 'manage',
+      'group', 'habit', 'category', 'wellness', 'work',
+    ],
     action: 'organize',
     section: 'projects',
-  },
-  {
-    id: 'dest.groups',
-    label: 'Habit groups',
-    where: 'Organize',
-    keywords: ['group', 'habit', 'category', 'wellness', 'work'],
-    action: 'organize',
-    section: 'groups',
   },
   {
     id: 'dest.types',
@@ -1107,11 +1439,16 @@ export function settingsForPane(pane: PaneId): SettingRecord[] {
 }
 
 export function paneById(id: string): SettingsPane | undefined {
-  return PANES.find((p) => p.id === id);
+  return ALL_PANES.find((p) => p.id === id);
 }
 
+/**
+ * The route's gate, and the reason ExtensionPaneId can afford to be an open
+ * template literal type: `extensions/beeminder` is a pane because the catalog
+ * has that slug, and `extensions/anything-else` is not a pane at all.
+ */
 export function isPaneId(value: string): value is PaneId {
-  return PANES.some((p) => p.id === value);
+  return ALL_PANES.some((p) => p.id === value);
 }
 
 /** The value as the user sees it — chip copy, and what search echoes back. */

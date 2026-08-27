@@ -15,6 +15,7 @@ import {
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { checkinStanding, isGoalActive } from '@/lib/goals';
+import { useGoalsEnabled } from '@/lib/extension-gates';
 import { formatShort, useToday } from '@/lib/collections';
 import { accentColorForName } from '@/lib/accent-colors';
 
@@ -63,8 +64,43 @@ export default function GoalPage() {
   const router = useRouter();
   const { todayStr, tz } = useToday();
 
+  const goalsOn = useGoalsEnabled();
+
   const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
   const goal = goals.find((g) => g.id === id);
+
+  /**
+   * Goals switched off — INERT, and deliberately not the not-found state below.
+   *
+   * "Goal not found" would be a lie about the data (the goal is right there in
+   * the store, untouched) and would teach the user that a link they saved is
+   * dead. This says what is actually true and points at the one switch that
+   * changes it, which is the whole "extension store" posture: off is a thing
+   * you can see and undo, not a thing that vanished. Nothing here reads the
+   * goal, so an inert page cannot leak one either.
+   */
+  if (!goalsOn) {
+    return (
+      <main
+        className="mx-auto flex max-w-lg flex-col items-start gap-4 px-6 py-16"
+        data-testid="goal-page-extension-off"
+      >
+        <h1 className="text-foreground text-lg font-semibold">Goals is switched off</h1>
+        <p className="text-muted-foreground text-sm">
+          Your goals are still here — switch the extension back on and this page picks up
+          where it left off. Nothing was deleted.
+        </p>
+        <div className="flex gap-2">
+          <Button asChild variant="outline" size="sm">
+            <Link href="/settings/extensions/goals">Open the setting</Link>
+          </Button>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/">Open Anchor</Link>
+          </Button>
+        </div>
+      </main>
+    );
+  }
 
   if (!goal) {
     // Same reasoning as the item page: initializeStore stamps userId BEFORE the

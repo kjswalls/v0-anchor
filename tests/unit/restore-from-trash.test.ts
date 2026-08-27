@@ -27,7 +27,6 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('@/lib/db', () => ({
   fetchItems: vi.fn(async () => []),
   fetchProjects: vi.fn(async () => []),
-  fetchHabitGroups: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   createItemType: vi.fn(async () => {}),
   updateItemType: vi.fn(async () => {}),
@@ -42,10 +41,6 @@ vi.mock('@/lib/db', () => ({
   deleteProject: vi.fn(async () => {}),
   restoreProject: vi.fn(async () => {}),
   renameContainerMembers: vi.fn(async () => {}),
-  createHabitGroup: vi.fn(async () => {}),
-  updateHabitGroup: vi.fn(async () => {}),
-  deleteHabitGroup: vi.fn(async () => {}),
-  restoreHabitGroup: vi.fn(async () => {}),
   fetchRoutines: vi.fn(async () => []),
   createRoutine: vi.fn(async () => {}),
   updateRoutine: vi.fn(async () => {}),
@@ -113,10 +108,13 @@ describe('restoreFromTrash — the history contract (decision 3)', () => {
   });
 
   it('names the kind, because the bin is the one list that mixes them', () => {
+    // 'group' left TrashKind with the classify kind (039) — a former habit
+    // group is in the bin as a 'project', because the migration moved the row
+    // rather than orphaning it in a table nothing reads.
     store().restoreFromTrash(
-      entry({ kind: 'group', id: 'g-1', name: 'Wellness', entity: { id: 'g-1', name: 'Wellness', emoji: 'x' } })
+      entry({ kind: 'routine', id: 'r-1', name: 'Morning', entity: { id: 'r-1', name: 'Morning', itemIds: [] } })
     );
-    expect(latestLabel()).toBe('Restore habit group: Wellness');
+    expect(latestLabel()).toBe('Restore routine: Morning');
   });
 
   it('⌘Z after a restore re-deletes the row — the gate, in the store', () => {
@@ -209,39 +207,41 @@ describe('restoreFromTrash — what comes back with it', () => {
     expect(restored.projectId).toBe('pr-1');
   });
 
-  it('re-files a habit group’s members too, and the type guard is load-bearing', async () => {
-    // The group-side twin, and NOT a copy for symmetry's sake: removeHabitGroup
-    // is different from removeProject — it REASSIGNS its habits to a fallback
-    // group in the store while `dbDeleteHabitGroup` only stamps deleted_at, so
-    // the group_id link survives and the store's copy is a lie until reload.
-    // Without the re-file the restored group comes back empty and its habits
-    // stay filed under "Personal".
+  it('re-files a habit member exactly as it re-files a task', async () => {
+    // This used to be the group-side twin, guarded on `type === 'habit'` so a
+    // restored habit group wrote `group` and a restored project wrote
+    // `project`. One CLASSIFY axis (039) means one branch and one column: the
+    // restore re-files EVERY member id it was given, whatever their types.
+    //
+    // The re-file is still load-bearing rather than cosmetic. `removeProject`
+    // reassigns a habit to a fallback container while `dbDeleteProject` only
+    // stamps deleted_at, so the project_id link survives and the store's copy
+    // is a lie until reload; without this the restored container comes back
+    // empty and its habits stay filed under "Personal".
     const habit = {
-      type: 'habit', id: 'h-1', title: 'Stretch', group: 'Personal', groupId: 'g-old',
+      type: 'habit', id: 'h-1', title: 'Stretch', project: 'Personal', projectId: 'g-old',
       status: 'pending', streak: 0, completedDates: [], skippedDates: [],
       dailyCounts: {}, repeatFrequency: 'daily',
     } as unknown as Item;
-    // A task carrying the SAME id in memberIds would be re-filed too if the
-    // `type === 'habit'` guard were dropped — which would write `group` onto a
-    // task, a column no task surface reads and every habit surface does.
     vi.mocked(db.fetchItems).mockResolvedValue([habit, task({ id: 'task-1' })]);
     store().clearStore();
     await store().initializeStore(USER);
 
     store().restoreFromTrash(
       entry({
-        kind: 'group', id: 'g-1', name: 'Wellness',
-        entity: { id: 'g-1', name: 'Wellness', emoji: 'icon:Heart' },
+        kind: 'project', id: 'pr-1', name: 'Wellness',
+        entity: { id: 'pr-1', name: 'Wellness', emoji: 'icon:Heart' },
         memberIds: ['h-1', 'task-1'],
       })
     );
 
     const back = store().items.find((i) => i.id === 'h-1')!;
-    expect(back.type === 'habit' && back.group).toBe('Wellness');
-    expect(back.type === 'habit' && back.groupId).toBe('g-1');
-    // The task named in memberIds is NOT touched — habits only.
-    expect(filed('task-1').project).toBeUndefined();
-    expect('group' in filed('task-1')).toBe(false);
+    expect(back.project).toBe('Wellness');
+    expect(back.projectId).toBe('pr-1');
+    // …and the task named alongside it comes back too, which is the half the
+    // old type guard made impossible.
+    expect(filed('task-1').project).toBe('Wellness');
+    expect(filed('task-1').projectId).toBe('pr-1');
   });
 
   it('leaves items that were never members alone', async () => {

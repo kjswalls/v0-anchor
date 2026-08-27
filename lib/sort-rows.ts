@@ -1,8 +1,14 @@
-import type { Habit, Priority, Task } from './planner-types';
+import type { HabitItem, Priority, Task } from './planner-types';
 import { fieldApplies, typeNameOf } from './filters';
+import { getItemTypeConfig } from './item-registry';
+import { isCompletedOnDate, isRecurring } from './recurrence';
 
 /**
- * Ordering for the three LIST surfaces, applied post-derivation.
+ * Row ordering applied POST-DERIVATION, for the surfaces that can take it.
+ *
+ * Two passes live here and they share one rule about where they may run:
+ * `sortRows`, the user-chosen Ordering, and `sinkCompleted`, the always-on rule
+ * that finished work drops to the foot of its group.
  *
  * Never inside `deriveDayItems`. That function is shared by all six canvas
  * surfaces, and two of them depend on its comparator for correctness rather
@@ -15,6 +21,28 @@ import { fieldApplies, typeNameOf } from './filters';
  * That is also why Ordering is offered on List only. Sorting just the untimed
  * sub-section of a Buckets card was considered and rejected: a sort control
  * that silently governs half a card is worse than none.
+ *
+ * `sinkCompleted` DOES reach that untimed sub-section, and the difference is
+ * not a softening of the rule above — it is that the two passes displace
+ * different things. An Ordering is a menu value that claims the surface it is
+ * attached to, so honouring it on half a card breaks a promise the control
+ * made. The sink makes no claim and has no control; what it must not do is
+ * overwrite an order the USER authored. The untimed section has none — its
+ * order is "habits, then tasks, then whatever the derivation emitted" — while
+ * the timed spine's order IS each row's own `startTime`, which the user set and
+ * which `inferDropTime` then reads back. So the spine keeps its clock and the
+ * untimed rows take the sink, on Day × Buckets only; Week × Buckets has no
+ * spine at all (its cells carry no per-row droppable) and takes it whole.
+ * See the call sites in components/views/*.tsx for the per-surface reasoning.
+ *
+ * "The untimed section has none" is true today, and by accident rather than by
+ * design: lib/day-items.ts sorts untimed rows by `order`, `task.orderable` is
+ * true, and planner-store.ts exposes `reorderTasks` — but nothing under
+ * components/ or app/ calls it, so that `order` is a creation sequence nobody
+ * has dragged. Wire drag-to-reorder into the untimed section and the sink
+ * begins silently overriding an order the user DID author, which is the one
+ * thing the paragraph above says it must not do. Revisit this file then, not
+ * only the call site.
  */
 
 export type SortBy = 'default' | 'priority' | 'title';
@@ -37,7 +65,8 @@ const UNSET_RANK = 3;
 
 export interface SortableRow {
   itemType: 'task' | 'habit';
-  item: Task | Habit;
+  /** See GroupableRow — the ITEM shape, not the legacy projection. */
+  item: Task | HabitItem;
 }
 
 /**
@@ -85,4 +114,111 @@ export function sortRows<T extends SortableRow>(rows: T[], sortBy: SortBy): T[] 
   if (sortBy === 'default') return rows;
   if (sortBy === 'title') return [...rows].sort(byTitle);
   return [...rows].sort((a, b) => priorityRank(a) - priorityRank(b));
+}
+
+/* ── completed sinks ────────────────────────────────────────────────────────*/
+
+/**
+ * Is this row FINISHED on the day it is being drawn for?
+ *
+ * Two rules, and which one applies is decided by recurrence, never by type:
+ *
+ *  - A recurring item's completion is per-DATE (`completedDates`), never the
+ *    scalar `status` — migration 016's semantics, and the reason a habit ticked
+ *    today must not read as finished on every other day of the week.
+ *  - A one-shot item's is its scalar `status`, compared against the registry's
+ *    `doneStatus` for its type rather than a literal. The vocabularies differ on
+ *    purpose (`completed` for tasks and custom types, `done` for habits) and are
+ *    external contracts the OpenClaw plugin parses, so this asks the registry
+ *    which value means finished instead of testing for either.
+ *
+ * `cancelled` and `skipped` deliberately do NOT count. `doneStatus` is the only
+ * field in the registry that names a finished state; there is no "terminal
+ * statuses" set to ask, so treating those two as done would mean hardcoding one
+ * member of each vocabulary and asserting they mean the same thing — the exact
+ * merge the legacy-projection contract forbids. It is also what the rows
+ * already say: `data-completed` is false on both, a cancelled task is not
+ * struck through, and a skipped occurrence renders in its own minimized form.
+ *
+ * `dateStr` is NULLABLE and the null case is load-bearing, not a convenience: a
+ * dateless surface (the braindump) has no day to resolve a recurring item's
+ * completion against, and TaskRow already refuses to draw one as completed
+ * there (`suppressCompletedLook`, issue #181). Passing null keeps this predicate
+ * in step with what the row renders — a recurring row that shows no completion
+ * mark must not move as if it had one.
+ */
+export function isRowCompletedOn(row: SortableRow, dateStr: string | null): boolean {
+  const item = row.item as { status?: string; repeatFrequency?: string; completedDates?: string[] };
+  if (isRecurring(item)) {
+    return dateStr !== null && isCompletedOnDate(item, dateStr);
+  }
+  // 'habit' from the ROW for the same reason priorityRank takes it from there:
+  // typeNameOf falls back to 'task' for a projection missing its runtime
+  // discriminator, and 'task' answers `completed` where a habit answers `done`.
+  const typeName = row.itemType === 'habit' ? 'habit' : typeNameOf(row.item);
+  return item.status === getItemTypeConfig(typeName).doneStatus;
+}
+
+/**
+ * Finished work sinks to the foot of its own group.
+ *
+ * ALWAYS ON, and not a fourth setting. The app already has two controls for
+ * completed rows and both are about whether they are there at all — the global
+ * `showCompletedTasks` and the Display menu's `hideFinished` — so this only ever
+ * takes effect for a user who has asked to keep seeing finished work. A toggle
+ * to undo it would be a preference whose entire job is to restore the state the
+ * two existing preferences already reach by removing the rows.
+ *
+ * A PARTITION, not a comparator. Stability inside each half is then structural
+ * rather than a property of Array#sort: both halves are appended in the order
+ * they were walked, so an Ordering already applied by {@link sortRows} survives
+ * intact within each half, and 'default' rows keep the derivation's own order.
+ *
+ * Returns the SAME ARRAY when the split is trivial, the convention `sortRows`
+ * sets for 'default': a list with nothing finished, or with nothing unfinished,
+ * is already in this order.
+ *
+ * SCOPE IS THE CALLER'S. This is applied post-derivation and per group, exactly
+ * like `sortRows`, and for the same reason — see this file's header. The one
+ * surface that hands over less than everything is Day × Buckets, which passes
+ * its untimed rows only; the note at that call site says why.
+ *
+ * Two places are outside the pass entirely, and neither omission is forced by
+ * the spine rule above:
+ *
+ *  - Day × Schedule's `unscheduled:anytime` tray is untimed and sits behind one
+ *    droppable, so nothing there resolves a drop against a neighbour's time. It
+ *    COULD take the pass; it does not because this landed on the list and
+ *    bucket surfaces. A choice left open, not a correctness argument.
+ *  - The braindump's `pausedGroups` never reaches {@link orderRows}, so a
+ *    finished row under a "Paused" heading stays put while one in the working
+ *    list sinks. That section is a recovery surface grouped BY CAUSE, and it
+ *    already declines `braindumpFilters` and `braindumpSortBy` on the grounds
+ *    that shaping it would reintroduce the hiding it exists to undo; letting
+ *    the sink alone through would make it the single working-list rule that
+ *    leaks in.
+ */
+export function sinkCompleted<T extends SortableRow>(rows: T[], dateStr: string | null): T[] {
+  const open: T[] = [];
+  const done: T[] = [];
+  for (const row of rows) (isRowCompletedOn(row, dateStr) ? done : open).push(row);
+  if (done.length === 0 || open.length === 0) return rows;
+  return [...open, ...done];
+}
+
+/**
+ * The full post-derivation ordering pass for the list surfaces: the chosen
+ * Ordering first, then the sink.
+ *
+ * Composed here rather than at the three call sites so the two can never be
+ * applied in the other order. Sinking first and sorting second would let Title
+ * A–Z lift a completed row back over an unfinished one, which is the whole
+ * behaviour undone by an ordering the user picked for a different reason.
+ */
+export function orderRows<T extends SortableRow>(
+  rows: T[],
+  sortBy: SortBy,
+  dateStr: string | null,
+): T[] {
+  return sinkCompleted(sortRows(rows, sortBy), dateStr);
 }

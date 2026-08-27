@@ -8,18 +8,25 @@ import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { GroupSection } from '@/components/primitives/group-section';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
 import { RelayField } from '@/components/primitives/relay-field';
+import { SurfaceHeader } from '@/components/primitives/surface-header';
+import { NoticeSlot } from '@/components/notices/notice-slot';
 import { DisplayMenu } from '@/components/primitives/display-menu';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openAddDialog, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
 import { useViewStore } from '@/lib/view-store';
 import { passesFilters } from '@/lib/filters';
+import {
+  useBraindumpGroupBy,
+  useGoalFilterIds,
+  useOrganizeEnabled,
+} from '@/lib/extension-gates';
 import { groupRows, type RowGroup } from '@/lib/grouping';
-import { sortRows } from '@/lib/sort-rows';
+import { orderRows } from '@/lib/sort-rows';
 import { RELAY } from '@/lib/relay-config';
 import { inactiveItemIdsOn, suppressionReason, suppressionLabel } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
-import type { Task, Habit } from '@/lib/planner-types';
+import type { Task, HabitItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -229,10 +236,33 @@ function PausedSection({ groups, count }: { groups: PausedGroup[]; count: number
   );
 }
 
-export function Braindump() {
-  const { tasks, habits, items, routines, programs, userTimezone } = usePlannerStore();
+interface BraindumpProps {
+  /**
+   * 'mobile' is the phone's Braindump TAB. It differs from the sidebar in one
+   * thing only — the header capsule is inset off the screen edge, so it lines
+   * up with the dated tabs' header card and with the dock. Everything below it
+   * already sits on the paper backdrop on both shells.
+   */
+  variant?: 'sidebar' | 'mobile';
+  /**
+   * Trailing content for the header row-pill. This capsule is the ONLY header
+   * the phone's Braindump tab gets, so the shell hangs the user menu here
+   * (design/mobile-redesign/BraindumpTab.dc.html); the sidebar has the canvas
+   * header for that and passes nothing.
+   */
+  headerAccessory?: React.ReactNode;
+}
+
+export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpProps = {}) {
+  const { tasks, habits, items, routines, programs, goals, userTimezone } = usePlannerStore();
   const { openDialog } = useUIStore();
-  const { braindumpGroupBy, braindumpFilters, braindumpSortBy } = useViewStore();
+  const { braindumpFilters, braindumpSortBy } = useViewStore();
+  // Resolved against what is switched on: 'goal' falls back to 'none' while
+  // the Goals extension is off, rather than sectioning the whole list under
+  // one "No goal" heading. See lib/extension-gates.ts.
+  const braindumpGroupBy = useBraindumpGroupBy();
+  const organizeOn = useOrganizeEnabled();
+  const isMobile = variant === 'mobile';
   // The scroll port — QuickAddRow drops it to the bottom after each add so the
   // new row stays visible above the sticky capture row.
   const listRef = useRef<HTMLDivElement>(null);
@@ -258,12 +288,24 @@ export function Braindump() {
     });
   }, [items, routines, programs, userTimezone]);
 
+  /**
+   * The goal clause, resolved to item ids.
+   *
+   * Membership lives in `goal_items`, so the pure predicate cannot ask an item
+   * row for it — the surface resolves it once and hands it down, the same
+   * bargain `inactiveItemIdsOn` above makes. `null` is INERT, not empty: a
+   * selection that names no live goal narrows nothing rather than emptying the
+   * list (see lib/goals.ts) — and the same is true with the Goals extension
+   * switched off, which is what makes that switch safe here (lib/extension-gates.ts).
+   */
+  const goalMemberIds = useGoalFilterIds(goals, braindumpFilters.goals);
+
   const rows: RowItem[] = useMemo(() => {
     const unscheduledTasks = tasks.filter((task) => {
       if (suppressedIds.has(task.id)) return false;
       if (task.isScheduled || task.timeBucket) return false;
       if (braindumpFilters.hideFinished && task.status === 'completed') return false;
-      if (!passesFilters(task, braindumpFilters)) return false;
+      if (!passesFilters(task, braindumpFilters, undefined, goalMemberIds)) return false;
       return true;
     });
 
@@ -284,7 +326,7 @@ export function Braindump() {
       if (habit.repeatFrequency && habit.repeatFrequency !== 'none') return false;
       if (braindumpFilters.hideFinished && habit.status === 'done') return false;
       // 'habit' explicitly — see the note in lib/day-items.ts.
-      if (!passesFilters(habit, braindumpFilters, 'habit')) return false;
+      if (!passesFilters(habit, braindumpFilters, 'habit', goalMemberIds)) return false;
       return true;
     });
 
@@ -296,7 +338,7 @@ export function Braindump() {
       ...unscheduledTasks.map((task) => ({ itemType: 'task' as const, item: task })),
       ...unscheduledHabits.map((habit) => ({ itemType: 'habit' as const, item: habit })),
     ];
-  }, [tasks, habits, braindumpFilters, suppressedIds]);
+  }, [tasks, habits, braindumpFilters, suppressedIds, goalMemberIds]);
 
   /**
    * Everything currently set aside — the home paused work would otherwise not
@@ -346,7 +388,7 @@ export function Braindump() {
             : `paused:${reason.until ?? ''}`;
       const row: RowItem =
         item.type === 'habit'
-          ? { itemType: 'habit' as const, item: item as unknown as Habit }
+          ? { itemType: 'habit' as const, item: item as unknown as HabitItem }
           : { itemType: 'task' as const, item: item as unknown as Task };
       const group = groups.get(key);
       if (group) group.rows.push(row);
@@ -371,6 +413,13 @@ export function Braindump() {
    * rendered [Work, Home]; switching to Title A–Z rendered [Home, Work]. The
    * rows inside were right either way, which is why it reads as a jump rather
    * than as a bug.
+   *
+   * `orderRows` also sinks finished rows to the foot of each group. The date is
+   * NULL, not today: the braindump carries no date of its own (locked decision
+   * 3), and TaskRow already refuses to draw a recurring row as completed here
+   * for that reason (`suppressCompletedLook`, issue #181). A recurring row that
+   * shows no completion mark must not move as though it had one, so only
+   * one-shot rows — which are what this list is almost entirely made of — sink.
    */
   const grouped: RowGroup<RowItem>[] = useMemo(() => {
     // 'type' is the braindump's own value and has no canvas counterpart — the
@@ -383,11 +432,12 @@ export function Braindump() {
             { key: 'Tasks', label: 'Tasks', rows: rows.filter((r) => r.itemType === 'task') },
             { key: 'Habits', label: 'Habits', rows: rows.filter((r) => r.itemType === 'habit') },
           ].filter((g) => g.rows.length > 0)
-        : // routines/programs feed the gate values ('routine', 'program'); they
-          // are inert for 'none'/'project', so passing them always is harmless.
-          groupRows(rows, braindumpGroupBy, { routines, programs });
-    return groups.map((g) => ({ ...g, rows: sortRows(g.rows, braindumpSortBy) }));
-  }, [rows, braindumpGroupBy, braindumpSortBy, routines, programs]);
+        : // routines/programs feed the gate values ('routine', 'program') and
+          // goals the aspire one; each is inert for the values it does not
+          // answer, so passing all three always is harmless.
+          groupRows(rows, braindumpGroupBy, { routines, programs, goals });
+    return groups.map((g) => ({ ...g, rows: orderRows(g.rows, braindumpSortBy, null) }));
+  }, [rows, braindumpGroupBy, braindumpSortBy, routines, programs, goals]);
 
   return (
     <section
@@ -400,50 +450,89 @@ export function Braindump() {
       data-testid="braindump"
       className="flex min-h-0 flex-1 flex-col gap-2"
     >
-      {/* Header — gray capsule (flat) framing a shadowed white row-pill.
-          Dims from Figma: gray 406×50 r10; pill 385×37 r10, inset (10,6),
-          shadow 0 4 4 rgba(0,0,0,.15). Title downsized to Inter Medium 13
-          for the Linear-style exploration. */}
-      <div className="shrink-0 rounded-[10px] bg-surface-3 px-[10px] py-[6px] shadow-[var(--shadow-elev-bar)]">
-        <div className="flex h-[37px] items-center gap-2 rounded-[10px] bg-surface-2 px-[15px] shadow-[var(--shadow-elev-sm)]">
-          <AlignLeft className="h-4 w-4 text-muted-foreground" />
-          <h2 className="flex-1 font-sans text-sm font-medium leading-none text-foreground">
-            Braindump
-          </h2>
-          {/* Portalled, so the sidebar's 280px minimum never constrains the
-              240px panel — which is the decisive advantage over a persistent
-              chip bar. A bar would sit IN FLOW above a grid whose hour height is
-              derived from remaining column height, so adding your first filter
-              would visibly re-scale every hour row of the day. */}
+      {/* Header — the shared double-card capsule (SurfaceHeader). The phone
+          shell insets it off the screen edge; the sidebar column has no gutter
+          of its own, so it stays flush there. */}
+      <SurfaceHeader
+        title="Braindump"
+        icon={<AlignLeft className="h-4 w-4 shrink-0 text-muted-foreground" />}
+        className={cn(isMobile && 'mx-[10px]')}
+      >
+        {/* On the phone this row is the Braindump tab's ONLY header, so these
+            controls are the whole surface's chrome and they were still wearing
+            sidebar density — a 24px menu, a 24px organize button and a 16px
+            add, which is that tab's primary action being aimed at with a thumb.
+            The mobile mount grows all three to the 28px slot the artboard draws
+            (BraindumpTab.dc.html), glyphs unchanged; the sidebar's 280px width
+            budget is untouched. Same idiom as mobile-header.tsx's wrapper
+            around this component's canvas twin.
+
+            The menu itself is portalled, so the sidebar's 280px minimum never
+            constrains the 240px panel — which is the decisive advantage over a
+            persistent chip bar. A bar would sit IN FLOW above a grid whose hour
+            height is derived from remaining column height, so adding your first
+            filter would visibly re-scale every hour row of the day. */}
+        <span className={cn('flex', isMobile && '[&>button]:size-7')}>
           <DisplayMenu surface="braindump" trigger="icon" align="start" />
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 text-muted-foreground hover:text-foreground"
-            onClick={() => openDialog({ type: 'organize', section: 'projects' })}
-            aria-label="Organize projects & groups"
-          >
-            <FolderOpen className="h-4 w-4" />
-          </Button>
-          {/* No routines button here on purpose. This row is width-critical at
-              the 280px minimum — the collapse control moved off it to buy the
-              title ~30px, and a fifth control spends exactly that back. The
-              manager is reached from the palette and from the item dialog's
-              Routine chip instead. */}
-          {/* Collapse used to sit here, as a fifth control. It moved onto the
-              resize sash (components/sidebar/sidebar.tsx) so all the chrome
-              that acts on the COLUMN — its width and whether it's there at all
-              — lives on the column's own edge, and this row is left holding
-              only things that act on the LIST. It also buys the title back
-              ~30px, which is the difference between fitting and truncating at
-              the 280px minimum width. ⌘[ is unchanged. */}
-          <AddIconButton
-            size="md"
-            onClick={() => openAddDialog('task')}
-            aria-label="Add task"
-          />
-        </div>
-      </div>
+        </span>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={cn(
+            'h-6 w-6 text-muted-foreground hover:text-foreground',
+            isMobile && 'size-7'
+          )}
+          onClick={() => openDialog({ type: 'organize', section: 'projects' })}
+          // INERT, not absent, while the Organize console is off. A door that
+          // vanishes teaches nothing; a door that is visibly shut and says why
+          // is the "extension store" posture (lib/extension-gates.ts). The
+          // console's own gate is the guard of last resort — this one is here so
+          // the click never opens an empty room in the first place.
+          disabled={!organizeOn}
+          title={
+            organizeOn ? undefined : 'Organize is off — switch it on in Settings → Extensions'
+          }
+          aria-label="Organize projects & groups"
+        >
+          <FolderOpen className="h-4 w-4" />
+        </Button>
+        {/* No routines button here on purpose. This row is width-critical at
+            the 280px minimum — the collapse control moved off it to buy the
+            title ~30px, and a fifth control spends exactly that back. The
+            manager is reached from the palette and from the item dialog's
+            Routine chip instead. */}
+        {/* Collapse used to sit here, as a fifth control. It moved onto the
+            resize sash (components/sidebar/sidebar.tsx) so all the chrome
+            that acts on the COLUMN — its width and whether it's there at all
+            — lives on the column's own edge, and this row is left holding
+            only things that act on the LIST. It also buys the title back
+            ~30px, which is the difference between fitting and truncating at
+            the 280px minimum width. ⌘[ is unchanged. */}
+        {/* The box is the mark here, not a hit area — a 28px bordered square
+            would read as a fourth well in the row — so the phone gets the
+            reach through a pseudo-element instead: 16px drawn, 28px tappable,
+            which lands inside the 8px gap without covering its neighbour. */}
+        <AddIconButton
+          size="md"
+          onClick={() => openAddDialog('task')}
+          aria-label="Add task"
+          className={cn(isMobile && "relative before:absolute before:-inset-[6px] before:content-['']")}
+        />
+        {headerAccessory}
+      </SurfaceHeader>
+
+      {/* The sweep receipt, standing on the list it added to.
+          "12 items put aside this morning" needs no words to say WHICH items —
+          they are the rows immediately below it, and "Put back" is next to the
+          things that would move. Outside the scroller on purpose: a receipt you
+          have to scroll to find is a receipt you never see, and this is the
+          surface the sweep's own consequence lives on.
+
+          It renders nothing when there is no receipt, and it registers the
+          `braindump` anchor only while it is mounted — so on the phone, where
+          this component lives on one tab, a receipt raised while you are on Today
+          falls back to the dock's line by itself. */}
+      <NoticeSlot anchor="braindump" className={cn(isMobile ? 'mx-[10px]' : 'px-[6px]')} />
 
       {/* List — sits directly on the paper backdrop, no card. A plain
           overflow-y-auto container, NOT Radix <ScrollArea>: it shrinks (flex) so

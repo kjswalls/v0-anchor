@@ -21,7 +21,7 @@ const task = (over: Partial<Item> = {}): Item => ({
 } as Item);
 
 const habit = (over: Partial<Item> = {}): Item => ({
-  type: 'habit', id: 'h', title: 'H', group: 'G', streak: 0, status: 'pending',
+  type: 'habit', id: 'h', title: 'H', project: 'G', streak: 0, status: 'pending',
   completedDates: [], skippedDates: [], dailyCounts: {}, repeatFrequency: 'daily',
   ...over,
 } as Item);

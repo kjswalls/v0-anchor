@@ -10,6 +10,7 @@ import { PriorityGlyph, MetaText, RollingMetaText, formatDuration } from '@/comp
 import { useDayItems } from '@/hooks/use-day-items';
 import { useFieldWidth, useFitHourPx, useResizeScrollCompensation } from '@/lib/use-fit-hour-px';
 import { useScheduleResizeStore } from '@/lib/schedule-resize-store';
+import { isTouchPointer } from '@/lib/dnd/sensors';
 import {
   HOUR_PX,
   HOVER_Z,
@@ -35,6 +36,7 @@ import { getItemTypeConfig } from '@/lib/item-registry';
 import { usePlannerStore } from '@/lib/planner-store';
 import { openEditFor } from '@/lib/ui-store';
 import { useViewStore, type ScheduleMarkStyle } from '@/lib/view-store';
+import { useCanvasGroupBy } from '@/lib/extension-gates';
 import { useSelectionStore, rangeIds } from '@/lib/selection-store';
 import { useNowMinutes } from '@/lib/use-now-minutes';
 import { useTimeFormat } from '@/lib/use-time-format';
@@ -45,7 +47,7 @@ import { groupRows } from '@/lib/grouping';
 import { groupBySupport } from '@/lib/view-options';
 import { ProgramNotice } from '@/components/views/program-notice';
 import type { DayItems } from '@/lib/day-items';
-import type { Task, Habit, TimeBucket, Item } from '@/lib/planner-types';
+import type { Task, HabitItem, TimeBucket, Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
@@ -183,7 +185,7 @@ const LINE_CLAMP = [
 
 export type TimedEntry = {
   itemType: 'task' | 'habit';
-  item: Task | Habit;
+  item: Task | HabitItem;
   startMin: number;
   duration: number;
 };
@@ -194,7 +196,7 @@ const toMin = (t: string) => {
 };
 
 /** The type's own fallback block length, for an item with no duration set. */
-function defaultMinutes(item: Task | Habit, itemType: 'task' | 'habit'): number {
+function defaultMinutes(item: Task | HabitItem, itemType: 'task' | 'habit'): number {
   const projected = item as { type?: string; customType?: string };
   return getItemTypeConfig(projected.type === 'custom' ? projected.customType! : itemType).schedule
     .defaultBlockMinutes;
@@ -572,7 +574,6 @@ export function ScheduleBlock({
 }) {
   const {
     getProjectColor,
-    getHabitGroupColor,
     selectedDate,
     userTimezone,
     routines,
@@ -592,7 +593,7 @@ export function ScheduleBlock({
   const { item, itemType } = entry;
   const isTask = itemType === 'task';
   const task = isTask ? (item as Task) : null;
-  const habit = !isTask ? (item as Habit) : null;
+  const habit = !isTask ? (item as HabitItem) : null;
 
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const rowDate = date ?? selectedDate;
@@ -614,11 +615,8 @@ export function ScheduleBlock({
       : task!.status === 'completed'
     : habit!.completedDates.includes(dateStr);
 
-  const accent = isTask
-    ? task!.project
-      ? getProjectColor(task!.project)
-      : 'var(--primary)'
-    : getHabitGroupColor(habit!.group);
+  // One CLASSIFY axis (039): the container's colour, whatever the type.
+  const accent = item.project ? getProjectColor(item.project) : 'var(--primary)';
 
   // Drag-to-resize an own-timed block. Bottom edge changes duration; top edge
   // changes start (bottom fixed). Live preview from local state; the store write
@@ -712,6 +710,19 @@ export function ScheduleBlock({
   };
 
   const onResizeDown = (edge: 'top' | 'bottom', e: React.PointerEvent) => {
+    // A finger never resizes. The hit zone is 12px tall (9px out, 3px in) and
+    // its grip is smaller still — a target no fingertip can aim at, but that a
+    // scrolling thumb crosses constantly, and every crossing captures the
+    // pointer and commits a new duration on release. So on touch this is not a
+    // feature with a poor hit area, it is a silent edit dispatched by the scroll
+    // gesture. Declining leaves the touch to the browser (nothing is captured
+    // and nothing is preventDefaulted), so the grid scrolls as it should; the
+    // duration field in the item dialog is the touch path to the same edit.
+    //
+    // Gated on pointerType, like the drag sensors in lib/dnd/sensors.ts, and for
+    // the same reason: a touchscreen laptop must keep mouse resize on the very
+    // same element.
+    if (isTouchPointer(e.nativeEvent)) return;
     e.stopPropagation();
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
@@ -1366,15 +1377,16 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
 
   // The Anytime strip sections like any other row list. `'none'` comes back as a
   // single unlabelled group, which renders as today's flat strip.
-  const canvasGroupBy = useViewStore((s) => s.canvasGroupBy);
+  const canvasGroupBy = useCanvasGroupBy();
   const routines = usePlannerStore((s) => s.routines);
   const programs = usePlannerStore((s) => s.programs);
+  const goals = usePlannerStore((s) => s.goals);
   const untimedGroups = useMemo(
     () =>
       groupBySupport('day', 'schedule', canvasGroupBy).honoured
-        ? groupRows(untimed, canvasGroupBy, { routines, programs })
+        ? groupRows(untimed, canvasGroupBy, { routines, programs, goals })
         : [{ key: '', label: '', rows: untimed }],
-    [untimed, canvasGroupBy, routines, programs]
+    [untimed, canvasGroupBy, routines, programs, goals]
   );
   /** True when the strip renders real sections rather than one flat list. */
   const grouped = untimedGroups.some((g) => g.label);
@@ -1434,9 +1446,9 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
       planLanes(
         timed.map((e) => ({ itemType: e.itemType, item: e.item })),
         canvasGroupBy,
-        { variant: 'day', fieldWidth, routines, programs }
+        { variant: 'day', fieldWidth, routines, programs, goals }
       ),
-    [timed, canvasGroupBy, fieldWidth, routines, programs]
+    [timed, canvasGroupBy, fieldWidth, routines, programs, goals]
   );
   const focusedKey = useScheduleFocusStore((s) => s.focusedKey);
 

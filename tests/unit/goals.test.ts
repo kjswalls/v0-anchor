@@ -39,7 +39,7 @@ const habit = (over: Partial<Extract<Item, { type: 'habit' }>> = {}): Item => ({
   completedDates: [],
   skippedDates: [],
   streak: 0,
-  group: 'Personal',
+  project: 'Personal',
   dailyCounts: {},
   ...over,
 });

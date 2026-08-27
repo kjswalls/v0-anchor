@@ -8,6 +8,10 @@ function ctx(overrides: Partial<DropContext> = {}): DropContext {
     // assertions below expect. resolveDrop derives it via toDateStr(date, tz).
     selectedDate: new Date('2026-07-04T12:00:00Z'),
     userTimezone: 'UTC',
+    // A cursor drag, so this file keeps asserting the FULL grammar. The one
+    // target a finger is not offered, and the fact that every other one is
+    // unchanged for it, live in dnd-touch-drop-targets.test.ts.
+    input: 'pointer',
     getRefTime: () => undefined,
     inferDropTime: (bucket, position, refTime) => refTime ?? '09:00',
     ...overrides,

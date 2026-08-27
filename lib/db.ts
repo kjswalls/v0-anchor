@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DbClient = any;
-import type { Task, Habit, Item, ItemTypeDef, TaskItem, HabitItem, Project, HabitGroupType, Routine, Program, Goal, GoalRole } from './planner-types';
+import type { Task, Habit, Item, ItemTypeDef, TaskItem, HabitItem, Project, Routine, Program, Goal, GoalRole } from './planner-types';
 import { ITEM_TYPES, getItemTypeConfig } from './item-registry';
 import { notifyPlugins } from './openclaw-registry';
 import { COMPLETION_RETRACTION_WINDOW_DAYS, windowStart } from './completion-window';
@@ -118,8 +118,17 @@ function itemFromRow(row: ItemRow): Item {
       type: 'habit',
       id: row.id,
       title: row.title,
-      group: row.group ?? '',
-      groupId: row.group_id ?? undefined,
+      // ONE CLASSIFY AXIS (039). A habit answers with `project` like everything
+      // else; `row.group` is the frozen column, read here only as a fallback so
+      // a build that lands ahead of the migration (a fresh clone, a rolled-back
+      // 039) still shows the habit's container instead of blanking it.
+      //
+      // The NAME falls back, the ID never does. `row.group_id` points into
+      // `habit_groups`, and `items_project_id_fkey` would reject it — writing it
+      // back would fail the whole update with 23503. A text-only reference is
+      // exactly the state 027 documents for most group references anyway.
+      project: row.project ?? row.group ?? '',
+      projectId: row.project_id ?? undefined,
       streak: row.streak ?? 0,
       status: row.status as Habit['status'],
       completedDates: row.completed_dates ?? [],
@@ -209,12 +218,16 @@ function pauseColumns(item: Item): Partial<Pick<ItemRow, 'paused_at' | 'paused_u
  * order does not cover: a fresh clone pointed at an un-migrated project, and a
  * rollback of the migration under a deployed build.
  */
+function containerColumns(item: Item): Partial<Pick<ItemRow, 'project_id'>> {
+  return item.projectId !== undefined ? { project_id: item.projectId } : {};
+}
+
 /**
  * The agent status stamp, emitted ONLY when set — the same PGRST204 guard as
  * `pauseColumns` and `containerColumns`, and for the identical reason their
  * headers give: an INSERT naming a column absent from PostgREST's schema cache
  * is rejected outright, so writing this unconditionally would break EVERY task
- * create against a pre-038 database, not only delegated ones.
+ * create against a pre-041 database, not only delegated ones.
  *
  * That window is real here rather than theoretical: Vercel deploys on push
  * while `pnpm db:push` is run by hand, so the build can lead the schema. And
@@ -224,13 +237,6 @@ function pauseColumns(item: Item): Partial<Pick<ItemRow, 'paused_at' | 'paused_u
 function agentStampColumn(item: Item): Partial<Pick<ItemRow, 'ai_status_at'>> {
   const stamp = (item as { aiStatusAt?: string }).aiStatusAt
   return stamp !== undefined ? { ai_status_at: stamp } : {}
-}
-
-function containerColumns(item: Item): Partial<Pick<ItemRow, 'project_id' | 'group_id'>> {
-  if (item.type === 'habit') {
-    return item.groupId !== undefined ? { group_id: item.groupId } : {};
-  }
-  return item.projectId !== undefined ? { project_id: item.projectId } : {};
 }
 
 /**
@@ -257,7 +263,10 @@ function itemToRow(userId: string, item: Item): ItemRow {
       user_id: userId,
       type: 'habit',
       title: item.title,
-      group: item.group,
+      // `project`, not `"group"` — 039. The frozen column is left exactly as the
+      // last pre-collapse build wrote it; dual-writing it would mean the
+      // rollback ballast never stops drifting, and the migration header says so.
+      project: item.project,
       streak: item.streak,
       status: item.status,
       completed_dates: item.completedDates,
@@ -393,14 +402,16 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
   return row;
 }
 
-function habitUpdatesToRow(updates: Partial<Habit>): Record<string, unknown> {
+function habitUpdatesToRow(updates: Partial<HabitItem>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if ('title' in updates) row.title = updates.title;
-  if ('group' in updates && updates.group != null) row.group = updates.group;
-  // Container id (027) — see the task allowlist. No null guard, unlike `group`
-  // above: the group NAME kept legacy NOT NULL semantics, but the id is
+  // One CLASSIFY axis (039): the same columns the task allowlist writes. The
+  // null guard survives the rename — the habit container NAME kept the legacy
+  // NOT NULL semantics, so a PATCH {"project": null} must not corrupt it.
+  if ('project' in updates && updates.project != null) row.project = updates.project;
+  // Container id (027) — no null guard, unlike the name above: the id is
   // nullable by design and clearing it is a real operation.
-  if ('groupId' in updates) row.group_id = updates.groupId ?? null;
+  if ('projectId' in updates) row.project_id = updates.projectId ?? null;
   if ('streak' in updates && updates.streak != null) row.streak = updates.streak;
   if ('status' in updates) row.status = updates.status;
   // completedDates / skippedDates: intent-routed by updateItem, never written
@@ -429,9 +440,9 @@ function habitUpdatesToRow(updates: Partial<Habit>): Record<string, unknown> {
   return row;
 }
 
-export function updatesToRow(type: string, updates: Partial<Task> | Partial<Habit>): Record<string, unknown> {
+export function updatesToRow(type: string, updates: Partial<Task> | Partial<HabitItem>): Record<string, unknown> {
   return type === 'habit'
-    ? habitUpdatesToRow(updates as Partial<Habit>)
+    ? habitUpdatesToRow(updates as Partial<HabitItem>)
     : taskUpdatesToRow(updates as Partial<Task>);
 }
 
@@ -791,7 +802,6 @@ export async function fetchItems(userId: string, type?: string, client?: DbClien
  */
 async function lookupContainerId(
   supabase: DbClient,
-  table: 'projects' | 'habit_groups',
   name: string,
   userId?: string,
 ): Promise<string | null | undefined> {
@@ -803,7 +813,7 @@ async function lookupContainerId(
   // unique across deleted rows too, so there is at most one candidate, and
   // keeping the link is what lets a Trash restore reconnect its members.
   try {
-    let query = supabase.from(table).select('id, name').eq('name', name);
+    let query = supabase.from('projects').select('id, name').eq('name', name);
     if (userId) query = query.eq('user_id', userId);
     const { data, error } = await query.limit(1);
     // Distinguish "no such container" (null — clear the id) from "cannot ask"
@@ -811,20 +821,22 @@ async function lookupContainerId(
     if (error) return undefined;
     if (data?.[0]?.id) return data[0].id;
 
-    // HABIT GROUPS FOLD CASE, and matching the store here is not tidiness. The
-    // client resolver (groupIdFor), getHabitGroupEmoji, getHabitGroupColor and
-    // addHabitGroup's de-dupe all normalise, so an agent naming "wellness"
-    // against a row called "Wellness" is filing into a group the app considers
-    // the same one. Exact-only, this returns null — and null does not merely
-    // fail to link, it CLEARS an id that was already correct, putting the item
-    // outside the rename fan-out. Projects stay exact, matching projectIdFor.
+    // CONTAINERS FOLD CASE, and matching the store here is not tidiness. The
+    // client resolver (projectIdFor), getProjectEmoji, getProjectColor and
+    // addProject's de-dupe all normalise (`CONTAINER_KINDS.project.caseFold`),
+    // so an agent naming "wellness" against a row called "Wellness" is filing
+    // into the container the app considers the same one. Exact-only, this
+    // returns null — and null does not merely fail to link, it CLEARS an id that
+    // was already correct, putting the item outside the rename fan-out.
+    //
+    // Folding used to apply to habit groups only; 039 left one classify kind
+    // with `caseFold: true`, so it applies to every container now.
     //
     // A second round trip rather than `ilike`: a container legitimately named
     // "100%" or "a_b" would turn into a wildcard pattern and match the wrong
-    // row. Container counts are small (10 projects, 3 groups on the live
-    // database) and this only runs after an exact miss.
-    if (table !== 'habit_groups') return null;
-    let all = supabase.from(table).select('id, name');
+    // row. Container counts are small (a dozen or so on the live database) and
+    // this only runs after an exact miss.
+    let all = supabase.from('projects').select('id, name');
     if (userId) all = all.eq('user_id', userId);
     const { data: rows, error: allError } = await all;
     if (allError) return undefined;
@@ -862,28 +874,22 @@ async function lookupContainerId(
  */
 async function withResolvedUpdate(
   supabase: DbClient,
-  kind: 'task' | 'habit',
   updates: Record<string, unknown>,
   userId?: string,
 ): Promise<Record<string, unknown>> {
-  const nameKey = kind === 'habit' ? 'group' : 'project';
-  const idKey = kind === 'habit' ? 'groupId' : 'projectId';
+  // One field for one axis since 039 — this took a `kind` only to pick between
+  // `group` and `project`.
   // An explicit id wins; no name means nothing to re-file.
-  if (!(nameKey in updates) || idKey in updates) return updates;
-  const name = updates[nameKey];
+  if (!('project' in updates) || 'projectId' in updates) return updates;
+  const name = updates.project;
   // Null, not "leave it": an agent moving an item to a container with no row
   // has to CLEAR the old id, or the fan-out drags the item back into the
   // container it was moved out of.
   const resolved =
     typeof name === 'string' && name
-      ? await lookupContainerId(
-          supabase,
-          kind === 'habit' ? 'habit_groups' : 'projects',
-          name,
-          userId,
-        )
+      ? await lookupContainerId(supabase, name, userId)
       : null;
-  return resolved === undefined ? updates : { ...updates, [idKey]: resolved };
+  return resolved === undefined ? updates : { ...updates, projectId: resolved };
 }
 
 /**
@@ -895,13 +901,8 @@ async function withResolvedContainer(
   userId: string,
   item: Item,
 ): Promise<Item> {
-  if (item.type === 'habit') {
-    if (!item.group || item.groupId !== undefined) return item;
-    const id = await lookupContainerId(supabase, 'habit_groups', item.group, userId);
-    return id === undefined ? item : { ...item, groupId: id ?? undefined };
-  }
   if (!item.project || item.projectId !== undefined) return item;
-  const id = await lookupContainerId(supabase, 'projects', item.project, userId);
+  const id = await lookupContainerId(supabase, item.project, userId);
   return id === undefined ? item : { ...item, projectId: id ?? undefined };
 }
 
@@ -1036,7 +1037,7 @@ export async function createItems(userId: string, items: Item[], client?: DbClie
 export async function updateItem(
   id: string,
   type: string,
-  updates: Partial<Task> | Partial<Habit>,
+  updates: Partial<Task> | Partial<HabitItem>,
   userId?: string,
   client?: DbClient,
 ): Promise<void> {
@@ -1048,7 +1049,7 @@ export async function updateItem(
     ? await reconcileDateArrays(supabase, id, type, updates as Record<string, unknown>)
     : (updates as Record<string, unknown>);
 
-  const row = updatesToRow(type, reconciled as Partial<Task> | Partial<Habit>);
+  const row = updatesToRow(type, reconciled as Partial<Task> | Partial<HabitItem>);
   if (Object.keys(row).length === 0) {
     // A body carrying ONLY completedDates/skippedDates leaves an empty row, but
     // it is not a no-op — the intents above already landed. Fall through to the
@@ -1631,11 +1632,11 @@ export async function setUserExtensionEnabled(
 // ---- Programs & routines (migration 024) ----
 //
 // Two container kinds that gate VISIBILITY rather than describe an item, plus
-// their membership join tables. Deliberately unlike projects/habit_groups in
+// their membership join tables. Deliberately unlike projects in
 // two ways: members are referenced by id (name references are why renaming
 // those is still parked), and membership is many-to-many.
 //
-// No webhook notifications, unlike createProject/createHabitGroup below. The
+// No webhook notifications, unlike createProject below. The
 // event-name enum is closed and notifyPlugins silently DROPS names a plugin
 // never registered, so a 'programs.updated' would go nowhere; and a synthetic
 // tasks.updated nudge is equally dead, because every write here is
@@ -2434,9 +2435,52 @@ export function toLegacyTask(item: TaskItem): Task {
   return task;
 }
 
+/**
+ * The one place the CLASSIFY collapse is paid for (039).
+ *
+ * A habit item answers with `project` like every other type; the pinned
+ * `habits[]` projection and the `habits.updated` webhook payload must keep
+ * emitting `group`. So this is no longer a field subset — it RENAMES one pair on
+ * the way out, and `fromLegacyHabit` renames it back on the way in.
+ *
+ * Both halves are here, adjacent, on purpose. The OpenClaw plugin `safeParse`s
+ * `HabitSchema` and THROWS on drift, and `group` is required there — a projection
+ * that forgot the rename would not degrade, it would brick the plugin's whole
+ * cached context on the next fetch.
+ *
+ * `groupId` carries the project's uuid, and that is correct rather than a
+ * convenient lie: migration 039 moved each habit_groups row into `projects`
+ * KEEPING ITS ID, so the id an old plugin build already holds still resolves.
+ */
 export function toLegacyHabit(item: HabitItem): Habit {
-  const { type: _type, ...habit } = item;
-  return habit;
+  const { type: _type, project, projectId, ...rest } = item;
+  // `?? ''` restores the legacy column's NOT NULL semantics. `HabitSchema.group`
+  // is a required string and the plugin throws on drift, so an unfiled habit has
+  // to reach it as '' — which is exactly what `itemFromRow` produced before the
+  // collapse, for the same reason.
+  return { ...rest, group: project ?? '', groupId: projectId };
+}
+
+/** The inverse — an agent's `group` becomes the item's `project`. */
+export function fromLegacyHabit(habit: Habit): HabitItem {
+  const { group, groupId, ...rest } = habit;
+  return { ...rest, type: 'habit', project: group, projectId: groupId };
+}
+
+/**
+ * The same rename over a PATCH body, which may name neither half.
+ *
+ * Key-presence is preserved exactly: `updateItem`'s allowlists are
+ * `'project' in updates` checks, so turning an absent key into an explicit
+ * `undefined` would start writing NULL over a container nobody asked to clear.
+ */
+export function fromLegacyHabitUpdates(updates: Partial<Habit>): Partial<HabitItem> {
+  const { group, groupId, ...rest } = updates as Partial<Habit> & Record<string, unknown>;
+  return {
+    ...(rest as Partial<HabitItem>),
+    ...('group' in updates ? { project: group } : {}),
+    ...('groupId' in updates ? { projectId: groupId } : {}),
+  };
 }
 
 export async function fetchTasks(userId: string, client?: DbClient): Promise<Task[]> {
@@ -2450,7 +2494,7 @@ export async function createTask(userId: string, task: Task, client?: DbClient):
 
 export async function updateTask(id: string, updates: Partial<Task>, userId?: string, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
-  const resolved = await withResolvedUpdate(supabase, 'task', updates as Record<string, unknown>, userId);
+  const resolved = await withResolvedUpdate(supabase, updates as Record<string, unknown>, userId);
   return updateItem(id, 'task', resolved as Partial<Task>, userId, supabase);
 }
 
@@ -2474,13 +2518,17 @@ export async function fetchHabits(userId: string, client?: DbClient): Promise<Ha
 }
 
 export async function createHabit(userId: string, habit: Habit, client?: DbClient): Promise<void> {
-  return createItem(userId, { ...habit, type: 'habit' }, client);
+  return createItem(userId, fromLegacyHabit(habit), client);
 }
 
 export async function updateHabit(id: string, updates: Partial<Habit>, userId?: string, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
-  const resolved = await withResolvedUpdate(supabase, 'habit', updates as Record<string, unknown>, userId);
-  return updateItem(id, 'habit', resolved as Partial<Habit>, userId, supabase);
+  const resolved = await withResolvedUpdate(
+    supabase,
+    fromLegacyHabitUpdates(updates) as Record<string, unknown>,
+    userId,
+  );
+  return updateItem(id, 'habit', resolved as Partial<HabitItem>, userId, supabase);
 }
 
 export async function deleteHabit(id: string, userId?: string, client?: DbClient): Promise<void> {
@@ -2562,11 +2610,30 @@ export async function fetchProjects(userId: string, client?: DbClient): Promise<
   return (data as ProjectRow[]).map(projectFromRow);
 }
 
+/**
+ * Both event names, for one write (039).
+ *
+ * `habitGroups.updated` is in the plugin's pinned event enum and in the
+ * subscription it registers on setup, so a build in the field is listening for
+ * it. There is one container kind now, so a project write IS a habit-group
+ * write as far as any older consumer is concerned — going quiet on that event
+ * would leave such a build with a stale cache until something else moved.
+ *
+ * Two webhooks, not one, and that is the whole cost: the plugin refetches
+ * context on any event and single-flights the fetch, so a pair collapses to at
+ * most two requests. `notifyPlugins` drops unregistered names, so this cannot
+ * grow into a third.
+ */
+function notifyContainerChange(userId: string, data: Record<string, unknown>): void {
+  notifyPlugins(userId, 'projects.updated', data);
+  notifyPlugins(userId, 'habitGroups.updated', data);
+}
+
 export async function createProject(userId: string, project: Project, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
   const { error } = await supabase.from('projects').insert(projectToRow(userId, project));
   if (error) throw error;
-  notifyPlugins(userId, 'projects.updated', { action: 'create', project });
+  notifyContainerChange(userId, { action: 'create', project });
 }
 
 export async function updateProject(userId: string, id: string, updates: Partial<Project>, client?: DbClient): Promise<void> {
@@ -2575,7 +2642,7 @@ export async function updateProject(userId: string, id: string, updates: Partial
   const supabase = client ?? createClient();
   const { error } = await supabase.from('projects').update(row).eq('id', id);
   if (error) throw error;
-  notifyPlugins(userId, 'projects.updated', { action: 'update', id, updates });
+  notifyContainerChange(userId, { action: 'update', id, updates });
 }
 
 /**
@@ -2597,7 +2664,6 @@ export async function updateProject(userId: string, id: string, updates: Partial
  */
 export async function renameContainerMembers(
   userId: string,
-  column: 'project_id' | 'group_id',
   id: string,
   name: string,
   client?: DbClient,
@@ -2605,9 +2671,9 @@ export async function renameContainerMembers(
   const supabase = client ?? createClient();
   const { error } = await supabase
     .from('items')
-    .update({ [column === 'project_id' ? 'project' : 'group']: name })
+    .update({ project: name })
     .eq('user_id', userId)
-    .eq(column, id);
+    .eq('project_id', id);
   if (error) throw error;
 }
 
@@ -2615,7 +2681,7 @@ export async function deleteProject(userId: string, id: string, client?: DbClien
   const supabase = client ?? createClient();
   const { error } = await supabase.from('projects').update({ deleted_at: new Date().toISOString() }).eq('id', id);
   if (error) throw error;
-  notifyPlugins(userId, 'projects.updated', { action: 'delete', id });
+  notifyContainerChange(userId, { action: 'delete', id });
 }
 
 // Restore by id, not name — names are mutable (rename) so a name-keyed
@@ -2639,92 +2705,21 @@ export async function restoreProject(userId: string, id: string, client?: DbClie
   if (error) throw error;
 }
 
-// ---- HabitGroup row type ----
-interface HabitGroupRow {
-  id: string;
-  user_id: string;
-  name: string;
-  emoji: string;
-  color?: string | null;
-}
-
-function habitGroupFromRow(row: HabitGroupRow): HabitGroupType {
-  return {
-    id: row.id,
-    name: row.name,
-    emoji: row.emoji,
-    color: row.color ?? undefined,
-  };
-}
-
-function habitGroupToRow(userId: string, group: HabitGroupType): HabitGroupRow {
-  return {
-    id: group.id,
-    user_id: userId,
-    name: group.name,
-    emoji: group.emoji,
-    color: group.color ?? null,
-  };
-}
-
-function habitGroupUpdatesToRow(updates: Partial<HabitGroupType>): Record<string, unknown> {
-  const row: Record<string, unknown> = {};
-  if ('name' in updates) row.name = updates.name;
-  if ('emoji' in updates) row.emoji = updates.emoji;
-  if ('color' in updates) row.color = updates.color ?? null;
-  return row;
-}
-
-export async function fetchHabitGroups(userId: string, client?: DbClient): Promise<HabitGroupType[]> {
-  const supabase = client ?? createClient();
-  const { data, error } = await supabase
-    .from('habit_groups')
-    .select('*')
-    .eq('user_id', userId)
-    .is('deleted_at', null);
-  if (error) throw error;
-  return (data as HabitGroupRow[]).map(habitGroupFromRow);
-}
-
-export async function createHabitGroup(userId: string, group: HabitGroupType, client?: DbClient): Promise<void> {
-  const supabase = client ?? createClient();
-  const { error } = await supabase.from('habit_groups').insert(habitGroupToRow(userId, group));
-  if (error) throw error;
-  notifyPlugins(userId, 'habitGroups.updated', { action: 'create', group });
-}
-
-export async function updateHabitGroup(userId: string, id: string, updates: Partial<HabitGroupType>, client?: DbClient): Promise<void> {
-  const row = habitGroupUpdatesToRow(updates);
-  if (Object.keys(row).length === 0) return;
-  const supabase = client ?? createClient();
-  const { error } = await supabase.from('habit_groups').update(row).eq('id', id);
-  if (error) throw error;
-  notifyPlugins(userId, 'habitGroups.updated', { action: 'update', id, updates });
-}
-
-export async function deleteHabitGroup(userId: string, id: string, client?: DbClient): Promise<void> {
-  const supabase = client ?? createClient();
-  const { error } = await supabase.from('habit_groups').update({ deleted_at: new Date().toISOString() }).eq('id', id);
-  if (error) throw error;
-  notifyPlugins(userId, 'habitGroups.updated', { action: 'delete', id });
-}
-
-/** See restoreProject on why `client?` is not optional-in-spirit. */
-export async function restoreHabitGroup(userId: string, id: string, client?: DbClient): Promise<void> {
-  const supabase = client ?? createClient();
-  const { error } = await supabase
-    .from('habit_groups')
-    .update({ deleted_at: null })
-    .eq('user_id', userId)
-    .eq('id', id);
-  if (error) throw error;
-}
+// The habit-group table's row mappers and CRUD lived here until migration 039
+// collapsed the two CLASSIFY kinds into one. Nothing reads or writes
+// `habit_groups` now; the table survives as rollback ballast (see the migration
+// header), and the agent's /api/agent/habit-groups routes are served from
+// `projects` like everything else.
 
 // ============================================================
 // The Trash (Organize console, Phase 4)
 // ============================================================
 
-export type TrashKind = 'item' | 'project' | 'group' | 'routine' | 'program' | 'goal';
+// 'group' retired with the kind (039). A former habit group is in the bin as a
+// 'project' — the migration moved the row, `deleted_at` and all, so the bin's
+// contents survive the collapse rather than being orphaned in a table nothing
+// reads.
+export type TrashKind = 'item' | 'project' | 'routine' | 'program' | 'goal';
 
 /**
  * One row of the bin: what it is, what it was called, when it went, and the
@@ -2774,16 +2769,16 @@ export interface TrashEntry {
    */
   children?: Item[];
   /**
-   * For a project or a habit group: the LIVE items still pointing at it by id.
+   * For a project: the LIVE items still pointing at it by id.
    *
-   * `removeProject`/`removeHabitGroup` clear the member's half in the store and
-   * write nothing to `items`, so the DB link survives the delete on purpose
+   * `removeProject` clears the member's half in the store and
+   * writes nothing to `items`, so the DB link survives the delete on purpose
    * (027: "pointing a member at its soft-deleted container is what lets a Trash
    * restore reconnect the members it had"). The store has no record of them by
    * then, so the reconnection has to be read back out of the database here.
    */
   memberIds?: string[];
-  entity: Item | Project | HabitGroupType | Routine | Program | Goal;
+  entity: Item | Project | Routine | Program | Goal;
 }
 
 /** A row shape plus the stamp `select('*')` returns but the interface omits. */
@@ -2838,7 +2833,7 @@ export async function listDeleted(
   const deleted = (q: DbClient) => q.eq('user_id', userId).not('deleted_at', 'is', null);
 
   const [
-    initialItems, projects, groups,
+    initialItems, projects,
     routines, routineMembers,
     programs, programItems, programRoutines,
     goals, goalMembers,
@@ -2850,7 +2845,6 @@ export async function listDeleted(
       // store, and a restore-then-undo would diff them against each other.
       deleted(itemsReadFrom(supabase).select('*')).order('deleted_at', { ascending: false }),
       deleted(supabase.from('projects').select('*')).order('deleted_at', { ascending: false }),
-      deleted(supabase.from('habit_groups').select('*')).order('deleted_at', { ascending: false }),
       deleted(supabase.from('routines').select('*')).order('deleted_at', { ascending: false }),
       supabase.from('routine_items').select('routine_id, item_id, sort_order')
         .eq('user_id', userId)
@@ -2890,7 +2884,7 @@ export async function listDeleted(
   // un-applied migration, and the honest answer for it is "no rows of that
   // kind", not "the bin is broken". Without this the goals arm took the WHOLE
   // trash down on every pre-036 database: the bin's consumer turns any
-  // rejection into its terminal state, so items, projects, habit groups,
+  // rejection into its terminal state, so items, projects,
   // routines and programs would all have vanished from the 30-day recovery
   // path until someone ran `db push`. That directly contradicts the deploy-
   // order promise 036's own header makes, and it is exactly why fetchGoals
@@ -2902,7 +2896,7 @@ export async function listDeleted(
     console.warn('listDeleted: migration 036 not applied yet — no goals in the bin.');
   }
   const failure =
-    items.error ?? projects.error ?? groups.error ?? routines.error ??
+    items.error ?? projects.error ?? routines.error ??
     routineMembers.error ?? programs.error ?? programItems.error ?? programRoutines.error ??
     (goalsMissing ? null : (goals.error ?? goalMembers.error));
   if (failure) throw failure;
@@ -2961,36 +2955,32 @@ export async function listDeleted(
   }
 
   const projectRows = (projects.data ?? []) as Trashed<ProjectRow>[];
-  const groupRows = (groups.data ?? []) as Trashed<HabitGroupRow>[];
 
   // A second round trip rather than a column on the first: scoped by `in` to
   // the handful of trashed container ids, so it reads a few rows rather than
   // every live item the account owns.
-  const membersOf = async (column: 'project_id' | 'group_id', ids: string[]) => {
+  const membersOf = async (ids: string[]) => {
     const map = new Map<string, string[]>();
     if (ids.length === 0) return map;
     const { data, error } = await supabase
       .from('items')
-      .select(`id, ${column}`)
+      .select('id, project_id')
       .eq('user_id', userId)
       .is('deleted_at', null)
-      .in(column, ids);
+      .in('project_id', ids);
     // Empty on failure, not a throw: losing the reconnection degrades a restore
     // to today's behaviour (the members come back on the next reload, because
     // the DB link is untouched either way). Losing the whole Trash does not.
     if (error) return map;
     for (const row of (data ?? []) as Record<string, string>[]) {
-      const owner = row[column];
+      const owner = row.project_id;
       const list = map.get(owner);
       if (list) list.push(row.id);
       else map.set(owner, [row.id]);
     }
     return map;
   };
-  const [projectMembers, groupMembers] = await Promise.all([
-    membersOf('project_id', projectRows.map((r) => r.id)),
-    membersOf('group_id', groupRows.map((r) => r.id)),
-  ]);
+  const projectMembers = await membersOf(projectRows.map((r) => r.id));
 
   for (const row of projectRows) {
     entries.push({
@@ -2998,15 +2988,6 @@ export async function listDeleted(
       icon: row.emoji, color: row.color ?? undefined,
       memberIds: projectMembers.get(row.id) ?? [],
       entity: projectFromRow(row),
-    });
-  }
-
-  for (const row of groupRows) {
-    entries.push({
-      kind: 'group', id: row.id, name: row.name, deletedAt: row.deleted_at,
-      icon: row.emoji, color: row.color ?? undefined,
-      memberIds: groupMembers.get(row.id) ?? [],
-      entity: habitGroupFromRow(row),
     });
   }
 
@@ -3087,11 +3068,10 @@ export async function listDeleted(
  * The names a container cannot take, because a trashed row is still holding
  * them.
  *
- * `projects_user_id_name_key` and `habit_groups_user_id_name_key` are PLAIN
- * unique indexes — no `WHERE deleted_at IS NULL` — so a deleted container
- * reserves its name for the full 30 days while being invisible to the store,
- * whose `projects`/`habitGroups` arrays come from `deleted_at`-filtered
- * fetches. That gap is a live bug on both the rename and the create path, and
+ * `projects_user_id_name_key` is a PLAIN unique index — no `WHERE deleted_at IS
+ * NULL` — so a deleted container reserves its name for the full 30 days while
+ * being invisible to the store, whose `projects` array comes from a
+ * `deleted_at`-filtered fetch. That gap is a live bug on both the rename and the create path, and
  * the create half is the louder one: `addProject` de-dupes against live rows,
  * passes, `set()`s optimistically, and only THEN does the insert 23505 into a
  * `.catch(console.error)`. The user gets a project that opens, accepts a
@@ -3112,23 +3092,23 @@ export async function listDeleted(
 export async function fetchTrashedNames(
   userId: string,
   client?: DbClient,
-): Promise<{ projects: TrashedName[]; groups: TrashedName[] }> {
+): Promise<{ projects: TrashedName[] }> {
   const supabase = client ?? createClient();
-  const read = async (table: 'projects' | 'habit_groups') => {
-    const { data, error } = await supabase
-      .from(table)
-      .select('id, name')
-      .eq('user_id', userId)
-      .not('deleted_at', 'is', null);
-    // Empty on failure, never a throw: this guard exists to IMPROVE a create,
-    // and a lookup outage must not become the thing that prevents one. Failing
-    // open lands back on today's behaviour, which is the bug — but a bug that
-    // only reappears when the network does, rather than a dead create row.
-    if (error) return [];
-    return (data ?? []) as TrashedName[];
-  };
-  const [projects, groups] = await Promise.all([read('projects'), read('habit_groups')]);
-  return { projects, groups };
+  const { data, error } = await supabase
+    .from('projects')
+    .select('id, name')
+    .eq('user_id', userId)
+    .not('deleted_at', 'is', null);
+  // Empty on failure, never a throw: this guard exists to IMPROVE a create,
+  // and a lookup outage must not become the thing that prevents one. Failing
+  // open lands back on today's behaviour, which is the bug — but a bug that
+  // only reappears when the network does, rather than a dead create row.
+  //
+  // Still an object with one key rather than a bare array: it read two tables
+  // before 039, and the shape is what the console's `use-trashed-names` hook
+  // and the item dialog both destructure.
+  if (error) return { projects: [] };
+  return { projects: (data ?? []) as TrashedName[] };
 }
 
 export interface TrashedName {
@@ -3194,9 +3174,9 @@ export async function markContainersSeeded(userId: string, client?: DbClient): P
  * they were already carrying — 027's backfill, re-run for one container.
  *
  * 027 says in its own comments that this has to happen: its backfill left 119
- * group references NULL because the groups they name have only ever existed as a
- * client-side constant, and it is written re-runnable so that whatever creates
- * those rows can adopt them. A migration cannot do it, because the rows are
+ * container references NULL because the containers they name have only ever
+ * existed as a client-side constant, and it is written re-runnable so that
+ * whatever creates those rows can adopt them. A migration cannot do it, because the rows are
  * created by the app at an arbitrary later moment.
  *
  * `is null` on the id column is what makes this safe to call on any container,
@@ -3205,7 +3185,6 @@ export async function markContainersSeeded(userId: string, client?: DbClient): P
  */
 export async function adoptContainerMembers(
   userId: string,
-  column: 'project_id' | 'group_id',
   id: string,
   name: string,
   client?: DbClient,
@@ -3213,10 +3192,10 @@ export async function adoptContainerMembers(
   const supabase = client ?? createClient();
   const { data, error } = await supabase
     .from('items')
-    .update({ [column]: id })
+    .update({ project_id: id })
     .eq('user_id', userId)
-    .is(column, null)
-    .eq(column === 'project_id' ? 'project' : 'group', name)
+    .is('project_id', null)
+    .eq('project', name)
     .select('id');
   if (error) throw error;
   return data?.length ?? 0;

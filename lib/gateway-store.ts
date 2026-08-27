@@ -12,8 +12,10 @@ import { useChatStore } from './chat-store';
  * "is one stored" and nothing more — not even a masked value, because a mask
  * still leaks length and last-four and no screen here needs either.
  *
- * Not persisted: a cached "the token is set" that outlives the token is worse
- * than asking again.
+ * Nothing here reaches localStorage — a cached "the token is set" that outlives
+ * the token is worse than asking again — so there is no browser copy for
+ * lib/local-state.ts to drop when the account changes. `reset()` on sign-out is
+ * the whole of it.
  */
 interface GatewayStore {
   gatewayUrl: string;
@@ -77,7 +79,7 @@ export const useGatewayStore = create<GatewayStore>((set, get) => ({
   setGatewayUrl: (url) => {
     const trimmed = url.trim();
     set({ gatewayUrl: trimmed, error: null });
-    writeQueue = writeQueue.then(() => persist({ gatewayUrl: trimmed }, set, get));
+    writeQueue = writeQueue.then(() => saveToServer({ gatewayUrl: trimmed }, set, get));
   },
 
   setToken: (token) => {
@@ -86,13 +88,19 @@ export const useGatewayStore = create<GatewayStore>((set, get) => ({
     // whether or not a token is stored, so a stray blur must not wipe one.
     if (!trimmed) return;
     set({ error: null });
-    writeQueue = writeQueue.then(() => persist({ token: trimmed }, set, get));
+    writeQueue = writeQueue.then(() => saveToServer({ token: trimmed }, set, get));
   },
 
   reset: () => set({ ...INITIAL }),
 }));
 
-async function persist(
+/**
+ * Named for where it writes. NOT zustand's `persist` middleware — nothing here
+ * touches localStorage, which is why this store is absent from
+ * PERSISTED_USER_STORES in lib/local-state.ts, and why the audit test there
+ * (a text match on `persist(`) must not see the word.
+ */
+async function saveToServer(
   body: { gatewayUrl?: string; token?: string },
   set: (partial: Partial<GatewayStore>) => void,
   get: () => GatewayStore,

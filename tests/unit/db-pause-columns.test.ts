@@ -33,7 +33,7 @@ const task: Item = {
   type: 'task', id: 't1', title: 'x', status: 'pending', isScheduled: false, order: 0,
 };
 const habit: Item = {
-  type: 'habit', id: 'h1', title: 'y', group: 'G', streak: 0, status: 'pending',
+  type: 'habit', id: 'h1', title: 'y', project: 'G', streak: 0, status: 'pending',
   completedDates: [], skippedDates: [], dailyCounts: {}, repeatFrequency: 'daily',
 };
 

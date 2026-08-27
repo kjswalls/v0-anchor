@@ -19,31 +19,32 @@ import {
   ListColumn,
   TeachingLine,
 } from '../detail-parts';
-import type { HabitGroupType, Item, ItemTypeDef, Project } from '@/lib/planner-types';
+import type { Item, ItemTypeDef, Project } from '@/lib/planner-types';
+import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 
 /**
- * PROJECTS, ITEM TYPES and HABIT GROUPS — the half of the console that came
- * from ManageCategoriesDialog.
+ * PROJECTS and ITEM TYPES — the half of the console that came from
+ * ManageCategoriesDialog.
  *
- * ONE FILE, not three, and that is deliberate. The plan's file list named
- * `sections/{projects,types,groups}.tsx`, but the three are the same section
- * three times over — a list of labels, a usage count, a colour, a delete — and
- * the interesting differences (a project's time block, a type's frozen slug and
- * un-undoable delete) are a dozen lines each. Three files would have been three
+ * ONE FILE, not two, and that is deliberate. The plan's file list named
+ * `sections/{projects,types,groups}.tsx`, but they are the same section over
+ * again — a list of labels, a usage count, a colour, a delete — and the
+ * interesting differences (a project's time block, a type's frozen slug and
+ * un-undoable delete) are a dozen lines each. Separate files would have been
  * copies of the identical scaffolding, which is precisely the drift that put
- * `lib/collections.ts` in the tree.
+ * `lib/collections.ts` in the tree. HABIT GROUPS was the third of them until
+ * migration 039 collapsed the two CLASSIFY kinds.
  *
  * WHAT THIS HALF HAS NEVER HAD: a detail pane, a usage count, or a single
  * data-testid. The dialog it replaces is a 400px box of rows with a hover trash
  * on each, and `tests/` reaches none of it. Every testid here is new, which is
  * what makes Phase 3's e2e possible.
  *
- * THE NAMES ARE EDITABLE, as of migration 027. `items.project` and
- * `items."group"` were NAME references, so a rename orphaned every child and
- * both details said so in a sentence instead of showing a disabled input. The
- * children carry stable ids now and `updateProject`/`updateHabitGroup` fan the
- * new name out to every member, so the sentences are gone and the fields are
- * live — guarded by `takenBy`, because the rename's two writes do not fail
+ * THE NAMES ARE EDITABLE, as of migration 027. `items.project` was a NAME
+ * reference, so a rename orphaned every child and the detail said so in a
+ * sentence instead of showing a disabled input. The children carry stable ids
+ * now and `updateProject` fans the new name out to every member, so the
+ * sentence is gone and the field is live — guarded by `takenBy`, because the rename's two writes do not fail
  * together and a collision would leave a container's items claiming a name the
  * container itself never got.
  *
@@ -156,16 +157,23 @@ function ProjectDetail({
 
   const n = countProjectItems(items, project.name);
 
-  // `!== 'habit'` matches removeProject exactly, so the sentence and the write
-  // agree: custom-typed items are task-shaped and get unfiled too. Which is why
-  // the noun is "items" — three Goals under a project must not be reported as
-  // three tasks.
+  // THE SENTENCE MIRRORS `unfiled`, which is what removeProject actually runs.
+  // Most items are simply unfiled; a type whose container is REQUIRED (a habit)
+  // is reassigned instead, and the old habit-group copy was written because
+  // "unassigns it" was a lie the user could not check. So the sentence names the
+  // destination whenever one of those is in the count — a count that disagrees
+  // with its own write is worse than no count.
+  const requireds = countRequiredContainerItems(items, project.name);
+  const destination = projects.find((p) => p.id !== project.id)?.name;
   const consequence =
     (n === 0
       ? 'Nothing is filed under it, so nothing moves.'
       : `Its ${n} ${n === 1 ? 'item stays' : 'items stay'} exactly as ${
           n === 1 ? 'it is' : 'they are'
-        } — ${n === 1 ? 'it' : 'they'} just stop being filed under ${project.name}.`) +
+        } — ${n === 1 ? 'it just stops' : 'they just stop'} being filed under ${project.name}.`) +
+    (requireds > 0 && destination
+      ? ` The ${requireds === 1 ? 'habit moves' : `${requireds} habits move`} to “${destination}”.`
+      : '') +
     ' ⌘Z brings it back now, and it stays in the Trash for 30 days.';
 
   return (
@@ -437,163 +445,10 @@ function TypeDetail({ type, onBack }: { type: ItemTypeDef; onBack: () => void })
   );
 }
 
-/* ── habit groups ─────────────────────────────────────────────────────── */
-
-export function GroupsSection({
-  selectedId,
-  onSelect,
-  focusNew,
-}: {
-  selectedId: string | null;
-  onSelect: (id: string | null) => void;
-  focusNew: boolean;
-}) {
-  const habitGroups = usePlannerStore((s) => s.habitGroups);
-  const items = usePlannerStore((s) => s.items);
-  const addHabitGroup = usePlannerStore((s) => s.addHabitGroup);
-  const trashed = useTrashedNames();
-
-  const [query, setQuery] = useState('');
-
-  const selected = habitGroups.find((g) => g.id === selectedId) ?? null;
-  const visible = matching(habitGroups, query, byName);
-
-  return (
-    <>
-      <ListColumn
-        eyebrow="HABIT GROUPS"
-        count={visible.length}
-        hasSelection={!!selected}
-        filter={{
-          value: query,
-          onChange: setQuery,
-          placeholder: 'Filter habit groups…',
-          testId: 'group-filter',
-        }}
-        footer={
-          <DraftRow
-            placeholder="New group…"
-            addLabel="Add habit group"
-            testPrefix="group"
-            autoFocus={focusNew}
-            // See the projects create row — same index, same silent phantom.
-            validate={(name) => heldByTrash(trashed.groups, name, 'habit group')}
-            onAdd={(name, icon) => {
-              addHabitGroup(name, icon ?? makeIconToken('Star'));
-              onSelect(created(usePlannerStore.getState().habitGroups, name));
-            }}
-          />
-        }
-      >
-        {habitGroups.length === 0 ? (
-          <p className="text-muted-foreground px-[7px] pt-2 text-xs">No habit groups yet.</p>
-        ) : (
-          visible.map((group) => (
-            <ObjectRow
-              key={group.id}
-              testId="group-row"
-              idAttr={{ 'data-group-id': group.id }}
-              icon={group.emoji}
-              color={group.color}
-              name={group.name}
-              selected={selectedId === group.id}
-              pill={null}
-              count={countGroupHabits(items, group.name)}
-              onSelect={() => onSelect(group.id)}
-            />
-          ))
-        )}
-      </ListColumn>
-
-      <DetailColumn hasSelection={!!selected}>
-        {selected ? (
-          <GroupDetail group={selected} trashed={trashed.groups} onBack={() => onSelect(null)} />
-        ) : (
-          <TeachingLine>Habit groups decide how your habits are stacked in the sidebar.</TeachingLine>
-        )}
-      </DetailColumn>
-    </>
-  );
-}
-
-function GroupDetail({
-  group,
-  trashed,
-  onBack,
-}: {
-  group: HabitGroupType;
-  trashed: TrashedName[];
-  onBack: () => void;
-}) {
-  const items = usePlannerStore((s) => s.items);
-  const habitGroups = usePlannerStore((s) => s.habitGroups);
-  const updateHabitGroup = usePlannerStore((s) => s.updateHabitGroup);
-  const removeHabitGroup = usePlannerStore((s) => s.removeHabitGroup);
-  const confirm = useUIStore((s) => s.confirm);
-
-  const n = countGroupHabits(items, group.name);
-  // The SAME expression removeHabitGroup uses, so the sentence names the group
-  // the habits will actually land in rather than a plausible-sounding one. The
-  // old copy claimed deleting "unassigns it from all habits"; it does not — it
-  // reassigns them, and the user was never told where.
-  const destination = habitGroups.find((g) => g.id !== group.id)?.name ?? 'Personal';
-  const consequence =
-    (n === 0
-      ? 'No habits are in it, so nothing moves.'
-      : `Its ${n} ${n === 1 ? 'habit moves' : 'habits move'} to “${destination}” — ${
-          n === 1 ? 'it isn’t' : 'they aren’t'
-        } deleted.`) + ' ⌘Z brings the group back now, and it stays in the Trash for 30 days.';
-
-  return (
-    <div className="flex flex-col" data-testid="group-detail" data-group-id={group.id}>
-      <BackRow label="Habit groups" testId="group-detail-back" onBack={onBack} />
-
-      <IdentityRow
-        id={group.id}
-        name={group.name}
-        icon={group.emoji}
-        color={group.color}
-        label="Habit group"
-        testPrefix="group"
-        // Unparked by migration 027, and trash-aware since Phase 4 — see ProjectDetail.
-        validate={(next) =>
-          takenBy(habitGroups, group.id, next, 'habit group') ??
-          heldByTrash(trashed, next, 'habit group')
-        }
-        meta={
-          <>
-            Habit group · <span className="font-num">{n}</span> {n === 1 ? 'habit' : 'habits'}
-          </>
-        }
-        // See ProjectDetail — the remap is store-driven, not fired here.
-        onPatch={(patch) =>
-          updateHabitGroup(group.id, {
-            ...renameIconKey(patch, 'emoji'),
-            ...('name' in patch && { name: patch.name }),
-          })
-        }
-      />
-
-      <DangerZone
-        label="Delete this group"
-        testId="group-delete"
-        consequence={consequence}
-        onDelete={() =>
-          confirm({
-            title: `Delete “${group.name}”?`,
-            description: consequence,
-            confirmLabel: 'Delete',
-            testId: 'category-delete-confirm',
-            onConfirm: () => {
-              removeHabitGroup(group.id);
-              onBack();
-            },
-          })
-        }
-      />
-    </div>
-  );
-}
+// The HABIT GROUPS section lived here until migration 039 collapsed the two
+// CLASSIFY kinds. Projects above is the whole axis now, and the console rail has
+// one row for it instead of two — a habit files itself under a project like
+// everything else.
 
 /* ── patches ──────────────────────────────────────────────────────────── */
 
@@ -671,10 +526,17 @@ function takenBy(
  * evidence the user is deciding on.
  */
 const countProjectItems = (items: Item[], name: string) =>
-  items.filter((i) => i.type !== 'habit' && i.project === name).length;
+  items.filter((i) => i.project === name).length;
 
-const countGroupHabits = (items: Item[], name: string) =>
-  items.filter((i) => i.type === 'habit' && i.group === name).length;
+/**
+ * How many of those cannot simply be unfiled — the registry's
+ * `containerRequired`, which is what `unfiled` in planner-store reads. Asked as
+ * a capability rather than counted as habits, so a future required-container
+ * type is described correctly by the delete sentence without an edit here.
+ */
+const countRequiredContainerItems = (items: Item[], name: string) =>
+  items.filter((i) => i.project === name && getItemTypeConfig(itemTypeName(i)).containerRequired)
+    .length;
 
 const countTypeItems = (items: Item[], slug: string) =>
   items.filter((i) => i.type === 'custom' && i.customType === slug).length;
@@ -682,7 +544,7 @@ const countTypeItems = (items: Item[], slug: string) =>
 /**
  * The id of the thing just created, or null.
  *
- * `addProject` / `addHabitGroup` return void and BOTH no-op silently on a
+ * `addProject` returns void and no-ops silently on a
  * duplicate name, so the id has to be read back out of the store — which is
  * safe because zustand's set() is synchronous. A no-op therefore selects the
  * row that was already there, which is the honest outcome: the name is taken,
