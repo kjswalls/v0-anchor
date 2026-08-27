@@ -11,9 +11,17 @@ import {
   ItemDetailSections,
   ItemThread,
 } from '@/components/planner/item-detail-sections';
+import {
+  BandChip,
+  BandSquare,
+  ContainerBandsReadout,
+  ItemBand,
+  ItemBandGroup,
+} from '@/components/planner/item-bands';
 import { usePlannerStore } from '@/lib/planner-store';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import { suppressionReason, suppressionLabel } from '@/lib/active';
+import { REPEAT_FREQUENCY_LABELS } from '@/lib/planner-types';
 import { toDateStr } from '@/lib/recurrence';
 import { cn } from '@/lib/utils';
 
@@ -61,26 +69,12 @@ const ItemDialog = dynamic(
   { ssr: false }
 );
 
-function Square({ color, className }: { color: string; className?: string }) {
-  return (
-    <span
-      className={cn('inline-block size-[9px] shrink-0 rounded-[3px]', className)}
-      style={{ background: color }}
-      aria-hidden
-    />
-  );
-}
-
-function StaticChip({ children, testId }: { children: React.ReactNode; testId?: string }) {
-  return (
-    <span
-      data-testid={testId}
-      className="bg-secondary text-foreground inline-flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-xs"
-    >
-      {children}
-    </span>
-  );
-}
+/* The chip and the identity square are the BAND vocabulary now
+   (components/planner/item-bands.tsx) — the same marks the edit panel uses, so
+   the two surfaces read as one grammar rather than two that resemble each
+   other. Aliased rather than renamed at every call site below. */
+const Square = BandSquare;
+const StaticChip = BandChip;
 
 export default function ItemPage() {
   const params = useParams<{ id: string }>();
@@ -99,7 +93,6 @@ export default function ItemPage() {
   const item = usePlannerStore((s) => s.items.find((i) => i.id === id));
   const userId = usePlannerStore((s) => s.userId);
   const isLoading = usePlannerStore((s) => s.isLoading);
-  const getProjectColor = usePlannerStore((s) => s.getProjectColor);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const routines = usePlannerStore((s) => s.routines);
   const programs = usePlannerStore((s) => s.programs);
@@ -157,9 +150,14 @@ export default function ItemPage() {
     routines,
     programs,
   });
-  // One CLASSIFY axis (039) — no type test, one getter.
-  const container = item.project;
-  const containerColor = container ? getProjectColor(container) : undefined;
+  // The When band's own content, resolved before the JSX so the band can ask
+  // whether it has anything to say. A habit has no startDate to answer with —
+  // its 'when' is the recurrence and the bucket.
+  const whenDate = item.type !== 'habit' ? item.startDate : undefined;
+  const repeats =
+    item.repeatFrequency && item.repeatFrequency !== 'none'
+      ? REPEAT_FREQUENCY_LABELS[item.repeatFrequency]
+      : null;
 
   return (
     <main className="mx-auto flex max-w-4xl flex-col gap-6 px-6 py-8">
@@ -199,40 +197,60 @@ export default function ItemPage() {
           </Button>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5">
-          {/* First in the row, ahead of the date and bucket chips it qualifies.
-              Muted, never a warning color — paused is not an error state. */}
-          {activationReason && (
-            <StaticChip testId="item-page-paused-note">
-              <Moon className="size-3.5 shrink-0" aria-hidden />
-              {suppressionLabel(activationReason)}
-            </StaticChip>
+        {/* The identity row: what this is, and how much it matters. Everything
+            else has a band of its own below — and this row is GONE when it has
+            nothing, because an empty flex row still spends the header's gap. A
+            band is what renders empty; a fact is not. */}
+        {(activationReason || (item.type !== 'habit' && item.priority)) && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {/* First in the row, ahead of the When band it qualifies. Muted,
+                never a warning color — paused is not an error state. */}
+            {activationReason && (
+              <StaticChip testId="item-page-paused-note">
+                <Moon className="size-3.5 shrink-0" aria-hidden />
+                {suppressionLabel(activationReason)}
+              </StaticChip>
+            )}
+            {item.type !== 'habit' && item.priority && (
+              <StaticChip>
+                <span
+                  className="size-2 shrink-0 rounded-full"
+                  style={{ background: `var(--priority-${item.priority})` }}
+                  aria-hidden
+                />
+                <span className="capitalize">{item.priority}</span>
+              </StaticChip>
+            )}
+          </div>
+        )}
+
+        {/* The bands — the same rows, in the same order, under the same nouns
+            as the edit panel (components/planner/item-bands.tsx). The page had
+            been showing a project and nothing else: an item could sit in three
+            routines, a program and two goals and its own page never said so.
+
+            The container bands come from the registry, which is also what makes
+            the empty ones render: a band you have never used is still a band
+            you can find, and pressing its "+ Add" opens the editor rather than
+            growing a second write path onto this surface. */}
+        {/* Its own testid: the edit panel renders the same band ids, and on
+            THIS route both are on screen at once. */}
+        <ItemBandGroup className="max-w-prose" testId="item-page-bands">
+          {(whenDate || item.timeBucket || repeats) && (
+            <ItemBand label="When" testId="item-band-when">
+              {whenDate && <StaticChip>{whenDate}</StaticChip>}
+              {item.timeBucket && (
+                <StaticChip>
+                  <span className="capitalize">{item.timeBucket}</span>
+                  {item.startTime ? ` · ${item.startTime}` : ''}
+                  {item.duration ? ` · ${item.duration}m` : ''}
+                </StaticChip>
+              )}
+              {repeats && <StaticChip testId="item-page-repeat">{repeats}</StaticChip>}
+            </ItemBand>
           )}
-          {item.type !== 'habit' && item.priority && (
-            <StaticChip>
-              <span
-                className="size-2 shrink-0 rounded-full"
-                style={{ background: `var(--priority-${item.priority})` }}
-                aria-hidden
-              />
-              <span className="capitalize">{item.priority}</span>
-            </StaticChip>
-          )}
-          {container && (
-            <StaticChip>
-              {containerColor && <Square color={containerColor} />}
-              <span className={cn(item.type === 'habit' && 'capitalize')}>{container}</span>
-            </StaticChip>
-          )}
-          {item.type !== 'habit' && item.startDate && <StaticChip>{item.startDate}</StaticChip>}
-          {item.timeBucket && (
-            <StaticChip>
-              <span className="capitalize">{item.timeBucket}</span>
-              {item.startTime ? ` · ${item.startTime}` : ''}
-              {item.duration ? ` · ${item.duration}m` : ''}
-            </StaticChip>
-          )}
-        </div>
+          <ContainerBandsReadout item={item} onAdd={() => openEditor({ mode: 'edit', item })} />
+        </ItemBandGroup>
 
         {item.notes && (
           <p className="text-muted-foreground max-w-prose text-sm leading-relaxed whitespace-pre-wrap">
