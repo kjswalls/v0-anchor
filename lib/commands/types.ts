@@ -164,6 +164,23 @@ export interface CommandShortcutSpec {
    * expected to rewind continuously when you hold the key down.
    */
   repeatable?: boolean;
+  /**
+   * One sentence naming WHERE this binding does anything, for the bindings
+   * that do not work everywhere.
+   *
+   * The shortcuts table lists every binding in one flat set, which reads as a
+   * promise that each of them works from wherever you are. Six of them do not:
+   * three are week-view-only, two are desktop-only shells, one needs an item
+   * panel open. `availableWhen` and `hidden` already encode that, but they are
+   * PREDICATES over live state — they can grey a palette row and they cannot
+   * be rendered as prose. This is the prose, declared beside the binding it
+   * describes so the two cannot drift.
+   *
+   * Absent means "works anywhere", which is the honest default and the common
+   * case. Written as a full sentence: it is appended to the command's own
+   * description on the settings row.
+   */
+  context?: string;
 }
 
 export interface Command {

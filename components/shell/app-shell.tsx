@@ -36,6 +36,8 @@ import { OnboardingTour } from '@/components/onboarding/onboarding-tour';
 import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
 
 import { usePlannerStore } from '@/lib/planner-store';
+import { formatKeys } from '@/lib/commands/keys';
+import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { milestoneItemIds } from '@/lib/goals';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
@@ -60,12 +62,21 @@ import { isOnboardingComplete } from '@/lib/user-profile';
 import { createClient } from '@/lib/supabase';
 import type { MobileTab } from '@/lib/mobile-nav-store';
 
+/**
+ * The resting hint on the shortcuts button.
+ *
+ * Reads the LIVE binding rather than printing '⌘ + /': `system_shortcuts` is
+ * rebindable like every other shortcut, and a hardcoded hint quietly starts
+ * lying the moment someone moves it — on the one button whose entire job is to
+ * tell you what the key is.
+ */
 function KbdHint() {
   const [isMac, setIsMac] = useState(false);
+  const keys = useShortcutKeys('system_shortcuts');
   useEffect(() => {
     setIsMac(/Mac|iPhone|iPad|iPod/.test(navigator.platform));
   }, []);
-  return <span>{isMac ? '⌘ + /' : 'Ctrl + /'}</span>;
+  return <span>{formatKeys(keys, isMac).join(' + ')}</span>;
 }
 
 function DraggableTaskOverlay({ title, count = 0 }: { title: string; count?: number }) {

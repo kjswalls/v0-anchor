@@ -56,7 +56,7 @@ describe('settings manifest — structure', () => {
   });
 
   it('every id is dotted and stable-looking', () => {
-    // Two shapes, both permanent — these ids are the deep links and the e2e
+    // Three shapes, all permanent — these ids are the deep links and the e2e
     // handles, so the point of this test is that they look DELIBERATE, not that
     // they are short.
     //
@@ -68,8 +68,22 @@ describe('settings manifest — structure', () => {
     //                                       user_extensions CHECK constraint,
     //                                       so hyphens are admitted HERE and
     //                                       nowhere else.
+    //   keys.<shortcut_id>                — a record generated per binding in
+    //                                       SHORTCUT_RECORDS. The second
+    //                                       segment is the shortcut id
+    //                                       VERBATIM, which is snake_case and
+    //                                       frozen by commands.test.ts, so
+    //                                       underscores are admitted here and
+    //                                       nowhere else. Reusing that id
+    //                                       rather than camel-casing it is the
+    //                                       point: a transform would be a
+    //                                       second name for the same binding,
+    //                                       and `new_task` / `newTask` would
+    //                                       collide on it.
     for (const s of SETTINGS) {
-      expect(s.id, s.id).toMatch(/^[a-z]+\.[a-zA-Z][a-zA-Z0-9-]*(\.[a-zA-Z][a-zA-Z0-9]*)?$/);
+      expect(s.id, s.id).toMatch(
+        /^[a-z]+\.[a-zA-Z][a-zA-Z0-9-]*(\.[a-zA-Z][a-zA-Z0-9]*)?$|^keys\.[a-z][a-z0-9_]*$/
+      );
     }
   });
 

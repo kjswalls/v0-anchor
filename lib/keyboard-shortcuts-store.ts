@@ -15,8 +15,25 @@ export interface ShortcutBinding {
   description: string;
   /** Keys pressed concurrently (up to 3), e.g. ['ctrl', 'shift', 'z'] or ['n']. */
   keys: string[];
-  /** Section heading in the shortcuts modal. */
+  /** Section heading in the shortcuts table. */
   groupHeading: string;
+  /**
+   * One sentence naming where the binding applies, for the ones that do not
+   * apply everywhere. See CommandShortcutSpec.context.
+   */
+  context?: string;
+  /**
+   * The owning command's search terms, space separated, or '' for the two
+   * shell-owned bindings.
+   *
+   * Carried here rather than looked up because THIS LIST IS THE SEAM: the
+   * settings manifest builds one presentable record per entry and never
+   * imports the command registry, so the registry stays the only declaration
+   * of what a binding is and the manifest stays the only declaration of how it
+   * is presented. A manifest that reached back into STATIC_COMMANDS for one
+   * field would be a second derivation of the binding list.
+   */
+  keywords: string;
 }
 
 const GROUP_HEADINGS = new Map(COMMAND_GROUPS.map((g) => [g.id, g.heading]));
@@ -41,6 +58,8 @@ export const DEFAULT_SHORTCUTS: ShortcutBinding[] = [
     description: command.description ?? '',
     keys: command.shortcut!.keys,
     groupHeading: GROUP_HEADINGS.get(command.group) ?? 'Other',
+    context: command.shortcut!.context,
+    keywords: command.keywords ?? '',
   })),
   ...SHELL_SHORTCUTS.map((shortcut) => ({
     id: shortcut.id,
@@ -48,6 +67,8 @@ export const DEFAULT_SHORTCUTS: ShortcutBinding[] = [
     description: shortcut.description,
     keys: [...shortcut.keys],
     groupHeading: 'Item under the cursor',
+    context: shortcut.context,
+    keywords: '',
   })),
 ];
 
@@ -62,6 +83,16 @@ interface KeyboardShortcutsStore {
    */
   overrides: Record<string, string[]>;
   updateShortcut: (id: string, keys: string[]) => void;
+  /**
+   * Drop ONE binding's override, so it follows the default again.
+   *
+   * Not the same as `updateShortcut(id, defaultKeys)`, and the difference only
+   * shows up later: writing a copy of today's default PINS the user to it, so
+   * the day a release moves ⌘/ somewhere better, everyone who ever pressed the
+   * row's reset button silently keeps the old key with no override visible to
+   * explain it. Removing the entry is what makes "reset" mean "follow Anchor".
+   */
+  resetShortcut: (id: string) => void;
   resetShortcuts: () => void;
   /**
    * Drop this account's rebindings — see lib/local-state.ts.
@@ -93,6 +124,14 @@ export const useKeyboardShortcutsStore = create<KeyboardShortcutsStore>()(
 
       updateShortcut: (id, keys) =>
         set((state) => ({ overrides: { ...state.overrides, [id]: keys } })),
+
+      resetShortcut: (id) =>
+        set((state) => {
+          if (!(id in state.overrides)) return state;
+          const next = { ...state.overrides };
+          delete next[id];
+          return { overrides: next };
+        }),
 
       resetShortcuts: () => set({ overrides: {} }),
 
@@ -141,5 +180,30 @@ export function getShortcutBindings(): ShortcutBinding[] {
   const { overrides } = useKeyboardShortcutsStore.getState();
   return DEFAULT_SHORTCUTS.map((binding) =>
     overrides[binding.id] ? { ...binding, keys: overrides[binding.id] } : binding
+  );
+}
+
+/**
+ * What ONE id is currently bound to — the default, with this user's override
+ * applied. Empty for an id no binding owns, which is the honest answer for a
+ * surface that hardcoded the wrong name.
+ */
+export function shortcutKeysFor(id: string): string[] {
+  return getShortcutBindings().find((binding) => binding.id === id)?.keys ?? [];
+}
+
+/**
+ * Reactive `shortcutKeysFor`, for a surface that PRINTS one binding.
+ *
+ * There is exactly one today — the resting shortcuts button in AppShell, whose
+ * hint was the literal string '⌘ + /'. Every shortcut is rebindable, so a
+ * hardcoded hint starts lying the moment someone moves that one, on the single
+ * control whose entire job is to say what the key is.
+ */
+export function useShortcutKeys(id: string): string[] {
+  const overrides = useKeyboardShortcutsStore((s) => s.overrides);
+  return useMemo(
+    () => overrides[id] ?? DEFAULT_SHORTCUTS.find((binding) => binding.id === id)?.keys ?? [],
+    [overrides, id]
   );
 }

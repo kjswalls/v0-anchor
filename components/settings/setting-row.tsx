@@ -13,7 +13,9 @@ import {
   isModified,
   type SettingCtx,
   type SettingRecord,
+  type ShortcutSettingRecord,
 } from '@/lib/settings/manifest';
+import { KeysControl } from './keys-control';
 import { highlightRuns, type MatchRange } from '@/lib/settings/search';
 
 /**
@@ -311,6 +313,23 @@ function ControlFor({
         <span className="text-muted-foreground font-num truncate text-xs" title={String(value)}>
           {String(value)}
         </span>
+      );
+
+    case 'keys':
+      // Only SHORTCUT_RECORDS declare this control, and they are the only
+      // records that carry `shortcutId` — the cast is the boundary between the
+      // open SettingRecord the row is given and the narrower record this one
+      // control needs. `write` goes through onWrite like every other control,
+      // so the row's reset button reaches the same path.
+      return (
+        <KeysControl
+          record={record as ShortcutSettingRecord}
+          value={String(value)}
+          disabled={disabled}
+          controlId={controlId}
+          describedBy={describedBy}
+          onWrite={onWrite}
+        />
       );
   }
 }

@@ -21,6 +21,7 @@ import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { usePaletteStore } from '@/lib/palette-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
+import { useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
 import { useUIStore } from '@/lib/ui-store';
 import { flushSettings } from '@/lib/settings-service';
 import { settingsBelongToUser } from '@/lib/settings/hydration';
@@ -55,13 +56,13 @@ import { extensionEnabled } from '@/lib/extension-gates';
  *      and a Next client-side navigation fires no pagehide at all, so leaving
  *      via the breadcrumb inside that window would silently drop the patch.
  *      The dialog literally could not do this; a route can.
- *   3. The modals the settings surface hands off to. ConfirmDialog,
- *      KeyboardShortcutsModal and BugReportDialog are mounted only by AppShell,
- *      so dispatching to them through ui-store from here would set state that
- *      nothing renders. The two the surface opens BY NAME are lazy — see
- *      `openLocalDialog`; ConfirmDialog stays eager because it is answered by
- *      a store, not by this component, and a confirm that arrives before its
- *      dialog has downloaded is a prompt nobody sees.
+ *   3. The modals the settings surface hands off to. ConfirmDialog and
+ *      BugReportDialog are mounted only by AppShell, so dispatching to them
+ *      through ui-store from here would set state that nothing renders. The one
+ *      the surface opens BY NAME is lazy — see `openLocalDialog`; ConfirmDialog
+ *      stays eager because it is answered by a store, not by this component,
+ *      and a confirm that arrives before its dialog has downloaded is a prompt
+ *      nobody sees.
  *   4. The hydration gate. Every store here is localStorage-persisted under a
  *      browser-global key, so before Supabase settles this page would render
  *      the PREVIOUS account's values as live controls — and a click inside that
@@ -77,38 +78,29 @@ function fallbackPane(path: string | undefined): PaneId {
   return path && isExtensionPane(path) ? 'extensions' : 'day';
 }
 
-/* ── The two modals this page opens by name, deferred ──────────────────────
-   Both are reached only from a row the user clicks: Help → Keyboard shortcuts,
-   Help → Report a bug. Deferring them takes 40.6 kB gzip off this route's first
-   load (395,310 → 354,678 bytes: clean production builds of both commits, the
-   route's own script tags, shared chunks deduped, gzip -9) — spent on two
-   surfaces most visits never open. Deltas rather than absolutes on purpose: the
-   absolutes move with every dependency bump, the delta is the split.
+/* ── The one modal this page opens by name, deferred ───────────────────────
+   Reached only from a row the user clicks: Anchor → Send feedback. Deferring it
+   takes weight off this route's first load — measured across the PR that
+   introduced the split at 40.6 kB gzip for the two modals that were deferred
+   together, spent on surfaces most visits never open.
 
-   THE SPLIT IS NOT FREE EVERYWHERE. `/` mounts both of these eagerly through
-   AppShell, and across this PR's two splits it grew 1,460 bytes (597,440 →
-   598,900) — the extra chunk boundaries, charged to the one route that always
-   loads them. /ledger, which this PR does not touch, moved +210 bytes over the
-   same builds: that is the noise floor, so the 1.46 kB is real and the trade is
-   deliberate.
+   THE SECOND ONE IS GONE, and that is the better outcome than deferring it:
+   the keyboard shortcuts table used to be a modal this route summoned from an
+   `action` row, so /settings/keyboard was a room whose only furniture was a
+   door. The bindings are settings records now (SHORTCUT_RECORDS in
+   lib/settings/manifest.ts) and the pane renders them itself, so there is no
+   modal here to split off — the same table is still summonable with ⌘/ over the
+   planner, from the shell that mounts it there.
 
-   `ssr: false` because neither has anything to say before hydration, and both
-   are already client-only (one reads the shortcut registry, the other captures
-   a screenshot of the live document).
+   `ssr: false` because it has nothing to say before hydration and is already
+   client-only (it captures a screenshot of the live document).
 
    next/dynamic fetches a chunk the first time the component RENDERS, not the
-   first time it is opened, so these must not be left permanently mounted at
-   `open={false}` — that downloads them on mount and the split buys nothing.
+   first time it is opened, so this must not be left permanently mounted at
+   `open={false}` — that downloads it on mount and the split buys nothing.
    `openLocalDialog` below is the other half: it latches a mount flag that is
    never cleared, so the chunk is fetched on the first open and the modal then
    STAYS mounted, keeping the close animation Radix needs a live subtree for. */
-const KeyboardShortcutsModal = dynamic(
-  () =>
-    import('@/components/planner/keyboard-shortcuts-modal').then(
-      (m) => m.KeyboardShortcutsModal
-    ),
-  { ssr: false }
-);
 const BugReportDialog = dynamic(
   () => import('@/components/bug-report/bug-report-dialog').then((m) => m.BugReportDialog),
   { ssr: false }
@@ -215,16 +207,13 @@ export default function SettingsPage() {
   const hydratedUserId = useMorningStore((s) => s.settingsHydratedUserId);
   const push = usePushSubscription();
 
-  const [localDialog, setLocalDialog] = useState<'shortcuts' | 'bug' | null>(null);
-  // Which of the deferred modals have ever been opened. Latched, never
-  // cleared — see the note on the dynamic imports above for both halves of
-  // why: mounting them unopened downloads them, unmounting them on close
-  // takes the exit animation with it.
-  const [everOpened, setEverOpened] = useState<{ shortcuts: boolean; bug: boolean }>({
-    shortcuts: false,
-    bug: false,
-  });
-  const openLocalDialog = useCallback((which: 'shortcuts' | 'bug') => {
+  const [localDialog, setLocalDialog] = useState<'bug' | null>(null);
+  // Whether the deferred modal has ever been opened. Latched, never cleared —
+  // see the note on the dynamic import above for both halves of why: mounting
+  // it unopened downloads it, unmounting it on close takes the exit animation
+  // with it.
+  const [everOpened, setEverOpened] = useState<{ bug: boolean }>({ bug: false });
+  const openLocalDialog = useCallback((which: 'bug') => {
     setEverOpened((prev) => (prev[which] ? prev : { ...prev, [which]: true }));
     setLocalDialog(which);
   }, []);
@@ -347,6 +336,10 @@ export default function SettingsPage() {
   const channelSecretsTick = useChannelSecretsStore(
     (s) => `${s.available}|${JSON.stringify(s.setKeys)}`
   );
+  // The Keyboard pane's own rows subscribe directly (ShortcutsPanel), so this
+  // is for the OTHER path a binding is drawn on: a search result, which goes
+  // through the generic rowFor and reads record.read(ctx) non-reactively.
+  const shortcutsTick = useKeyboardShortcutsStore((s) => JSON.stringify(s.overrides));
 
   const signOut = useCallback(async () => {
     // Anything still buffered has to land while the session is alive, or RLS
@@ -383,7 +376,6 @@ export default function SettingsPage() {
       userId,
       push,
       actions: {
-        openShortcuts: () => openLocalDialog('shortcuts'),
         openBugReport: () => openLocalDialog('bug'),
         replayTour: () => void replayTour(),
         signOut: () => void signOut(),
@@ -412,6 +404,7 @@ export default function SettingsPage() {
       paletteTick,
       extensionsTick,
       channelSecretsTick,
+      shortcutsTick,
     ]
   );
 
@@ -478,12 +471,6 @@ export default function SettingsPage() {
 
       {/* Mounted here because AppShell isn't. */}
       <ConfirmDialog />
-      {everOpened.shortcuts && (
-        <KeyboardShortcutsModal
-          open={localDialog === 'shortcuts'}
-          onOpenChange={(open) => setLocalDialog(open ? 'shortcuts' : null)}
-        />
-      )}
       {everOpened.bug && (
         <BugReportDialog
           open={localDialog === 'bug'}

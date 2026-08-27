@@ -31,6 +31,12 @@ import { STAKE_SETTINGS } from '@/lib/stakes/stake-config';
 import { usePaletteStore } from '@/lib/palette-store';
 import { THEME_PALETTES, isThemePalette } from '@/lib/theme-palettes';
 import { saveSettings } from '@/lib/settings-service';
+import {
+  DEFAULT_SHORTCUTS,
+  shortcutKeysFor,
+  useKeyboardShortcutsStore,
+} from '@/lib/keyboard-shortcuts-store';
+import { decodeKeys, encodeKeys, formatKeys, isApplePlatform } from '@/lib/commands/keys';
 import type { TimeBucket } from '@/lib/planner-types';
 
 /**
@@ -243,7 +249,6 @@ export interface SettingCtx {
   };
   /** Actions the page owns because they need a router or a locally-mounted modal. */
   actions?: {
-    openShortcuts: () => void;
     openBugReport: () => void;
     replayTour: () => void;
     signOut: () => void;
@@ -251,7 +256,14 @@ export interface SettingCtx {
   };
 }
 
-export type ControlKind = 'switch' | 'enum' | 'time' | 'text' | 'action' | 'info';
+/**
+ * `keys` is a key BINDING, recorded rather than chosen: the control listens for
+ * one chord and stores it. Its value travels as an encoded string (see
+ * encodeKeys in lib/commands/keys.ts) so it fits `read`/`write` like every
+ * other record, which is what lets one binding be searched, deep-linked,
+ * marked modified and reset by exactly the machinery every other setting uses.
+ */
+export type ControlKind = 'switch' | 'enum' | 'time' | 'text' | 'action' | 'info' | 'keys';
 
 /**
  * Which shape a `text` control takes.
@@ -515,6 +527,130 @@ function channelRecords(): SettingRecord[] {
 
   return records;
 }
+
+/* ------------------------------------------------------------- shortcuts */
+
+/**
+ * A keyboard binding, as a settings record.
+ *
+ * THE SEAM, stated once. lib/commands/registry.ts declares what a command IS,
+ * including the binding it owns; lib/keyboard-shortcuts-store.ts folds those
+ * plus the two shell-owned bindings into DEFAULT_SHORTCUTS, which is the list
+ * the keydown dispatcher reads and the list a user's rebinding is keyed
+ * against. This maps 1:1 over THAT list and adds nothing to it — no keys, no
+ * ids, no labels of its own. There is a test that the two lists have the same
+ * ids in the same order, because a second hand-maintained copy of the binding
+ * table is exactly the failure this arrangement exists to prevent.
+ *
+ * Why records at all, rather than a bespoke table: everything the settings
+ * surface already does for a record it now does for a binding — search across
+ * label, description and keywords; `?focus=keys.undo` scrolling to the row and
+ * ringing it; the lime modified bar; per-row reset. None of that was reachable
+ * while the whole pane was one button that opened a dialog.
+ *
+ * The VALUE is the encoded chord ("mod k"), normalized on both sides, so
+ * `isModified` — a plain `read() !== defaultValue` — is true exactly when the
+ * user has actually moved the binding somewhere else. Rebinding ⌘K to ⌃K on
+ * Windows encodes to the same string and correctly reads as unmodified.
+ */
+export interface ShortcutSettingRecord extends SettingRecord {
+  /** The id the binding is persisted under. Frozen — see commands.test.ts. */
+  shortcutId: string;
+  /** Section heading, shared by both shells that render these records. */
+  section: string;
+}
+
+/**
+ * The words someone reaches for when they want to change a key, on every row.
+ *
+ * The manifest's rule is that keywords are hand-authored, and these are — once,
+ * for a set that is generated. A per-binding list would be nineteen hand-written
+ * lists that all say "hotkey", and the binding's own vocabulary already arrives
+ * from the command it belongs to.
+ */
+const SHORTCUT_KEYWORDS = ['shortcut', 'keybinding', 'hotkey', 'binding', 'rebind', 'remap'];
+
+const shortcuts = () => useKeyboardShortcutsStore.getState();
+
+export const SHORTCUT_RECORDS: ShortcutSettingRecord[] = DEFAULT_SHORTCUTS.map((binding) => {
+  const label = binding.label;
+  const keywords = [
+    ...new Set(
+      [...SHORTCUT_KEYWORDS, ...binding.keywords.split(/\s+/)]
+        .map((word) => word.toLowerCase())
+        .filter(Boolean)
+    ),
+    // The manifest's own rule: a keyword that merely restates the label adds
+    // nothing (labels are indexed already) and trips the structural test.
+  ].filter((word) => word !== label.toLowerCase());
+
+  return {
+    // `keys.<shortcutId>`, verbatim. The shortcut id is already permanent —
+    // it is the key a rebinding is stored under and commands.test.ts freezes
+    // the list — so reusing it means the deep link and the persisted binding
+    // cannot drift. A camel-cased variant would be a SECOND name for the same
+    // thing, derived by a transform that can collide (`new_task` / `newTask`).
+    id: `keys.${binding.id}`,
+    shortcutId: binding.id,
+    pane: 'keyboard' as const,
+    section: binding.groupHeading,
+    label,
+    // The context sentence is appended rather than rendered apart, because a
+    // flat table's lie is one of OMISSION — the row says nothing about where
+    // it works — and one sentence in the place people already read fixes it.
+    // It is indexed too, which is what makes "week" find the column bindings.
+    description: [binding.description, binding.context].filter(Boolean).join(' ') || undefined,
+    control: 'keys' as const,
+    // NOT desktopOnly. The pane would be empty on every phone, and the rail
+    // would still advertise it — a dead room, which the manifest test forbids.
+    // An iPad with a keyboard makes the table useful anyway.
+    keywords,
+    read: () => encodeKeys(shortcutKeysFor(binding.id)),
+    write: (value) => {
+      const keys = decodeKeys(String(value));
+      // Reset writes the DEFAULT back through this path. Storing it would pin
+      // the user to today's default forever — see resetShortcut's note.
+      if (encodeKeys(keys) === encodeKeys(binding.keys)) shortcuts().resetShortcut(binding.id);
+      else if (keys.length) shortcuts().updateShortcut(binding.id, keys);
+    },
+    defaultValue: encodeKeys(binding.keys),
+    display: (value) =>
+      formatKeys(decodeKeys(String(value)), isApplePlatform()).join(' ') || 'No shortcut',
+  };
+});
+
+/**
+ * The records grouped for display, in first-appearance order — which is
+ * registry order, which is the order the palette lists the same commands in.
+ *
+ * Shared by both shells so the settings pane and the ⌘/ overlay cannot group
+ * or order the same set differently.
+ */
+export const SHORTCUT_SECTIONS: { heading: string; records: ShortcutSettingRecord[] }[] = (() => {
+  const sections: { heading: string; records: ShortcutSettingRecord[] }[] = [];
+  for (const record of SHORTCUT_RECORDS) {
+    const existing = sections.find((section) => section.heading === record.section);
+    if (existing) existing.records.push(record);
+    else sections.push({ heading: record.section, records: [record] });
+  }
+  return sections;
+})();
+
+/**
+ * A SettingCtx for a surface that renders ONLY shortcut records.
+ *
+ * Every `keys` record reads and writes through the keyboard-shortcuts store
+ * alone — it never touches ctx, and there is a test that proves it by handing
+ * each one a ctx that throws on any property access. That is what lets the ⌘/
+ * overlay render the very same records from anywhere in the app, with none of
+ * the theme, push-subscription and router plumbing the settings ROUTE assembles
+ * for the rest of the manifest.
+ */
+export const SHORTCUT_ONLY_CTX: SettingCtx = {
+  theme: undefined,
+  setTheme: () => {},
+  userId: null,
+};
 
 /* ---------------------------------------------------------------- records */
 
@@ -1003,22 +1139,12 @@ export const SETTINGS: SettingRecord[] = [
     defaultValue: 'gpt-4o-mini',
   },
 
-  /* ── Keyboard ─────────────────────────────────────────────────────────── */
-  {
-    id: 'keys.shortcuts',
-    pane: 'keyboard',
-    label: 'Keyboard shortcuts',
-    description: 'Every binding, rebindable. The same table ⌘/ opens.',
-    control: 'action',
-    // NOT desktopOnly, despite the obvious temptation: it is the only record in
-    // the Keyboard pane, so hiding it on mobile leaves a pane the rail still
-    // advertises and search can no longer reach — a dead room. An iPad with a
-    // keyboard makes the table useful anyway.
-    keywords: ['keybinding', 'hotkey', 'remap', 'shortcut', 'keys', 'bindings'],
-    read: () => 'Open',
-    write: (_v, ctx) => ctx.actions?.openShortcuts(),
-    defaultValue: 'Open',
-  },
+  /* ── Keyboard ─────────────────────────────────────────────────────────────
+     Generated, one record per binding — see SHORTCUT_RECORDS below. The pane
+     used to hold a single `action` row whose whole job was to open a modal,
+     which meant the bindings themselves were unsearchable, undeep-linkable and
+     visible only from inside a dialog. */
+  ...SHORTCUT_RECORDS,
 
   /* ── Anchor ───────────────────────────────────────────────────────────── */
   {
