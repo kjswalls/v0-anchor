@@ -927,6 +927,13 @@ export function ScheduleBlock({
           } as React.CSSProperties
         }
       >
+        {L?.startTie && (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute border-t border-[var(--sched-rail)]"
+            style={{ left: 6, right: L.startTie, top: -PANE_OFFSET }}
+          />
+        )}
         <span
           aria-hidden
           className="absolute w-[2px] rounded-[1px] bg-muted-foreground/35"
@@ -934,8 +941,8 @@ export function ScheduleBlock({
         />
         <span
           aria-hidden
-          className="absolute left-[3px] h-[6px] w-[6px] rounded-full bg-muted-foreground/45 shadow-[0_0_0_1px_var(--canvas)]"
-          style={{ top: -PANE_OFFSET - 3 }}
+          className="absolute h-[6px] w-[6px] rounded-full bg-muted-foreground/45 shadow-[0_0_0_1px_var(--canvas)]"
+          style={{ left: L?.beadX ?? 3, top: -PANE_OFFSET - 3 }}
         />
         <div
           onClick={() => openEditFor(item, itemType)}
@@ -1048,13 +1055,28 @@ export function ScheduleBlock({
         } as React.CSSProperties
       }
     >
+      {/* The start-tie: a real double-booking's "these begin together" cue.
+          Drawn once, by the unit's first member (whose wrapper still spans the
+          whole band), it runs along the shared start line from its own bead to
+          the last member's. It replaces the old fat-rail-plus-compound-bead
+          signal now that each member's rail sits beside its own tiled pane.
+          Muted, like the branch ticks — a mark, never a badge. Rendered before
+          the rail and bead so the beads paint over its ends. `left: 6` is the
+          first bead's centre (beadX '3px' + half its 6px width). */}
+      {L?.startTie && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute border-t border-[var(--sched-rail)]"
+          style={{ left: 6, right: L.startTie, top: -PANE_OFFSET }}
+        />
+      )}
       {/* The rail's accent span: the lane's 1px hairline swells to 2px for the
           duration of the event, so the accent has real extent on the grid rather
           than being a stripe glued to the card. Offset back up by PANE_OFFSET to
           undo the pane's nudge — this sits on the true start and end. */}
-      {/* A double-booking pitches each member's swell 2px along the ONE shared
-          lane, so n adjacent stripes read as a single fat rail — that plus the
-          compound bead is the entire conflict signal. */}
+      {/* When two items are booked at the same time they tile side by side, each
+          with its own rail beside its own pane; the start-tie above is what marks
+          them as the same slot. */}
       <span
         aria-hidden
         className="absolute w-[2px] rounded-[1px]"
@@ -1063,8 +1085,8 @@ export function ScheduleBlock({
       {/* The start bead, punched out of the canvas so two beads 15 minutes apart
           still read as two at the minimum hour height. A NESTED bead is punched
           out of its parent's plate instead — it is mounted on the field, not on
-          the grid — and two beads in one lane cut a crescent out of each other,
-          which is how a double-booking reads as two pins in one hole. */}
+          the grid. A double-booking's beads no longer meet: each rides its own
+          tile beside its pane (see beadX), and the start-tie above links them. */}
       <span
         aria-hidden
         className="absolute h-[6px] w-[6px] rounded-full"
