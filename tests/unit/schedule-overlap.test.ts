@@ -51,8 +51,11 @@ describe('layoutOverlaps — nothing to do', () => {
     const b = out.get('b')!;
     expect(a).toBeTruthy();
     // Distinct columns, not a shared lane — their rails stay at the default x.
-    expect(a.railX).toBe(5);
-    expect(b.railX).toBe(5);
+    expect(a.railX).toBe('5px');
+    expect(b.railX).toBe('5px');
+    // Two separate columns are not a conflict unit, so neither draws a tie.
+    expect(a.startTie).toBeNull();
+    expect(b.startTie).toBeNull();
   });
 });
 
@@ -154,10 +157,13 @@ describe('layoutOverlaps — CROSSING', () => {
     expect(a.solid).toBe(false);
     expect(b.solid).toBe(false);
     // Each keeps the default lane geometry inside its own band.
-    expect(a.railX).toBe(5);
-    expect(b.railX).toBe(5);
+    expect(a.railX).toBe('5px');
+    expect(b.railX).toBe('5px');
     expect(a.paneLeft).toBe(`${LANE_PX}px`);
     expect(b.paneLeft).toBe(`${LANE_PX}px`);
+    // A crossing is two columns, not one clash — no start-tie on either.
+    expect(a.startTie).toBeNull();
+    expect(b.startTie).toBeNull();
   });
 
   it('leaves visible grid between the two plates', () => {
@@ -187,32 +193,42 @@ describe('layoutOverlaps — DOUBLE-BOOKED', () => {
     expect(s.paneLeft).toContain('50%');
   });
 
-  it('thickens the rail by pitching each member 2px along the shared lane', () => {
+  it('seats each member rail+bead beside its own tiled pane', () => {
     const out = layoutOverlaps(items, { ...DAY, gridStartMin: HM(8) });
-    // id ASC: dentist is member 0, standup member 1.
-    expect(out.get('dentist')!.railX).toBe(5);
-    expect(out.get('standup')!.railX).toBe(7);
-    expect(out.get('dentist')!.beadX).toBe(3);
-    expect(out.get('standup')!.beadX).toBe(5);
+    // id ASC: dentist is member 0, standup member 1. Member 0 keeps the literal
+    // lane; member 1's rail rides its own tile, not the shared left edge.
+    expect(out.get('dentist')!.railX).toBe('5px');
+    expect(out.get('standup')!.railX).toBe('calc(50% + 5px)');
+    expect(out.get('dentist')!.beadX).toBe('3px');
+    expect(out.get('standup')!.beadX).toBe('calc(50% + 3px)');
   });
 
-  it('gives tiled members the same z, because only their beads meet', () => {
-    // The panes TILE rather than overlap, so member order needs no z of its own.
-    // The two beads do overlap, in the shared lane, and either one punching a
-    // crescent out of the other reads identically — two pins in one hole. Paying
-    // for member order in z would push the top member to z-5+, which is the
+  it('ties the two members together at the shared start, from first bead to last', () => {
+    const out = layoutOverlaps(items, { ...DAY, gridStartMin: HM(8) });
+    // Only the FIRST member draws the tie; its right inset stops under the last
+    // bead's centre (band(50, 6)), which is band(100 / 2, -6).
+    expect(out.get('dentist')!.startTie).toBe('calc(50% - 6px)');
+    expect(out.get('standup')!.startTie).toBeNull();
+  });
+
+  it('gives tiled members the same z, because each keeps its own lane', () => {
+    // The panes TILE rather than overlap and each member now has its own lane,
+    // so nothing of one member paints over another and member order needs no z
+    // of its own. Paying for it would push the top member to z-5+, which is the
     // now-marker's layer, and the lime stub must stay above the glass.
     const out = layoutOverlaps(items, { ...DAY, gridStartMin: HM(8) });
     expect(out.get('dentist')!.z).toBe(out.get('standup')!.z);
     expect(out.get('dentist')!.z).toBeLessThan(5);
   });
 
-  it('tiles the panes without overlapping them', () => {
+  it('tiles the panes without overlapping them, a lane gutter between', () => {
     const out = layoutOverlaps(items, { ...DAY, gridStartMin: HM(8) });
-    // Member 0 ends at 50% + 5px; member 1 starts at 50% + 6px — a 1px gutter,
-    // so neither can paint over the other's text.
-    expect(out.get('dentist')!.paneRight).toBe('calc(50% - 5px)');
-    expect(out.get('standup')!.paneLeft).toBe('calc(50% + 6px)');
+    // Member 0's pane ends at the tile boundary (50%, written by band() as a
+    // zero-px calc); member 1's starts a full LANE_PX past it, and member 1's
+    // own rail+bead live in that gutter. So the panes cannot paint over each
+    // other and each rail sits beside its pane.
+    expect(out.get('dentist')!.paneRight).toBe('calc(50% + 0px)');
+    expect(out.get('standup')!.paneLeft).toBe(`calc(50% + ${LANE_PX}px)`);
   });
 
   it('renders every member — an item may be compressed, never absent', () => {
@@ -223,7 +239,14 @@ describe('layoutOverlaps — DOUBLE-BOOKED', () => {
     ];
     const out = layoutOverlaps(three, { ...DAY, gridStartMin: HM(8) });
     expect(out.size).toBe(3);
-    expect(new Set([...out.values()].map((v) => v.railX))).toEqual(new Set([5, 7, 9]));
+    // One rail per tile, offset by its tile fraction — distinct, none bunched.
+    expect(new Set([...out.values()].map((v) => v.railX))).toEqual(
+      new Set(['5px', 'calc(33.333% + 5px)', 'calc(66.667% + 5px)'])
+    );
+    // The tie reaches from the first bead to the third: right inset band(100/3, -6).
+    expect(out.get('a')!.startTie).toBe('calc(33.333% - 6px)');
+    expect(out.get('b')!.startTie).toBeNull();
+    expect(out.get('c')!.startTie).toBeNull();
   });
 
   it('does NOT treat a merely-crossing pair as a double-booking', () => {
@@ -232,8 +255,11 @@ describe('layoutOverlaps — DOUBLE-BOOKED', () => {
       ...DAY,
       gridStartMin: HM(8),
     });
-    expect(out.get('a')!.railX).toBe(5);
-    expect(out.get('b')!.railX).toBe(5); // its own lane, in its own column
+    expect(out.get('a')!.railX).toBe('5px');
+    expect(out.get('b')!.railX).toBe('5px'); // its own lane, in its own column
+    // A crossing is not a clash, so no tie is drawn.
+    expect(out.get('a')!.startTie).toBeNull();
+    expect(out.get('b')!.startTie).toBeNull();
   });
 });
 
@@ -248,10 +274,12 @@ describe('layoutOverlaps — project blocks', () => {
     ];
     const out = layoutOverlaps(items, { ...DAY, gridStartMin: HM(9) });
     expect(out.size).toBe(3);
-    // One shared band, three tiled panes, three stripes on one fat rail.
+    // One shared band, three tiled panes, each with its own lane beside it.
     const bands = new Set([...out.values()].map((v) => v.left));
     expect(bands.size).toBe(1);
-    expect(new Set([...out.values()].map((v) => v.railX))).toEqual(new Set([5, 7, 9]));
+    expect(new Set([...out.values()].map((v) => v.railX))).toEqual(
+      new Set(['5px', 'calc(33.333% + 5px)', 'calc(66.667% + 5px)'])
+    );
   });
 
   it('keeps two different projects in different columns', () => {
@@ -444,11 +472,13 @@ describe('layoutOverlaps — week', () => {
     });
     const a = out.get('dentist')!;
     const b = out.get('standup')!;
-    expect(a.left).toBe(b.left); // one band, one lane
+    expect(a.left).toBe(b.left); // one band, panes tile inside it
     expect(a.paneLeft).toBe(`${LANE_PX}px`);
     expect(b.paneLeft).toContain('50%');
-    expect(a.railX).toBe(5);
-    expect(b.railX).toBe(7); // the fat rail
+    expect(a.railX).toBe('5px');
+    expect(b.railX).toBe('calc(50% + 5px)'); // beside its own tile, not bunched
+    expect(a.startTie).toBe('calc(50% - 6px)'); // tied at the shared start
+    expect(b.startTie).toBeNull();
     // Half a channel each → the column needs two channels' worth of width.
     expect(a.widthFraction).toBeCloseTo(0.5, 5);
     expect(MIN_CHANNEL_PX / a.widthFraction).toBeCloseTo(280, 5);

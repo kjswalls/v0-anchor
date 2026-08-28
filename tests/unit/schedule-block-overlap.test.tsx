@@ -192,37 +192,54 @@ describe('ScheduleBlock — NESTED renders the pocket and moves the title', () =
   });
 });
 
-describe('ScheduleBlock — DOUBLE-BOOKED shares one lane', () => {
+describe('ScheduleBlock — DOUBLE-BOOKED tiles, each rail beside its pane', () => {
   const entries = [
     timed('dentist', 'Dentist', HM(10), 60),
     timed('standup', 'Standup', HM(10), 60),
   ];
 
-  it('keeps both members on the same band and tiles only their panes', () => {
+  it('keeps both members on the same band and tiles their panes with a lane gutter', () => {
     const { byId } = paint(entries);
     expect(byId('dentist').style.left).toBe(byId('standup').style.left);
-    expect(paneOf(byId('dentist')).style.marginRight).toBe('calc(50% - 5px)');
-    expect(paneOf(byId('standup')).style.marginLeft).toBe('calc(50% + 6px)');
+    // Member 0's pane ends at the tile boundary (band() writes 50% as a zero-px
+    // calc); member 1's starts a full lane past it, so member 1's rail+bead sit
+    // in that gutter beside its own pane.
+    expect(paneOf(byId('dentist')).style.marginRight).toBe('calc(50% + 0px)');
+    expect(paneOf(byId('standup')).style.marginLeft).toBe(`calc(50% + ${LANE_PX}px)`);
   });
 
-  it('thickens the rail by pitching the second swell 2px along the shared lane', () => {
+  it('seats the second member’s swell beside its own tile, not the shared edge', () => {
     const { byId } = paint(entries);
     const swell = (blk: HTMLElement) =>
       blk.querySelector('[class*="w-\\[2px\\]"]') as HTMLElement;
     expect(swell(byId('dentist')).style.left).toBe('5px');
-    expect(swell(byId('standup')).style.left).toBe('7px');
+    // The CSS serialiser is free to reorder a calc's terms, so assert on parts.
+    expect(swell(byId('standup')).style.left).toContain('50%');
+    expect(swell(byId('standup')).style.left).toContain('5px');
+  });
+
+  it('draws the start-tie once, on the first member only', () => {
+    const { byId } = paint(entries);
+    // The tie is the hairline with a `right` inset stopping under the last bead;
+    // no other element on a plain double-booking carries a border-t + right.
+    const tieOf = (blk: HTMLElement) =>
+      Array.from(blk.querySelectorAll('[class*="border-t"]')).find(
+        (el) => (el as HTMLElement).style.right
+      ) as HTMLElement | undefined;
+    expect(tieOf(byId('dentist'))?.style.right).toContain('50%');
+    expect(tieOf(byId('standup'))).toBeUndefined();
   });
 
   it('registers the corner marks against each pane’s real edge', () => {
     const { byId } = paint(entries);
     // Default mark style is 'nodes' — hollow squares filled with --canvas, one
     // per vertex. A mark left at the literal LANE_PX would annotate empty grid
-    // for member 1, so it must anchor off the pane's real inset (50% + 6px).
-    // Asserted on the parts, not the string: the CSS serialiser is free to
-    // reorder a calc's terms, and does.
+    // for member 1, so it must anchor off the pane's real inset (50% + 12px now
+    // that each tile carries its own lane). Asserted on the parts, not the
+    // string: the CSS serialiser is free to reorder a calc's terms, and does.
     const marks = byId('standup').querySelectorAll('[class*="bg-\\[var(--canvas)\\]"]');
     const left = Array.from(marks).find((m) => (m as HTMLElement).style.left) as HTMLElement;
-    expect(left.style.left).toContain('50% + 6px');
+    expect(left.style.left).toContain(`50% + ${LANE_PX}px`);
     expect(left.style.left).not.toBe(`${LANE_PX - 3}px`);
   });
 });
