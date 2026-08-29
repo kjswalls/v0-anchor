@@ -41,6 +41,16 @@ const INITIAL = {
   hydratedUserId: null as string | null,
 };
 
+/**
+ * The most recently REQUESTED hydrate — a synchronous claim, separate from the
+ * store's `hydratedUserId` (which is stamped atomically WITH the values, after
+ * the await, and so cannot double as an in-flight marker). Mirrors the
+ * provider's `hydratedUserId.current` ref: when a slow load for a
+ * just-switched-away account resolves last, its claim has been superseded, so it
+ * drops its result instead of clobbering the newer account's owner stamp.
+ */
+let hydratingFor: string | null = null;
+
 export const useNudgeStore = create<NudgeStore>((set, get) => ({
   ...INITIAL,
 
@@ -49,11 +59,17 @@ export const useNudgeStore = create<NudgeStore>((set, get) => ({
     // as the extensions store, so an auth refresh can't re-fetch over a dismiss
     // made this session.
     if (get().hydratedUserId === userId) return;
+    hydratingFor = userId;
 
     const ids = await loadDismissedNudges(userId);
     // Null = couldn't read (transient, or migration 043 not applied here): stay
     // unhydrated so nudges remain inert rather than firing against an empty set.
     if (ids === null) return;
+    // A newer account's hydrate claimed the store while ours was in flight — the
+    // post-await stale-drop guard the sibling stores make (extensions-store,
+    // supabase-provider). Applying now would strand the store owned by the
+    // previous user and suppress the current user's nudge.
+    if (hydratingFor !== userId) return;
 
     set({ dismissed: ids, hydratedUserId: userId });
   },
@@ -65,5 +81,8 @@ export const useNudgeStore = create<NudgeStore>((set, get) => ({
     void saveDismissedNudges(userId, next);
   },
 
-  reset: () => set({ ...INITIAL }),
+  reset: () => {
+    hydratingFor = null;
+    set({ ...INITIAL });
+  },
 }));

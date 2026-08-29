@@ -23,14 +23,19 @@ import { nudgeDef } from '@/lib/nudges/registry';
  */
 export function OneTimeNudge({ id, enabled = true }: { id: string; enabled?: boolean }) {
   const router = useRouter();
-  const { active, dismiss } = useOneTimeNudge(id);
-  const firedRef = useRef(false);
+  const { active, dismiss, userId } = useOneTimeNudge(id);
+  // Fire-once latch keyed by ACCOUNT, not a bare boolean: this component lives on
+  // the durable shell, which survives a bare account switch (SIGNED_IN with no
+  // reload), so a boolean latch would stay latched and the next user would never
+  // see their nudge. Keyed on userId, it re-arms the moment the account changes.
+  const firedForUser = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!enabled || !active || firedRef.current) return;
+    if (!enabled || !active) return;
+    if (firedForUser.current === userId) return;
     const def = nudgeDef(id);
     if (!def) return;
-    firedRef.current = true;
+    firedForUser.current = userId;
 
     toast(def.title, {
       id: def.id,
@@ -49,7 +54,7 @@ export function OneTimeNudge({ id, enabled = true }: { id: string; enabled?: boo
       // dismiss(); calling it twice is a no-op, so either exit records the nudge.
       onDismiss: () => dismiss(),
     });
-  }, [enabled, active, id, dismiss, router]);
+  }, [enabled, active, id, userId, dismiss, router]);
 
   return null;
 }

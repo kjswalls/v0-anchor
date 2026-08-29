@@ -13,6 +13,13 @@ export interface OneTimeNudgeState {
   active: boolean;
   /** Mark this nudge dismissed forever for the current user. Idempotent. */
   dismiss: () => void;
+  /**
+   * The account `active` speaks for (null when signed out). Exposed so a durably
+   * mounted consumer can re-arm its fire-once latch on a bare account switch —
+   * the shell mount survives a SIGNED_IN with no reload, so a boolean latch would
+   * otherwise stay latched for the next user.
+   */
+  userId: string | null;
 }
 
 /**
@@ -35,5 +42,5 @@ export function useOneTimeNudge(id: string): OneTimeNudgeState {
     if (userId) useNudgeStore.getState().dismiss(userId, id);
   }, [userId, id]);
 
-  return { active, dismiss };
+  return { active, dismiss, userId: userId ?? null };
 }
