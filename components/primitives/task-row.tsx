@@ -9,7 +9,7 @@ import { useDraggable } from '@dnd-kit/core';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
 import { goalRolesByItem } from '@/lib/goals';
-import { useGoalsForDisplay } from '@/lib/extension-gates';
+import { useGoalsForDisplay, useStreaksEnabled } from '@/lib/extension-gates';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { useSelectionStore, rangeIds } from '@/lib/selection-store';
@@ -163,6 +163,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   // untouched. That asymmetry is the aspire contract: a goal may add a mark to
   // a row and may never take the row away (lib/container-registry.ts).
   const displayGoals = useGoalsForDisplay(goals);
+  const streaksOn = useStreaksEnabled();
   const roles = useMemo(
     () => goalRolesByItem(displayGoals).get(item.id)?.filter((r) => r.role !== 'member') ?? [],
     [displayGoals, item.id],
@@ -779,7 +780,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
             <span className="flex w-9 flex-shrink-0 items-center">
               {isTask
                 ? task?.priority && <PriorityGlyph priority={task.priority} />
-                : <StreakFlame streak={habit?.streak ?? 0} />}
+                : streaksOn && <StreakFlame streak={habit?.streak ?? 0} />}
             </span>
 
             {/* QUANTITY — 48px, right-aligned tabular figures: how long the item

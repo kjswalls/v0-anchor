@@ -16,6 +16,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
 import { milestoneItemIds } from '@/lib/goals';
+import { useStreaksEnabled } from '@/lib/extension-gates';
 import { useEODStore } from '@/lib/eod-store';
 import { shouldShowOnDate, isCompletedOnDate, isSkippedOnDate, isRecurring } from '@/lib/recurrence';
 import { ITEM_TYPES, isSkippable } from '@/lib/item-registry';
@@ -113,6 +114,7 @@ export function EODReview() {
   const programs = usePlannerStore((s) => s.programs);
   const goals = usePlannerStore((s) => s.goals);
   const milestoneIds = useMemo(() => milestoneItemIds(goals), [goals]);
+  const streaksOn = useStreaksEnabled();
 
   const today = todayStr(userTimezone);
 
@@ -460,7 +462,7 @@ export function EODReview() {
                     <span className="flex-1 text-sm text-muted-foreground line-through min-w-0 truncate">
                       {habit.title}
                     </span>
-                    {ITEM_TYPES.habit.counters.streak && habit.streak > 1 && (
+                    {streaksOn && ITEM_TYPES.habit.counters.streak && habit.streak > 1 && (
                       <span className="text-xs text-ai">🔥 {habit.streak}</span>
                     )}
                     <span className="text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">{ITEM_TYPES.habit.label}</span>

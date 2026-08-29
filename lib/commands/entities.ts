@@ -8,6 +8,7 @@ import { isCompletedOnDate, isRecurring, toDateStr } from '../recurrence';
 import { isPausedOn } from '../active';
 import { getItemTypeConfig, itemTypeName } from '../item-registry';
 import { resolveCategoryIcon } from '../category-icons';
+import { streaksEnabled } from '../extension-gates';
 import { scoreText } from './score';
 import type { Command, CommandEntityOption } from './types';
 import type {
@@ -151,7 +152,7 @@ function proximity(item: Item, dateStr: string): number {
 
 /** The muted right-hand column: where the item sits, in the fewest characters. */
 function defaultDetail(item: Item, dateStr: string): string | undefined {
-  if (item.type === 'habit') return item.streak > 0 ? `🔥 ${item.streak}` : undefined;
+  if (item.type === 'habit') return streaksEnabled() && item.streak > 0 ? `🔥 ${item.streak}` : undefined;
   if (!item.startDate) return item.isScheduled ? undefined : 'Braindump';
   if (item.startDate === dateStr) return undefined;
   const days = differenceInCalendarDays(parseISO(item.startDate), parseISO(dateStr));
