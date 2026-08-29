@@ -161,6 +161,79 @@ function ColorSquare({ color }: { color: string }) {
   );
 }
 
+/**
+ * The "create one from here" affordance inside a membership chip's popover (C2).
+ *
+ * A "New routine…" row that opens into a name + icon field, mirroring the
+ * project container chip's inline create. It owns its OWN open/name/icon state
+ * rather than parking a draft on ItemDraft the way the single-select container
+ * chip does — the membership chips are multi-select and this create is transient
+ * UI, not part of the item being built, so a local hook keeps it self-contained
+ * and off the draft's carry-across-type-switch path.
+ *
+ * On submit it calls `onCreate(name, icon)` — which creates the container and
+ * ticks it on — then collapses back to the row. The popover stays open (unlike
+ * the single-select container chip, which closes on create): you have just
+ * added one member and may well add another, and the new one is now in the list
+ * above, checked.
+ */
+export function InlineCreate({
+  label,
+  defaultIcon,
+  testId,
+  onCreate,
+}: {
+  label: string;
+  defaultIcon: string;
+  testId: string;
+  onCreate: (name: string, icon: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [icon, setIcon] = useState(defaultIcon);
+
+  const submit = () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    onCreate(trimmed, icon);
+    setName('');
+    setIcon(defaultIcon);
+    setOpen(false);
+  };
+
+  if (!open) {
+    return (
+      <ChipOption tone="primary" onSelect={() => setOpen(true)} testId={`${testId}-open`}>
+        <Plus className="size-3.5" />
+        {label}
+      </ChipOption>
+    );
+  }
+
+  return (
+    <div className="flex gap-1 p-1">
+      <IconPicker value={icon} name={name} onSelect={setIcon} />
+      <Input
+        autoFocus
+        placeholder="Name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        className="h-9 flex-1 text-sm"
+        // Enter creates here, never submitting the whole dialog — same guard the
+        // container chip's field carries.
+        data-sub-input
+        data-testid={`${testId}-name`}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          submit();
+        }}
+      />
+      <AddIconButton size="input" onClick={submit} aria-label={label} data-testid={`${testId}-add`} />
+    </div>
+  );
+}
+
 /** Last 14 days of a habit's completion history, oldest first. */
 function recentStreakDays(habit: HabitItem): boolean[] {
   const today = startOfDay(new Date());
@@ -636,6 +709,12 @@ function ItemDialogInner({
     goals,
     goalsAvailable,
     updateGoal,
+    // Inline container creation from the membership chips (C2): each returns the
+    // new id, which toggleRoutine/Program/Goal then ticks on in whichever mode
+    // the dialog is in.
+    addRoutine,
+    addProgram,
+    addGoal,
   } = usePlannerStore();
   /**
    * The two extension gates this dialog answers to.
@@ -1238,7 +1317,11 @@ function ItemDialogInner({
         });
         return;
       }
-      const routine = routines.find((r) => r.id === routineId);
+      // LIVE state, not the render-closure `routines`: inline create (C2) makes
+      // a routine and toggles it on in the SAME handler, so the just-created row
+      // is in the store but not yet in this render's array — the closure lookup
+      // would miss it and silently skip the attach.
+      const routine = usePlannerStore.getState().routines.find((r) => r.id === routineId);
       if (!routine) return;
       updateRoutine(routineId, {
         itemIds: on
@@ -1271,7 +1354,9 @@ function ItemDialogInner({
         });
         return;
       }
-      const goal = goals.find((g) => g.id === goalId);
+      // LIVE state, not the render-closure `goals`: inline create (C2) makes a
+      // goal and toggles it on in the same handler — see toggleRoutine.
+      const goal = usePlannerStore.getState().goals.find((g) => g.id === goalId);
       if (!goal) return;
       // All three arrays travel, always. Removing has to clear whichever role
       // the item actually held — untick a milestone through this chip and it
@@ -1305,7 +1390,9 @@ function ItemDialogInner({
         });
         return;
       }
-      const program = programs.find((p) => p.id === programId);
+      // LIVE state, not the render-closure `programs`: inline create (C2) makes
+      // a program and toggles it on in the same handler — see toggleRoutine.
+      const program = usePlannerStore.getState().programs.find((p) => p.id === programId);
       if (!program) return;
       updateProgram(programId, {
         itemIds: on
@@ -1538,6 +1625,19 @@ function ItemDialogInner({
                 </ChipOption>
               );
             })}
+            {/* Make one without leaving the dialog (C2). No trashed-name guard
+                like the project chip's: routines carry no unique name, so there
+                is no bin slot to collide with. */}
+            {CONTAINER_KINDS.routine.newLabel && (
+              <InlineCreate
+                label={CONTAINER_KINDS.routine.newLabel}
+                defaultIcon={makeIconToken('Repeat')}
+                testId="item-dialog-routine-new"
+                onCreate={(name, icon) =>
+                  toggleRoutine(addRoutine({ name, icon, itemIds: [] }), true)
+                }
+              />
+            )}
             {/* The manager's home. It is NOT in the braindump header —
                 that row is width-critical at the 280px minimum — so the
                 routes in are here, the palette, and mobile's sheet.
@@ -1631,6 +1731,22 @@ function ItemDialogInner({
                 </ChipOption>
               );
             })}
+            {/* Make one without leaving the dialog (C2). New programs are
+                'auto' with no dates, exactly as the console's create row makes
+                them — a program you just made must not hide anything. */}
+            {CONTAINER_KINDS.program.newLabel && (
+              <InlineCreate
+                label={CONTAINER_KINDS.program.newLabel}
+                defaultIcon={makeIconToken('CalendarRange')}
+                testId="item-dialog-program-new"
+                onCreate={(name, icon) =>
+                  toggleProgram(
+                    addProgram({ name, icon, state: 'auto', itemIds: [], routineIds: [] }),
+                    true
+                  )
+                }
+              />
+            )}
             {/* A door, gone while the console is off — see the routine
                 chip's row above for the whole argument. */}
             {organizeOn && (
@@ -1745,6 +1861,31 @@ function ItemDialogInner({
               </>
             )}
 
+            {/* Make one without leaving the dialog (C2). This is the "new habit,
+                new goal" gesture: the goal is created active and empty and the
+                item joins it as a plain MEMBER — milestone and check-in roles
+                are the goal's own decision, made where its timeline shows, and
+                the door below is the way to that. */}
+            {CONTAINER_KINDS.goal.newLabel && (
+              <InlineCreate
+                label={CONTAINER_KINDS.goal.newLabel}
+                defaultIcon={makeIconToken('Target')}
+                testId="item-dialog-goal-new"
+                onCreate={(name, icon) =>
+                  toggleGoal(
+                    addGoal({
+                      name,
+                      icon,
+                      state: 'active',
+                      memberIds: [],
+                      milestoneIds: [],
+                      checkinIds: [],
+                    }),
+                    true
+                  )
+                }
+              />
+            )}
             {/* The Goals section of the console rides EXT_GOALS, not
                 EXT_ORGANIZE (lib/extension-gates.ts), so this door stays
                 open with the console switched off — otherwise Goals would
