@@ -13,7 +13,7 @@ import {
   DragOverlay,
   MeasuringStrategy,
 } from '@dnd-kit/core';
-import { GripVertical, Circle, Keyboard as KeyboardIcon } from 'lucide-react';
+import { GripVertical, Circle } from 'lucide-react';
 import { DesktopShell } from '@/components/shell/desktop-shell';
 import { ConfirmDialog } from '@/components/shell/confirm-dialog';
 import { BulkActionBar } from '@/components/shell/bulk-action-bar';
@@ -34,10 +34,9 @@ import { EODReview } from '@/components/ai/eod-review';
 import { MobileShell } from '@/components/shell/mobile-shell';
 import { OnboardingTour } from '@/components/onboarding/onboarding-tour';
 import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
+import { HelpMenu } from '@/components/shell/help-menu';
 
 import { usePlannerStore } from '@/lib/planner-store';
-import { formatKeys } from '@/lib/commands/keys';
-import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { milestoneItemIds } from '@/lib/goals';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
@@ -61,23 +60,6 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { isOnboardingComplete } from '@/lib/user-profile';
 import { createClient } from '@/lib/supabase';
 import type { MobileTab } from '@/lib/mobile-nav-store';
-
-/**
- * The resting hint on the shortcuts button.
- *
- * Reads the LIVE binding rather than printing '⌘ + /': `system_shortcuts` is
- * rebindable like every other shortcut, and a hardcoded hint quietly starts
- * lying the moment someone moves it — on the one button whose entire job is to
- * tell you what the key is.
- */
-function KbdHint() {
-  const [isMac, setIsMac] = useState(false);
-  const keys = useShortcutKeys('system_shortcuts');
-  useEffect(() => {
-    setIsMac(/Mac|iPhone|iPad|iPod/.test(navigator.platform));
-  }, []);
-  return <span>{formatKeys(keys, isMac).join(' + ')}</span>;
-}
 
 function DraggableTaskOverlay({ title, count = 0 }: { title: string; count?: number }) {
   return (
@@ -630,16 +612,8 @@ export function AppShell() {
 
       <BulkActionBar />
 
-      {/* Persistent keyboard shortcuts hint — desktop only */}
-      <div className="fixed bottom-4 right-4 z-30 hidden md:flex">
-        <button
-          onClick={() => openDialog({ type: 'keyboard-shortcuts' })}
-          className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground shadow-soft-sm transition-colors hover:border-primary/50 hover:text-foreground"
-        >
-          <KeyboardIcon className="h-3.5 w-3.5" />
-          <KbdHint />
-        </button>
-      </div>
+      {/* Floating "?" help hub — desktop only, bottom-right corner */}
+      <HelpMenu />
     </DndContext>
   );
 }
