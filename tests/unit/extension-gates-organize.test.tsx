@@ -368,8 +368,11 @@ describe('Organize switched off — still in the catalogue', () => {
     const manifest = extensionManifest(EXT_ORGANIZE);
     expect(manifest?.name).toBe('Organize console');
     expect(manifest?.description).toBeTruthy();
-    expect(manifest?.defaultEnabled).toBe(false);
-    expect(resolveEnabled({}, EXT_ORGANIZE)).toBe(false);
+    // Ships ON since the console was made approachable (2026-08-28). The row is
+    // still here — "findable" is about the catalogue entry existing, not about
+    // the default — but a no-saved-choice account now resolves to enabled.
+    expect(manifest?.defaultEnabled).toBe(true);
+    expect(resolveEnabled({}, EXT_ORGANIZE)).toBe(true);
   });
 
   it('keeps its settings pane and the one switch that turns it back on', () => {
@@ -379,6 +382,9 @@ describe('Organize switched off — still in the catalogue', () => {
 
     const toggle = settingsForPane(pane).find((r) => r.control === 'switch' && !r.dependsOn);
     expect(toggle).toBeDefined();
+    // This describe's beforeEach disabled Organize in the store, and read()
+    // reads the live store — so OFF here is the explicit off, not the default.
+    // The switch being present and readable is the point.
     expect(toggle!.read({} as never)).toBe(false);
   });
 

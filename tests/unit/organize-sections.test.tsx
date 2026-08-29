@@ -723,6 +723,9 @@ describe('the label sections', () => {
     // explanation.
     seed({ projects: [{ id: 'g1', name: 'Personal', emoji: 'icon:Star' }] });
     open('projects');
+    // Creating starts from the list head now, and the form it opens owns the
+    // detail pane. See CreateForm.
+    click('project-new');
     fireEvent.change(id('project-new-name'), { target: { value: 'personal' } });
     fireEvent.click(id('project-add'));
 
@@ -839,6 +842,7 @@ describe('the label sections', () => {
     // the only way to learn the rules was to fail at them.
     seed({ itemTypes: [{ id: 't1', name: 'goal', label: 'Goal', labelPlural: 'Goals' }] });
     open('types');
+    click('type-new');
     const field = id('type-new-name');
 
     fireEvent.change(field, { target: { value: 'Task' } });
@@ -1123,6 +1127,7 @@ describe('the section filter', () => {
   it('lets a slash be typed into a text field', () => {
     three();
     open('routines');
+    click('routine-new');
     const draft = id('routine-new-name');
     draft.focus();
     fireEvent.keyDown(draft, { key: '/' });
@@ -1133,6 +1138,7 @@ describe('the section filter', () => {
     three();
     const onOpenChange = vi.fn();
     render(<OrganizeConsole open onOpenChange={onOpenChange} section="routines" />);
+    click('routine-new');
     const draft = id('routine-new-name') as HTMLInputElement;
     draft.focus();
     fireEvent.change(draft, { target: { value: 'Half typ' } });
@@ -1421,5 +1427,274 @@ describe('the member picker', () => {
     fireEvent.mouseMove(screen.getAllByTestId('routine-member-candidate')[2]);
     fireEvent.keyDown(id('routine-member-search'), { key: 'Enter' });
     expect(usePlannerStore.getState().routines[0].itemIds).toEqual(['i3']);
+  });
+});
+
+/* ── making something (N1) ────────────────────────────────────────────────── */
+
+describe('the create flow lives in the detail pane', () => {
+  const three = () =>
+    seed({
+      routines: [routine('r1', 'Morning'), routine('r2', 'Evening'), routine('r3', 'Weekend')],
+    });
+
+  it('opens the form from the list head, not a row pinned under the list', () => {
+    three();
+    open('routines');
+    // Nothing on screen until asked: the old create row was mounted always,
+    // 26px under a scrolling list.
+    expect(maybe('routine-create-form')).toBeNull();
+
+    click('routine-new');
+
+    expect(id('routine-create-form')).toBeTruthy();
+    // It owns the detail pane, so the teaching line is gone while it is up.
+    expect(id('organize-detail').textContent).toContain('A routine groups items');
+  });
+
+  it('creates on the button and selects what it made', () => {
+    three();
+    open('routines');
+    click('routine-new');
+    fireEvent.change(id('routine-new-name'), { target: { value: 'Gym block' } });
+    click('routine-add');
+
+    const made = usePlannerStore.getState().routines.find((r) => r.name === 'Gym block');
+    expect(made).toBeTruthy();
+    // The form gives way to the new thing's detail — not back to a teaching line.
+    expect(maybe('routine-create-form')).toBeNull();
+    expect(id('routine-detail')).toHaveAttribute('data-routine-id', made!.id);
+  });
+
+  it('creates on Enter too', () => {
+    three();
+    open('routines');
+    click('routine-new');
+    fireEvent.change(id('routine-new-name'), { target: { value: 'Evening pages' } });
+    fireEvent.keyDown(id('routine-new-name'), { key: 'Enter' });
+
+    expect(usePlannerStore.getState().routines.map((r) => r.name)).toContain('Evening pages');
+  });
+
+  it('refuses a blank name rather than making an unnamed row', () => {
+    three();
+    open('routines');
+    click('routine-new');
+    fireEvent.change(id('routine-new-name'), { target: { value: '   ' } });
+
+    expect(id('routine-add')).toBeDisabled();
+    click('routine-add');
+    expect(usePlannerStore.getState().routines).toHaveLength(3);
+  });
+
+  it('cancels back to the list without creating', () => {
+    three();
+    open('routines');
+    click('routine-new');
+    fireEvent.change(id('routine-new-name'), { target: { value: 'Nope' } });
+    click('routine-cancel');
+
+    expect(maybe('routine-create-form')).toBeNull();
+    expect(usePlannerStore.getState().routines).toHaveLength(3);
+  });
+
+  it('stands in for an EMPTY section, with nothing to cancel back to', () => {
+    seed({ routines: [] });
+    open('routines');
+
+    // No click needed: with no rows, "make your first" and the empty state are
+    // the same screen.
+    expect(id('routine-create-form')).toBeTruthy();
+    expect(maybe('routine-cancel')).toBeNull();
+  });
+
+  it('does NOT steal the cursor when it is merely standing in for empty', () => {
+    // The rail walk is the case: ↓ onto a section with nothing in it must not
+    // rip focus out of the rail and into a name field.
+    seed({ routines: [] });
+    open('routines');
+    expect(document.activeElement).not.toBe(id('routine-new-name'));
+  });
+
+  it('takes the cursor when the user actually asked to create', () => {
+    three();
+    open('routines');
+    click('routine-new');
+    expect(document.activeElement).toBe(id('routine-new-name'));
+  });
+
+  it('leaves the create form on a section change', () => {
+    three();
+    open('routines');
+    click('routine-new');
+    fireEvent.change(id('routine-new-name'), { target: { value: 'Half typed' } });
+
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Programs' }), { button: 0 });
+
+    // Arriving in Programs still offering to name a ROUTINE would be the
+    // console losing its place, wearing a form.
+    expect(maybe('routine-create-form')).toBeNull();
+  });
+
+  it('clears a half-typed name before it leaves the form', () => {
+    three();
+    open('routines');
+    click('routine-new');
+    const field = id('routine-new-name') as HTMLInputElement;
+    field.focus();
+    fireEvent.change(field, { target: { value: 'Half typ' } });
+
+    fireEvent.keyDown(field, { key: 'Escape' });
+    expect((id('routine-new-name') as HTMLInputElement).value).toBe('');
+    // Still in the form — one Escape is one step back, not two.
+    expect(id('routine-create-form')).toBeTruthy();
+  });
+});
+
+/* ── the Overview (the console's front door) ──────────────────────────────── */
+
+describe('the Overview maps the console', () => {
+  const stocked = () =>
+    seed({
+      routines: [routine('r1', 'Morning'), routine('r2', 'Evening')],
+      projects: [{ id: 'p1', name: 'Work', emoji: 'icon:Briefcase' }],
+    });
+
+  it('cards every available section but itself, with live counts', () => {
+    stocked();
+    open('overview');
+
+    const cards = screen.getAllByTestId('overview-card').map((c) => c.getAttribute('data-section'));
+    // Everything the rail holds, minus the map itself.
+    expect(cards).toEqual(['routines', 'programs', 'goals', 'projects', 'types', 'trash']);
+    const routinesCard = cards.indexOf('routines');
+    expect(screen.getAllByTestId('overview-card')[routinesCard].textContent).toContain('2');
+  });
+
+  it('says what each section is for, in a line rather than a paragraph', () => {
+    stocked();
+    open('overview');
+    // The blurb, not the section's full definition — that lives in the section,
+    // where it is the empty state and the create form's hint.
+    expect(screen.getByTestId('organize-overview').textContent).toContain(
+      'Pause a stack of items together.'
+    );
+  });
+
+  it('gives the trash NO count — the bin never enters the store', () => {
+    stocked();
+    open('overview');
+    const trash = screen
+      .getAllByTestId('overview-card')
+      .find((c) => c.getAttribute('data-section') === 'trash')!;
+    expect(trash.textContent).toContain('Trash');
+    // A count here would mean a fetch on every console open. See sections/trash.
+    expect(trash.querySelector('.font-num')).toBeNull();
+  });
+
+  it('opens a section when its card is clicked', () => {
+    stocked();
+    open('overview');
+
+    fireEvent.click(
+      screen.getAllByTestId('overview-card').find((c) => c.getAttribute('data-section') === 'routines')!
+    );
+
+    expect(screen.getByRole('tab', { name: 'Routines' })).toHaveAttribute('aria-selected', 'true');
+    expect(maybe('routine-create-form')).toBeNull();
+  });
+
+  it('"New" lands in the section WITH its create form already open', () => {
+    stocked();
+    open('overview');
+
+    fireEvent.click(
+      screen.getAllByTestId('overview-new').find((c) => c.getAttribute('data-section') === 'routines')!
+    );
+
+    expect(screen.getByRole('tab', { name: 'Routines' })).toHaveAttribute('aria-selected', 'true');
+    expect(id('routine-create-form')).toBeTruthy();
+  });
+
+  it('offers no "New" for the trash', () => {
+    stocked();
+    open('overview');
+    const news = screen.getAllByTestId('overview-new').map((n) => n.getAttribute('data-section'));
+    expect(news).not.toContain('trash');
+  });
+});
+
+/* ── what the Phase 5 review caught ───────────────────────────────────────── */
+
+describe('the create form holds up under the review', () => {
+  const three = () =>
+    seed({
+      routines: [routine('r1', 'Morning'), routine('r2', 'Evening'), routine('r3', 'Weekend')],
+    });
+
+  it('focuses the field when "+ New" is pressed in an EMPTY section', () => {
+    // The form is ALREADY mounted there (standing in for the empty list), and
+    // React applies `autoFocus` at mount only — so the section's one primary
+    // verb used to answer with no cursor and no visible change. Every section is
+    // empty on a new account, which is now every account by default.
+    seed({ routines: [] });
+    open('routines');
+    expect(document.activeElement).not.toBe(id('routine-new-name'));
+
+    click('routine-new');
+
+    expect(document.activeElement).toBe(id('routine-new-name'));
+  });
+
+  it('does not wipe a typed name on an Escape aimed somewhere else', () => {
+    // The clear rung is guarded on focus, the way the old create row's was.
+    three();
+    open('routines');
+    click('routine-new');
+    fireEvent.change(id('routine-new-name'), { target: { value: 'Half typed' } });
+
+    const filter = id('routine-filter');
+    filter.focus();
+    fireEvent.keyDown(filter, { key: 'Escape' });
+
+    // Neither wiped nor closed out from under the typing: the form does not
+    // claim a keystroke aimed at another control.
+    expect(id('routine-create-form')).toBeTruthy();
+    expect((id('routine-new-name') as HTMLInputElement).value).toBe('Half typed');
+  });
+
+  it('selecting a row leaves the create form', () => {
+    // The form and the selection share the detail pane and `creating` wins, so
+    // a click on a row used to look like it did nothing.
+    three();
+    open('routines');
+    click('routine-new');
+    expect(id('routine-create-form')).toBeTruthy();
+
+    fireEvent.click(screen.getAllByTestId('routine-row')[1]);
+
+    expect(maybe('routine-create-form')).toBeNull();
+    expect(id('routine-detail')).toHaveAttribute('data-routine-id', 'r2');
+  });
+});
+
+describe('the Overview only offers a New it can honour', () => {
+  it('drops "New" for a section whose table is unreachable', () => {
+    // Offering it sent the user to a pane with no form, while the footer claimed
+    // they were making something.
+    seed({ itemTypes: [], itemTypesAvailable: false });
+    open('overview');
+
+    const news = screen.getAllByTestId('overview-new').map((n) => n.getAttribute('data-section'));
+    expect(news).not.toContain('types');
+    expect(news).toContain('routines');
+  });
+
+  it('drops every "New" while the first fetch is still in flight', () => {
+    // Creating inside the load window is erased by initializeStore's set() —
+    // the same three-part gate every section computes for itself.
+    seed({ isLoading: true });
+    open('overview');
+    expect(screen.queryAllByTestId('overview-new')).toHaveLength(0);
   });
 });

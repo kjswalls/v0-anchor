@@ -60,11 +60,14 @@ export interface ExtensionManifest {
  * all three. Only the BEHAVIOUR stops. What that means per surface is stated at
  * each gate and gathered in lib/extension-gates.ts.
  *
- * These two default OFF for a different reason than the channels do. A channel
- * defaults off because it can ring a phone or spend money. These default off
- * because a concept you have not met is weight you carry for nothing — see the
- * note on `defaultEnabled` in each entry, and the migration question in the
- * PR that landed them, which is about the accounts that ALREADY hold this data.
+ * They split on the default now. GOALS still defaults off, for the reason the
+ * channels do not share: a concept you have not met is weight you carry for
+ * nothing. ORGANIZE defaults ON as of 2026-08-28 — the console was reworked to
+ * be approachable rather than a wall of sections, so it stopped being weight and
+ * started being the obvious home for the structure a user already has. Each
+ * entry's `defaultEnabled` note carries the specifics, and — because the
+ * fallback is evaluated per read — flipping Organize on reaches every account
+ * with no saved row for it, existing and new, no migration.
  */
 export const EXT_GOALS = 'goals';
 export const EXT_ORGANIZE = 'organize';
@@ -138,7 +141,14 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
       'One console for bulk container management — routines, programs, projects, item types, habit groups and the trash.',
     icon: FolderCog,
     category: 'planning',
-    defaultEnabled: false,
+    // Defaults ON since the console was made approachable (2026-08-28): a warm
+    // welcome per section, a silhouette per rail row, inline creation, and an
+    // Overview that greets a first open. The "Weight of Anchor" verdict was that
+    // it arrived as twelve sections of weight; once it stopped being that, the
+    // reason to hide it went too. The fallback is per-read, so this reaches every
+    // account with no saved toggle — existing and new alike. Goals below stays
+    // OFF: it is the larger concept, and the audit named it safest to keep opt-in.
+    defaultEnabled: true,
   },
   {
     slug: EXT_STREAKS,

@@ -16,6 +16,7 @@ import {
   isConsoleSection,
   sectionMeta,
   type ConsoleSection,
+  type ConsoleSectionSpec,
 } from './console-rail';
 import { useExtensionPredicate } from '@/lib/extension-gates';
 import { KeyCap } from './primitives';
@@ -24,6 +25,7 @@ import { RoutinesSection } from './sections/routines';
 import { ProgramsSection } from './sections/programs';
 import { GoalsSection } from './sections/goals';
 import { ProjectsSection, TypesSection } from './sections/labels';
+import { OverviewSection } from './sections/overview';
 import { TrashSection } from './sections/trash';
 import { cn } from '@/lib/utils';
 
@@ -69,7 +71,7 @@ export interface OrganizeConsoleProps {
   section?: string;
   /** Select this object on arrival and scroll its row into view. */
   focusId?: string;
-  /** Focus the create row's name input on arrival (the "New routine or program" entry). */
+  /** Open straight into this section's create form (the "New …" entries). */
   focusNew?: boolean;
 }
 
@@ -104,15 +106,15 @@ export function OrganizeConsole({
   const [selectedId, setSelectedId] = useState<string | null>(focusId ?? null);
 
   /**
-   * `focusNew` is an ARRIVAL, and has to be latched to behave like one.
+   * Whether this section is CREATING — the detail pane holds the create form
+   * rather than a selection (see CreateForm).
    *
-   * Radix unmounts an inactive tabpanel's children, so leaving the opening
-   * section and coming back remounts the create row — and React's `autoFocus`
-   * is a mount effect, so a prop-derived flag would fire again and rip focus out
-   * of the rail the user was arrowing through. Spent on the first section
-   * change, re-armed by a fresh open.
+   * Console-level rather than per-section for the same reason `selectedId` is:
+   * a section change has to end it, and the footer bar has to be able to say so.
+   * `focusNew` is an ARRIVAL that starts it — the caller asking to open straight
+   * into "make one" — which is the job that prop was plumbed for and never had.
    */
-  const [pendingNew, setPendingNew] = useState(!!focusNew);
+  const [creating, setCreating] = useState(!!focusNew);
 
   /**
    * Reopening lands on what the CALLER asked for, not on wherever the last visit
@@ -135,7 +137,7 @@ export function OrganizeConsole({
     if (open) {
       setActive(initial);
       setSelectedId(focusId ?? null);
-      setPendingNew(!!focusNew);
+      setCreating(!!focusNew);
     }
   }
 
@@ -148,9 +150,9 @@ export function OrganizeConsole({
     // would open whatever row happened to share an index, which reads as the
     // console losing its place.
     setSelectedId(null);
-    // The only route back into the opening section is another section change,
-    // so spending the latch here is enough.
-    setPendingNew(false);
+    // Nor does a half-written new one: arriving in Programs still offering to
+    // name a routine is the same lost-place bug wearing a form.
+    setCreating(false);
   }, []);
 
   /**
@@ -168,7 +170,53 @@ export function OrganizeConsole({
   const onNavigate = useCallback((next: ConsoleSection, id: string) => {
     setActive(next);
     setSelectedId(id);
-    setPendingNew(false);
+    setCreating(false);
+  }, []);
+
+  /** Jump to a section from the Overview map. */
+  const onOpenSection = useCallback((next: ConsoleSection) => {
+    setActive(next);
+    setSelectedId(null);
+    setCreating(false);
+  }, []);
+
+  /** Jump to a section AND start making one — the Overview's "New". */
+  const onCreateIn = useCallback((next: ConsoleSection) => {
+    setActive(next);
+    setSelectedId(null);
+    setCreating(true);
+  }, []);
+
+  /**
+   * Select a row — and leave the create form, which the selection replaces.
+   *
+   * NOT the raw setter. The form and the selection share the detail pane, and
+   * `creating` wins there, so a plain `setSelectedId` while the form was open
+   * looked like the click did nothing: the row latched, the pane went on showing
+   * an empty form, and the only way out was a section change.
+   */
+  const onSelectRow = useCallback((id: string | null) => {
+    setCreating(false);
+    setSelectedId(id);
+  }, []);
+
+  /** Open the create form, which the selection would otherwise be covering. */
+  const onNew = useCallback(() => {
+    setSelectedId(null);
+    setCreating(true);
+  }, []);
+
+  /**
+   * A create landed: leave the form and select what was just made.
+   *
+   * One call rather than two so no section can do half of it — a create that
+   * left the form open would offer to make a second thing before showing the
+   * first, and one that skipped the selection would drop the user back on a
+   * teaching line about the row they just created.
+   */
+  const onCreated = useCallback((id: string | null) => {
+    setCreating(false);
+    setSelectedId(id);
   }, []);
 
   /**
@@ -272,16 +320,21 @@ export function OrganizeConsole({
               <SectionBody
                 section={s.id}
                 selectedId={selectedId}
-                onSelect={setSelectedId}
+                onSelect={onSelectRow}
                 onNavigate={onNavigate}
-                focusNew={pendingNew && s.id === initial}
+                creating={creating && s.id === activeSection}
+                onNew={onNew}
+                onCreated={onCreated}
+                sections={sections}
+                onOpenSection={onOpenSection}
+                onCreateIn={onCreateIn}
               />
             </TabsPrimitive.Content>
           ))}
         </TabsPrimitive.Root>
         </Ladder>
 
-        <FooterBar section={activeSection} selectedId={selectedId} />
+        <FooterBar section={activeSection} selectedId={selectedId} creating={creating} />
       </ResponsiveModalContent>
     </ResponsiveModal>
   );
@@ -336,41 +389,61 @@ function SectionBody({
   selectedId,
   onSelect,
   onNavigate,
-  focusNew,
+  creating,
+  onNew,
+  onCreated,
+  sections,
+  onOpenSection,
+  onCreateIn,
 }: {
   section: ConsoleSection;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   /** Jump to another section AND select something in it. See ProgramHolders. */
   onNavigate: (section: ConsoleSection, id: string) => void;
-  focusNew: boolean;
+  /** The detail pane is holding this section's create form. */
+  creating: boolean;
+  onNew: () => void;
+  /** Leave the form and select what was made — one call, so it cannot half-happen. */
+  onCreated: (id: string | null) => void;
+  /** Gate-filtered list, for the Overview's cards. */
+  sections: readonly ConsoleSectionSpec[];
+  onOpenSection: (section: ConsoleSection) => void;
+  onCreateIn: (section: ConsoleSection) => void;
 }) {
+  if (section === 'overview') {
+    return (
+      <OverviewSection sections={sections} onOpen={onOpenSection} onCreate={onCreateIn} />
+    );
+  }
+
+  const make = { creating, onNew, onCreated };
   if (section === 'routines') {
     return (
       <RoutinesSection
         selectedId={selectedId}
         onSelect={onSelect}
         onOpenProgram={(id) => onNavigate('programs', id)}
-        focusNew={focusNew}
+        {...make}
       />
     );
   }
   if (section === 'programs') {
-    return <ProgramsSection selectedId={selectedId} onSelect={onSelect} focusNew={focusNew} />;
+    return <ProgramsSection selectedId={selectedId} onSelect={onSelect} {...make} />;
   }
   if (section === 'goals') {
-    return <GoalsSection selectedId={selectedId} onSelect={onSelect} focusNew={focusNew} />;
+    return <GoalsSection selectedId={selectedId} onSelect={onSelect} {...make} />;
   }
   if (section === 'projects') {
-    return <ProjectsSection selectedId={selectedId} onSelect={onSelect} focusNew={focusNew} />;
+    return <ProjectsSection selectedId={selectedId} onSelect={onSelect} {...make} />;
   }
   if (section === 'types') {
-    return <TypesSection selectedId={selectedId} onSelect={onSelect} focusNew={focusNew} />;
+    return <TypesSection selectedId={selectedId} onSelect={onSelect} {...make} />;
   }
 
-  // Trash takes no selection props: it is the one section with nothing to
-  // select into, so its rows carry their single verb inline. See trash.tsx.
-  return <TrashSection />;
+  // Trash selects like the rest now — a row opens a read-only preview in the
+  // detail pane — but Enter on a row still Restores. See trash.tsx.
+  return <TrashSection selectedId={selectedId} onSelect={onSelect} />;
 }
 
 /**
@@ -383,21 +456,31 @@ function SectionBody({
 function FooterBar({
   section,
   selectedId,
+  creating,
 }: {
   section: ConsoleSection;
   selectedId: string | null;
+  creating: boolean;
 }) {
   const meta = sectionMeta(section);
   return (
     <div className="border-border text-muted-foreground font-num hidden h-8 shrink-0 items-center gap-4 border-t px-4 text-2xs md:flex">
       <span data-testid="organize-footer-subject">
-        {selectedId ? meta.label : `${meta.label} · nothing selected`}
+        {creating
+          ? `${meta.label} · new`
+          : selectedId
+            ? meta.label
+            : `${meta.label} · nothing selected`}
       </span>
-      <span className="ml-auto flex items-center">
-        Filter
-        <KeyCap>/</KeyCap>
-      </span>
-      <span className="flex items-center">
+      {/* Only where there is a field for it to land in. The Overview is a map,
+          not a list, so `/` there would teach a key that does nothing. */}
+      {meta.filterable && (
+        <span className="ml-auto flex items-center" data-testid="organize-footer-filter">
+          Filter
+          <KeyCap>/</KeyCap>
+        </span>
+      )}
+      <span className={cn('flex items-center', !meta.filterable && 'ml-auto')}>
         Close
         <KeyCap>Esc</KeyCap>
       </span>

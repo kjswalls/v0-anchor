@@ -287,3 +287,19 @@ describe('classifyKindForItemType', () => {
     expect(getItemTypeConfig('task').containerRequired).toBe(false);
   });
 });
+
+describe('inline creation is offered from the item dialog for every kind (C2)', () => {
+  it('names a create row on all four kinds, not projects alone', () => {
+    // Used to be projects-only — gates and goals were created solely in the
+    // console. "Attach this to a NEW goal/routine/program" is a real add-dialog
+    // gesture now, so each kind names its create row. A regression to null here
+    // silently drops the InlineCreate row from that kind's membership chip.
+    for (const kind of ['project', 'routine', 'program', 'goal'] as const) {
+      expect(CONTAINER_KINDS[kind].newLabel).toBeTruthy();
+      expect(typeof CONTAINER_KINDS[kind].newLabel).toBe('string');
+    }
+    expect(CONTAINER_KINDS.routine.newLabel).toBe('New routine');
+    expect(CONTAINER_KINDS.program.newLabel).toBe('New program');
+    expect(CONTAINER_KINDS.goal.newLabel).toBe('New goal');
+  });
+});
