@@ -87,7 +87,23 @@ const openEdit = () =>
     />
   );
 
+/**
+ * Panel + edit is CLEARING mode, where an unset container has no chip at rest —
+ * it is summoned from the "Add property" seed (see item-dialog.tsx). These cases
+ * deliberately start with zero containers, so every one of them starts unset and
+ * every one has to be summoned. Matched on `data-value`, never on label copy.
+ */
+const revealContainer = (kind: 'routine' | 'program' | 'goal') => {
+  fireEvent.click(screen.getByTestId('item-clearing-seed'));
+  const option = screen
+    .getAllByTestId('item-clearing-seed-option')
+    .find((el) => el.getAttribute('data-value') === kind);
+  if (!option) throw new Error(`no seed option for ${kind}`);
+  fireEvent.click(option);
+};
+
 const inlineCreate = (kind: 'routine' | 'program' | 'goal', name: string) => {
+  revealContainer(kind);
   fireEvent.click(screen.getByTestId(`item-dialog-${kind}-chip`));
   fireEvent.click(screen.getByTestId(`item-dialog-${kind}-new-open`));
   fireEvent.change(screen.getByTestId(`item-dialog-${kind}-new-name`), {
