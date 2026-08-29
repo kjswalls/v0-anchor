@@ -30,16 +30,27 @@ const MobileCtx = React.createContext(false);
 function ResponsiveModal({
   open,
   onOpenChange,
+  isMobile,
   children,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * For callers that mount this fresh per open (ItemDialog's wrapper): pin the
+   * breakpoint from a hook instance that has already settled. useIsMobile
+   * starts undefined and settles in an effect, so a freshly-mounted modal
+   * would first-commit the desktop Dialog open, then swap Root to the Drawer —
+   * tearing down and rebuilding the entire open surface on a phone. Callers
+   * that stay mounted across opens can omit it.
+   */
+  isMobile?: boolean;
   children: React.ReactNode;
 }) {
-  const isMobile = useIsMobile();
-  const Root = isMobile ? Drawer : Dialog;
+  const settledIsMobile = useIsMobile();
+  const mobile = isMobile ?? settledIsMobile;
+  const Root = mobile ? Drawer : Dialog;
   return (
-    <MobileCtx.Provider value={isMobile}>
+    <MobileCtx.Provider value={mobile}>
       <Root open={open} onOpenChange={onOpenChange}>
         {children}
       </Root>

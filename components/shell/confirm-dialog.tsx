@@ -28,7 +28,8 @@ import { useUIStore } from '@/lib/ui-store';
  * ordinary case.
  */
 export function ConfirmDialog() {
-  const { confirmRequest, resolveConfirm } = useUIStore();
+  const confirmRequest = useUIStore((s) => s.confirmRequest);
+  const resolveConfirm = useUIStore((s) => s.resolveConfirm);
   const returnTo = useRef<HTMLElement | null>(null);
 
   return (

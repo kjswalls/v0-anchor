@@ -1,7 +1,16 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { addDays, format, parseISO, startOfDay, subDays } from 'date-fns';
 import {
   CalendarIcon,
@@ -169,16 +178,19 @@ function SurfaceRoot({
   panel,
   open,
   onOpenChange,
+  isMobile,
   children,
 }: {
   panel: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Settled in the permanent wrapper — this tree mounts fresh per open. */
+  isMobile: boolean;
   children: ReactNode;
 }) {
   if (panel) return <>{children}</>;
   return (
-    <ResponsiveModal open={open} onOpenChange={onOpenChange}>
+    <ResponsiveModal open={open} onOpenChange={onOpenChange} isMobile={isMobile}>
       {children}
     </ResponsiveModal>
   );
@@ -508,13 +520,91 @@ function draftFromItem(item: Item): ItemDraft {
   };
 }
 
-export function ItemDialog({
+/**
+ * How long a CLOSED body keeps rendering, so the exit animation has content.
+ *
+ * The wrapper below unmounts the body after close, but not ON close: the modal
+ * plays a 200ms exit and the mobile drawer ~500ms, and both paint the latched
+ * payload (`last`) through those frames. Unmounting at the moment `state` goes
+ * null would blank the surface mid-animation. The panel presentation unmounts
+ * its content instantly (SurfaceContent returns null when closed), so the only
+ * cost of the grace is a few idle renders of a null aside.
+ */
+const CLOSE_ANIMATION_GRACE_MS = 600;
+
+/**
+ * Thin permanent shell around the real surface.
+ *
+ * Both shell instances of this dialog (app-shell's modal, desktop-shell's
+ * docked panel) are mounted for the whole session, and the body below is
+ * ~2,300 lines that subscribe to the whole planner store and build every chip's
+ * element tree on each pass. Mounting the body only while the surface is open
+ * (plus the exit grace above) is what makes a closed dialog actually free —
+ * no store subscription, no hooks, no element building.
+ *
+ * Two contracts survive the unmount on purpose:
+ *  · "A cancelled dialog deliberately keeps its other draft fields" — the add
+ *    drafts are stashed in a ref up here (per instance, so the /item page's
+ *    copy can't bleed into the shell's) and re-seed the body's state on the
+ *    next open.
+ *  · A queued panel autosave flushes on unmount — the body's own
+ *    `return () => flush.current()` cleanup already runs when it unmounts.
+ */
+export function ItemDialog(props: ItemDialogProps) {
+  const { state } = props;
+  const [present, setPresent] = useState(!!state);
+  // Render-phase, not an effect: the body must mount in the SAME commit that
+  // opens the dialog, or the open gains a frame of empty portal.
+  if (state && !present) setPresent(true);
+
+  // Resolved HERE, where a whole-session mount has let it settle, because the
+  // body below mounts fresh per open: useIsMobile starts undefined and settles
+  // in an effect, so a fresh ResponsiveModal deciding for itself would
+  // first-commit the desktop Dialog on a phone and then swap Root to the
+  // Drawer — remounting the entire open surface and double-firing autoFocus.
+  const isMobile = useIsMobile();
+
+  useEffect(() => {
+    if (state || !present) return;
+    const t = setTimeout(() => setPresent(false), CLOSE_ANIMATION_GRACE_MS);
+    return () => clearTimeout(t);
+  }, [state, present]);
+
+  // Survives the body's unmount so cancelled add drafts keep their fields.
+  // Handed down as a read/write pair rather than the ref itself: the compiler
+  // lint can't see that a ref-typed PROP is safe to mutate, and it's right to
+  // be suspicious — this keeps the mutation in the ref's own component.
+  const draftStash = useRef<Record<string, ItemDraft> | null>(null);
+  const readDraftStash = useCallback(() => draftStash.current, []);
+  const writeDraftStash = useCallback((drafts: Record<string, ItemDraft>) => {
+    draftStash.current = drafts;
+  }, []);
+
+  if (!present) return null;
+  return (
+    <ItemDialogInner
+      {...props}
+      isMobile={isMobile}
+      readDraftStash={readDraftStash}
+      writeDraftStash={writeDraftStash}
+    />
+  );
+}
+
+function ItemDialogInner({
   state,
   onOpenChange,
   withDetailSections = true,
   presentation = 'modal',
   flat = false,
-}: ItemDialogProps) {
+  isMobile,
+  readDraftStash,
+  writeDraftStash,
+}: ItemDialogProps & {
+  isMobile: boolean;
+  readDraftStash: () => Record<string, ItemDraft> | null;
+  writeDraftStash: (drafts: Record<string, ItemDraft>) => void;
+}) {
   const {
     items,
     addItem,
@@ -566,12 +656,13 @@ export function ItemDialog({
   /**
    * The names a trashed container is still holding.
    *
-   * Gated on `state`, and that is not only about cost. BOTH instances of this
-   * component — app-shell's modal and desktop-shell's docked panel — are mounted
-   * for the entire session, so an ungated fetch here is four SELECTs during
-   * first paint for a create row nobody has opened. Asking on open instead also
-   * makes the answer FRESHER than a mount-time read could be, which is what the
-   * previous note here was apologising for.
+   * Gated on `state`, and that is not only about cost. This body now mounts on
+   * open (see the wrapper above), which already spares the closed instances the
+   * fetch — but the gate stays: the body lingers mounted through the close
+   * grace, and without the gate those closing frames would re-ask for a
+   * surface that is on its way out. Asking on open also makes the answer
+   * FRESHER than a mount-time read could be, which is what the previous note
+   * here was apologising for.
    *
    * Still not a guarantee: a container binned while this is open is invisible to
    * the fetched list. The union in the hook covers same-session deletes, and the
@@ -646,9 +737,14 @@ export function ItemDialog({
   const canPause = !!editItem && isPausable(editItem);
 
   const [activeType, setActiveType] = useState<string>('task');
-  const [addDrafts, setAddDrafts] = useState<Record<string, ItemDraft>>(() =>
-    buildAddDrafts({ defaultTimeBucket, containers: projects })
+  // Re-seeded from the wrapper's stash: this component unmounts after close,
+  // and the drafts a cancelled dialog keeps must outlive it.
+  const [addDrafts, setAddDrafts] = useState<Record<string, ItemDraft>>(
+    () => readDraftStash() ?? buildAddDrafts({ defaultTimeBucket, containers: projects })
   );
+  useEffect(() => {
+    writeDraftStash(addDrafts);
+  }, [addDrafts, writeDraftStash]);
   const [editDraft, setEditDraft] = useState<ItemDraft | null>(null);
 
   // ── Autosave bookkeeping (panel only; the modal still commits on submit) ────
@@ -2485,7 +2581,7 @@ export function ItemDialog({
 
   return (
     <>
-      <SurfaceRoot panel={isPanel} open={open} onOpenChange={onOpenChange}>
+      <SurfaceRoot panel={isPanel} open={open} onOpenChange={onOpenChange} isMobile={isMobile}>
         <SurfaceContent
           panel={isPanel}
           open={open}
