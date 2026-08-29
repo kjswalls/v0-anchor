@@ -233,6 +233,51 @@ describe('multi-select keeps the menu open; single-select closes it', () => {
   });
 });
 
+describe('grouping options carry live examples of what they would produce', () => {
+  it('names the user own containers under the container axes, capped at two', async () => {
+    render(<DisplayMenu surface="canvas" />);
+    await openSub('Grouping');
+
+    // seed() has three projects — Work, Home, Health — so the row shows the
+    // first two and an ellipsis, not the whole list.
+    expect(await screen.findByRole('menuitemradio', { name: /Project/ })).toHaveTextContent(
+      'Work, Home…'
+    );
+  });
+
+  it('names the static axes from their own vocabulary', async () => {
+    render(<DisplayMenu surface="canvas" />);
+    await openSub('Grouping');
+
+    expect(await screen.findByRole('menuitemradio', { name: /Priority/ })).toHaveTextContent(
+      'High, Medium…'
+    );
+    expect(await screen.findByRole('menuitemradio', { name: /Time bucket/ })).toHaveTextContent(
+      'Anytime, Morning…'
+    );
+  });
+
+  it('leaves an axis with nothing to name bare — no second line', async () => {
+    // seed() clears routines, so grouping by Routine has no example to give.
+    render(<DisplayMenu surface="canvas" />);
+    await openSub('Grouping');
+
+    const routine = await screen.findByRole('menuitemradio', { name: /Routine/ });
+    expect(routine).toHaveTextContent('Routine');
+    expect(routine.textContent).not.toMatch(/,/);
+  });
+
+  it('mirrors the braindump two sections under its Type axis', async () => {
+    render(<DisplayMenu surface="braindump" />);
+    openMenu('braindump');
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Grouping/ }));
+
+    expect(await screen.findByRole('menuitemradio', { name: /Type/ })).toHaveTextContent(
+      'Tasks, Habits'
+    );
+  });
+});
+
 describe('Reset display', () => {
   it('clears the grouping and the type filter its own count includes', async () => {
     // The live defect: today's Clear row resets filters only, while the trigger
