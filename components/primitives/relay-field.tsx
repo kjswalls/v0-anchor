@@ -135,8 +135,9 @@ export interface RelayFieldProps {
   pointerParallax?: number;
   /**
    * Which light-mode palette to paint (see lib/relay-palettes.ts). Only affects
-   * light contexts — dark always reads the live theme tokens. Defaults to the
-   * catalog default ('gray'); this is the seam for future user theming.
+   * light contexts; dark contexts read the live theme tokens unless `darkPalette`
+   * is set. Defaults to the catalog default ('gray'); this is the seam for future
+   * user theming.
    */
   lightPalette?: RelayLightPaletteKey;
   /**
