@@ -368,9 +368,9 @@ function SectionBody({
     return <TypesSection selectedId={selectedId} onSelect={onSelect} focusNew={focusNew} />;
   }
 
-  // Trash takes no selection props: it is the one section with nothing to
-  // select into, so its rows carry their single verb inline. See trash.tsx.
-  return <TrashSection />;
+  // Trash selects like the rest now — a row opens a read-only preview in the
+  // detail pane — but Enter on a row still Restores. See trash.tsx.
+  return <TrashSection selectedId={selectedId} onSelect={onSelect} />;
 }
 
 /**
