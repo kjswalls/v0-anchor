@@ -28,6 +28,7 @@ import {
   DraftRow,
   IdentityRow,
   ListColumn,
+  SectionWelcome,
   TeachingLine,
 } from '../detail-parts';
 import { ItemMemberList } from '../member-list';
@@ -368,11 +369,11 @@ export function GoalsSection({
             }
           />
         ) : (
-          <TeachingLine>
+          <SectionWelcome section="goals">
             A goal is the reason a stretch of work exists — learning a language, building
             something over years. It holds the habits and tasks that serve it, the checkpoints
             along the way, and a recurring check-in. It never hides anything.
-          </TeachingLine>
+          </SectionWelcome>
         )}
       </DetailColumn>
     </>

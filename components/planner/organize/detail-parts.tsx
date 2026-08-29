@@ -11,6 +11,7 @@ import { ColorSwatchPicker } from '@/components/primitives/color-swatch-picker';
 import { accentColorForName } from '@/lib/accent-colors';
 import { formatShort, parseDay, useNameDraft } from '@/lib/collections';
 import { Eyebrow } from './primitives';
+import { SECTION_IDENTITY, type ConsoleSection } from './console-rail';
 import { useEscapeRung } from './escape-ladder';
 import { cn } from '@/lib/utils';
 
@@ -201,6 +202,32 @@ export function DetailColumn({
 /** The arrival state: the section's teaching sentence, left-aligned at the top. */
 export function TeachingLine({ children }: { children: React.ReactNode }) {
   return <p className="text-muted-foreground max-w-[46ch] text-sm">{children}</p>;
+}
+
+/**
+ * The empty detail pane, warmed: the section's own glyph over its definition.
+ *
+ * The definition text is unchanged and stays THE content — this only gives the
+ * coldest pane in the console a focal point and ties it to the rail's mark. The
+ * glyph is NEUTRAL and larger (colour rides the rail tick and icon, never a big
+ * mark), and the block stays TOP-ALIGNED: the empty state is the populated
+ * layout with rows missing, never a centred card in a void (the empty-state
+ * law). Trash keeps its own two-sentence detail and does not use this.
+ */
+export function SectionWelcome({
+  section,
+  children,
+}: {
+  section: ConsoleSection;
+  children: React.ReactNode;
+}) {
+  const Icon = SECTION_IDENTITY[section].icon;
+  return (
+    <div className="flex flex-col gap-3">
+      <Icon className="text-muted-foreground size-5 shrink-0" aria-hidden />
+      <TeachingLine>{children}</TeachingLine>
+    </div>
+  );
 }
 
 /* ── identity ─────────────────────────────────────────────────────────── */
@@ -405,7 +432,9 @@ export function DraftRow({
           data-testid={`${testPrefix}-new-name`}
           aria-invalid={!!problem || undefined}
           aria-describedby={problem ? `${testPrefix}-new-problem` : undefined}
-          className="h-[26px] flex-1 border-0 bg-transparent px-0 text-sm shadow-none focus-visible:ring-0"
+          // Placeholder one ink brighter than the muted default: a resting
+          // create row that reads as an invitation, not a disabled field.
+          className="h-[26px] flex-1 border-0 bg-transparent px-0 text-sm shadow-none placeholder:text-secondary-foreground focus-visible:ring-0"
         />
         <button
           type="button"
@@ -413,7 +442,16 @@ export function DraftRow({
           disabled={!valid}
           aria-label={addLabel}
           data-testid={`${testPrefix}-add`}
-          className="bg-surface-3 text-muted-foreground hover:text-foreground hover-wash flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[5px] disabled:opacity-40"
+          className={cn(
+            'flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[5px] disabled:opacity-40',
+            // Goes lime the moment the name is valid — the app's one "this is the
+            // primary action now" signal, and the single spot the console spends
+            // its accent on a fill. At rest it is the same quiet grey the row
+            // always was, so an empty create row adds no colour to the plate.
+            valid
+              ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+              : 'bg-surface-3 text-muted-foreground hover:text-foreground hover-wash'
+          )}
         >
           <Plus className="h-3 w-3" />
         </button>

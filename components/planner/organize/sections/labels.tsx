@@ -17,7 +17,7 @@ import {
   DraftRow,
   IdentityRow,
   ListColumn,
-  TeachingLine,
+  SectionWelcome,
 } from '../detail-parts';
 import type { Item, ItemTypeDef, Project } from '@/lib/planner-types';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
@@ -130,9 +130,9 @@ export function ProjectsSection({
           // selection change, and a hook there would refetch the bin each time.
           <ProjectDetail project={selected} trashed={trashed.projects} onBack={() => onSelect(null)} />
         ) : (
-          <TeachingLine>
+          <SectionWelcome section="projects">
             Projects file your tasks, and can carry a repeating block on the grid.
-          </TeachingLine>
+          </SectionWelcome>
         )}
       </DetailColumn>
     </>
@@ -335,10 +335,10 @@ export function TypesSection({
         {selected ? (
           <TypeDetail type={selected} onBack={() => onSelect(null)} />
         ) : (
-          <TeachingLine>
+          <SectionWelcome section="types">
             Custom types work like tasks — they get their own tab in the add dialog and their own
             section in Beacon&apos;s context.
-          </TeachingLine>
+          </SectionWelcome>
         )}
       </DetailColumn>
     </>

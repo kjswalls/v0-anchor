@@ -24,7 +24,7 @@ import {
   DraftRow,
   IdentityRow,
   ListColumn,
-  TeachingLine,
+  SectionWelcome,
 } from '../detail-parts';
 import { ItemMemberList, RoutineMemberList } from '../member-list';
 import type { Item, Program, Routine } from '@/lib/planner-types';
@@ -134,10 +134,10 @@ export function ProgramsSection({
         {selected ? (
           <ProgramDetail program={selected} onBack={() => onSelect(null)} />
         ) : (
-          <TeachingLine>
+          <SectionWelcome section="programs">
             A program is a stretch of life — a summer, a term — that switches whole routines on
             and off.
-          </TeachingLine>
+          </SectionWelcome>
         )}
       </DetailColumn>
     </>

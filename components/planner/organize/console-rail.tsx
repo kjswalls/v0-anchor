@@ -1,6 +1,7 @@
 'use client';
 
 import * as TabsPrimitive from '@radix-ui/react-tabs';
+import { CalendarRange, Folder, type LucideIcon, Repeat, Shapes, Target, Trash2 } from 'lucide-react';
 import { Eyebrow } from './primitives';
 import { EXT_GOALS, EXT_ORGANIZE } from '@/lib/extension-registry';
 import { cn } from '@/lib/utils';
@@ -99,6 +100,34 @@ export const CONSOLE_SECTIONS = [
 export type ConsoleSectionSpec = (typeof CONSOLE_SECTIONS)[number];
 
 /**
+ * One fixed glyph and one accent per section — the console's warmth vocabulary.
+ *
+ * FIXED, not the user's stored container icons: a section is a KIND, and its
+ * mark should be the same for everyone (a routine is a Repeat, a goal a Target),
+ * the way the braindump and the extension catalog already give kinds a stable
+ * glyph. The rail then reads as part of the app rather than its admin page.
+ *
+ * The colour is spent in exactly two ≤14px-or-thinner places, never as a fill:
+ * the 2px tick on the active rail row (below) and the rail icon (added with the
+ * icon rail). The larger detail-pane welcome glyph stays NEUTRAL, like every
+ * other big glyph in the console — colour rides the small marks only.
+ *
+ * Trash gets no accent (a lifecycle surface is not a kind of work) and a muted
+ * glyph, keeping its "pinned below a rule, not a peer" reading.
+ */
+export const SECTION_IDENTITY: Record<
+  ConsoleSection,
+  { icon: LucideIcon; accent: string }
+> = {
+  routines: { icon: Repeat, accent: 'var(--accent-2)' },
+  programs: { icon: CalendarRange, accent: 'var(--accent-3)' },
+  goals: { icon: Target, accent: 'var(--accent-6)' },
+  projects: { icon: Folder, accent: 'var(--accent-1)' },
+  types: { icon: Shapes, accent: 'var(--accent-4)' },
+  trash: { icon: Trash2, accent: 'var(--muted-foreground)' },
+};
+
+/**
  * The sections an account may actually see, given a per-slug predicate.
  *
  * Pure and store-free so the four on/off combinations are one table in a unit
@@ -181,16 +210,25 @@ function RailEntry({ section }: { section: ConsoleSectionSpec }) {
         value={section.id}
         data-testid="console-rail-row"
         data-section={section.id}
+        // The accent for the active tick, per section. A CSS var rather than an
+        // inline `before` colour because the pseudo-element cannot read a prop —
+        // and a var keeps the whole mark in the class list where the cascade is
+        // legible.
+        style={{ '--tick': SECTION_IDENTITY[section.id].accent } as React.CSSProperties}
         className={cn(
-          'h-[30px] w-full rounded-[5px] px-[7px] text-left text-sm font-medium',
+          'relative h-[30px] w-full rounded-[5px] px-[7px] text-left text-sm font-medium',
           'text-muted-foreground hover:bg-accent hover:text-foreground',
-          // No icon and no count, deliberately. Five near-identical grey glyphs
-          // is the clone tell; counts reflow as data loads, put two numeric
-          // columns 300px apart in a fight, and — load-bearingly — JOIN THE
-          // TAB'S ACCESSIBLE NAME, which would make the e2e role queries depend
+          // Counts still never live here — they reflow as data loads and would
+          // JOIN THE TAB'S ACCESSIBLE NAME, making the e2e role queries depend
           // silently on Playwright's substring matching. Counts live on the list
           // head and the detail meta line.
           'data-[state=active]:bg-[var(--row-selected)] data-[state=active]:text-foreground',
+          // A 2px accent tick on the active row, the same mark a modified
+          // setting wears — 16px tall, centred in the 30px row, the section's
+          // hue. Colour enters the rail only here (and on the icon), never as a
+          // fill.
+          'before:absolute before:top-[7px] before:bottom-[7px] before:left-0 before:w-[2px] before:rounded-full before:bg-transparent',
+          'data-[state=active]:before:bg-[var(--tick)]',
           'focus-visible:outline-ring focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-solid'
         )}
       >

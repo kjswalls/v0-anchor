@@ -33,7 +33,7 @@ import {
   DraftRow,
   IdentityRow,
   ListColumn,
-  TeachingLine,
+  SectionWelcome,
 } from '../detail-parts';
 import { ItemMemberList } from '../member-list';
 import { cn } from '@/lib/utils';
@@ -216,7 +216,7 @@ export function RoutinesSection({
             onOpenProgram={onOpenProgram}
           />
         ) : (
-          <TeachingLine>A routine groups items you want to pause together.</TeachingLine>
+          <SectionWelcome section="routines">A routine groups items you want to pause together.</SectionWelcome>
         )}
       </DetailColumn>
     </>
