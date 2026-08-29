@@ -160,10 +160,17 @@ export const openBulkAdd = (
  * Custom-type items ride the tasks projection (Phase 6b), so their runtime
  * discriminator must survive: stamping 'task' over a {type:'custom'} object
  * would open it with the wrong config and labels.
+ *
+ * BOTH branches spread: every open must put a FRESH object in the slot, even
+ * for the same item. DesktopShell's narrowed selector and ItemDialog's
+ * confirm-disarm latch both key on payload identity, so a by-reference
+ * pass-through would make re-opening the same custom item invisible to them.
  */
 export const openEditFor = (item: Task | HabitItem, itemType: KnownItemType) => {
   const runtime = item as { type?: string };
   const stamped =
-    runtime.type === 'custom' ? (item as unknown as Item) : ({ ...item, type: itemType } as Item);
+    runtime.type === 'custom'
+      ? ({ ...item } as unknown as Item)
+      : ({ ...item, type: itemType } as Item);
   useUIStore.getState().openDialog({ type: 'edit-item', item: stamped });
 };

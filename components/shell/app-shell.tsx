@@ -13,7 +13,7 @@ import {
   DragOverlay,
   MeasuringStrategy,
 } from '@dnd-kit/core';
-import { GripVertical, Circle, Keyboard as KeyboardIcon } from 'lucide-react';
+import { GripVertical, Circle } from 'lucide-react';
 import { DesktopShell } from '@/components/shell/desktop-shell';
 import { ConfirmDialog } from '@/components/shell/confirm-dialog';
 import { BulkActionBar } from '@/components/shell/bulk-action-bar';
@@ -34,10 +34,9 @@ import { EODReview } from '@/components/ai/eod-review';
 import { MobileShell } from '@/components/shell/mobile-shell';
 import { OnboardingTour } from '@/components/onboarding/onboarding-tour';
 import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
+import { HelpMenu } from '@/components/shell/help-menu';
 
 import { usePlannerStore } from '@/lib/planner-store';
-import { formatKeys } from '@/lib/commands/keys';
-import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { milestoneItemIds } from '@/lib/goals';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
@@ -61,23 +60,6 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { isOnboardingComplete } from '@/lib/user-profile';
 import { createClient } from '@/lib/supabase';
 import type { MobileTab } from '@/lib/mobile-nav-store';
-
-/**
- * The resting hint on the shortcuts button.
- *
- * Reads the LIVE binding rather than printing '⌘ + /': `system_shortcuts` is
- * rebindable like every other shortcut, and a hardcoded hint quietly starts
- * lying the moment someone moves it — on the one button whose entire job is to
- * tell you what the key is.
- */
-function KbdHint() {
-  const [isMac, setIsMac] = useState(false);
-  const keys = useShortcutKeys('system_shortcuts');
-  useEffect(() => {
-    setIsMac(/Mac|iPhone|iPad|iPod/.test(navigator.platform));
-  }, []);
-  return <span>{formatKeys(keys, isMac).join(' + ')}</span>;
-}
 
 function DraggableTaskOverlay({ title, count = 0 }: { title: string; count?: number }) {
   return (
@@ -173,21 +155,23 @@ export function beginDrag(event: DragStartEvent) {
  * Extracted from app/page.tsx (P2 of the redesign plan).
  */
 export function AppShell() {
-  const {
-    tasks,
-    habits,
-    scheduleTask,
-    assignHabitToBucket,
-    unscheduleTask,
-    scheduleHabit,
-    deleteTask,
-    deleteHabit,
-    moveTaskToProjectBlock,
-    selectedDate,
-    userTimezone,
-  } = usePlannerStore();
-  const { setChatExpanded } = useSidebarStore();
-  const { activeDialog, openDialog, closeDialog, confirm } = useUIStore();
+  // No planner-store subscription here. Every planner value this shell touches
+  // is consumed inside event handlers (drag end, hovered-item shortcuts), so
+  // they read usePlannerStore.getState() at event time instead — a reactive
+  // subscription made every item write re-render the whole app tree, the same
+  // failure mode the DragGhost and hovered-item comments below record.
+  const setChatExpanded = useSidebarStore((s) => s.setChatExpanded);
+  // The launcher slot is masked out: AppShell never renders it (OmniLauncher
+  // subscribes to it itself), so ⌘K must not re-render the shell tree. The
+  // mask maps launcher → null, and Object.is(null, null) skips the render
+  // when the launcher opens over an empty slot.
+  const activeDialog = useUIStore((s) =>
+    s.activeDialog?.type === 'launcher' ? null : s.activeDialog
+  );
+  // Actions are stable references on the store; selecting them never
+  // re-renders. `confirm` is read via getState() at event time below.
+  const openDialog = useUIStore((s) => s.openDialog);
+  const closeDialog = useUIStore((s) => s.closeDialog);
   const isMobile = useIsMobile();
   const commandContext = useCommandContext();
 
@@ -300,6 +284,12 @@ export function AppShell() {
     useDragStore.getState().endDrag();
     if (!over) return;
 
+    // Event-time snapshot — the drop resolves against whatever the store holds
+    // at release, and reading it here is what lets AppShell go without a
+    // planner subscription at all.
+    const planner = usePlannerStore.getState();
+    const { tasks, habits, selectedDate, userTimezone } = planner;
+
     const itemId = active.id as string;
     const draggedTask = tasks.find((t) => t.id === itemId);
     const draggedHabit = habits.find((h) => h.id === itemId);
@@ -337,7 +327,6 @@ export function AppShell() {
       // unschedule and date-move no-op on habits, so gate `acted` on this so a
       // fully-ineligible group falls through instead of silently clearing.
       const taskLikeIds = groupIds.filter((id) => tasks.some((t) => t.id === id));
-      const planner = usePlannerStore.getState();
       // DELIBERATELY NOT GATED on the Goals extension, unlike every other
       // goal read in the app. This set is what stops a bulk date verb from
       // overwriting a milestone's target date, and that write is not
@@ -416,19 +405,19 @@ export function AppShell() {
 
     switch (command.kind) {
       case 'schedule-task':
-        scheduleTask(command.taskId, command.bucket, command.time, command.dateStr);
+        planner.scheduleTask(command.taskId, command.bucket, command.time, command.dateStr);
         break;
       case 'schedule-habit':
-        scheduleHabit(command.habitId, command.bucket, command.time);
+        planner.scheduleHabit(command.habitId, command.bucket, command.time);
         break;
       case 'assign-habit-bucket':
-        assignHabitToBucket(command.habitId, command.bucket);
+        planner.assignHabitToBucket(command.habitId, command.bucket);
         break;
       case 'unschedule':
-        unscheduleTask(command.itemId);
+        planner.unscheduleTask(command.itemId);
         break;
       case 'move-task-to-project-block':
-        moveTaskToProjectBlock(command.taskId);
+        planner.moveTaskToProjectBlock(command.taskId);
         break;
     }
   };
@@ -440,6 +429,7 @@ export function AppShell() {
   const handleShortcutEdit = useCallback(() => {
     const { id, type } = hoveredItem;
     if (!id || !type) return;
+    const { tasks, habits } = usePlannerStore.getState();
     if (type === 'task') {
       const task = tasks.find((t) => t.id === id);
       if (task) openEditFor(task, 'task');
@@ -447,13 +437,15 @@ export function AppShell() {
       const habit = habits.find((h) => h.id === id);
       if (habit) openEditFor(habit, 'habit');
     }
-  }, [tasks, habits]);
+  }, []);
 
   const handleShortcutDelete = useCallback(() => {
     // A genuine multi-selection (>=2) wins over the hovered item: Backspace
     // deletes the whole selection (one confirm, one undo). A single selected row
     // is just the "current / open row" (every plain click selects one), so at
     // size 1 we fall through to the hovered-item path as before.
+    const { confirm } = useUIStore.getState();
+    const { tasks, habits, deleteTask, deleteHabit } = usePlannerStore.getState();
     const selection = useSelectionStore.getState();
     if (selection.selectedIds.size >= 2) {
       const ids = [...selection.selectedIds];
@@ -486,7 +478,7 @@ export function AppShell() {
       destructive: true,
       onConfirm: () => (type === 'task' ? deleteTask(item.id) : deleteHabit(item.id)),
     });
-  }, [tasks, habits, confirm, deleteTask, deleteHabit]);
+  }, []);
 
   // Every other binding is owned by its command in lib/commands/registry.ts.
   // These two stay here because they act on the item under the mouse, which
@@ -630,16 +622,8 @@ export function AppShell() {
 
       <BulkActionBar />
 
-      {/* Persistent keyboard shortcuts hint — desktop only */}
-      <div className="fixed bottom-4 right-4 z-30 hidden md:flex">
-        <button
-          onClick={() => openDialog({ type: 'keyboard-shortcuts' })}
-          className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground shadow-soft-sm transition-colors hover:border-primary/50 hover:text-foreground"
-        >
-          <KeyboardIcon className="h-3.5 w-3.5" />
-          <KbdHint />
-        </button>
-      </div>
+      {/* Floating "?" help hub — desktop only, bottom-right corner */}
+      <HelpMenu />
     </DndContext>
   );
 }

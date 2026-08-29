@@ -1094,8 +1094,10 @@ export const STATIC_COMMANDS: Command[] = [
     run: (ctx) => {
       // navigate is optional on CommandContext (see types.ts), so this falls
       // back to a full load rather than doing nothing when it's absent.
-      if (ctx.navigate) ctx.navigate('/settings');
-      else if (typeof window !== 'undefined') window.location.assign('/settings');
+      // The canonical pane URL, not bare /settings: the bare path costs a
+      // second navigation (the page replace()s itself to /settings/day).
+      if (ctx.navigate) ctx.navigate('/settings/day');
+      else if (typeof window !== 'undefined') window.location.assign('/settings/day');
     },
   },
   {

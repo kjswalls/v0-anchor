@@ -255,7 +255,9 @@ interface BraindumpProps {
 
 export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpProps = {}) {
   const { tasks, habits, items, routines, programs, goals, userTimezone } = usePlannerStore();
-  const { openDialog } = useUIStore();
+  // Action selector, not a whole-store destructure: actions are stable, and a
+  // bare useUIStore() here re-rendered this whole column on every dialog open.
+  const openDialog = useUIStore((s) => s.openDialog);
   const { braindumpFilters, braindumpSortBy } = useViewStore();
   // Resolved against what is switched on: 'goal' falls back to 'none' while
   // the Goals extension is off, rather than sectioning the whole list under

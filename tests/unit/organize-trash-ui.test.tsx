@@ -363,11 +363,12 @@ describe('the trashed-name guard does not go stale mid-session', () => {
 
 describe('what the bin lookup costs', () => {
   /**
-   * Both instances of ItemDialog — app-shell's modal and desktop-shell's docked
-   * panel — are mounted for the whole session, open or not, and each call of
-   * this hook is two SELECTs. Ungated that is four queries fired during first
-   * paint, competing with the fetches that actually put the app on screen, to
-   * answer a question about a create row nobody has opened.
+   * ItemDialog's body now mounts on open (its wrapper unmounts it after the
+   * close grace), so an ungated call here no longer fires during first paint —
+   * the stakes moved, not the mechanism. Each call of this hook is still two
+   * SELECTs, the body still lingers mounted through the ~600ms close grace
+   * where an ungated hook would re-ask for a closing surface, and the hook
+   * must still ask nothing at all while disabled.
    *
    * These pin the mechanism. The dialog's own half is `enabled: !!state` at its
    * call site, which is not observable from here without standing the whole
