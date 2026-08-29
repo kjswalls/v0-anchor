@@ -60,6 +60,21 @@ import type { Item } from '@/lib/planner-types';
 const TZ = 'UTC';
 /** Today, resolved the same way the room resolves it. */
 const TODAY = toDateStr(new Date(), TZ);
+/**
+ * The hour these run at, pinned.
+ *
+ * `pickHero` takes `nowMin`, so which row holds the hero depends on the WALL
+ * CLOCK. While the clock sits INSIDE the 19:00 task below, that task is the
+ * current thing and takes the hero from the unscheduled habit — inverting these
+ * assertions. Outside that window, on either side of it, they pass.
+ *
+ * So unpinned this suite was green all day and red for one stretch of the
+ * evening, which is the worst shape a flake can have: it looks like whatever
+ * change happened to be in flight at the time. Verified by pinning to 19:10,
+ * which reproduces it exactly. 08:00 puts every fixture time in the future,
+ * which is the state the assertions are written against.
+ */
+const PINNED_NOW = new Date(`${TODAY}T08:00:00Z`);
 /** Somewhere the user has navigated to that is emphatically not today. */
 const ELSEWHERE = new Date('2027-03-09T12:00:00Z');
 const ELSEWHERE_STR = '2027-03-09';
@@ -113,6 +128,10 @@ function seed(items: Item[]) {
 }
 
 beforeEach(() => {
+  // Only Date is faked: `useNowMinutes` and testing-library both want real
+  // timers, and faking those turns a clock pin into a hang.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(PINNED_NOW);
   seed([HABIT, TIMED_TASK]);
 });
 
@@ -120,6 +139,7 @@ afterEach(() => {
   cleanup();
   useViewStore.setState({ zenOpen: false });
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 describe('the Zen room', () => {

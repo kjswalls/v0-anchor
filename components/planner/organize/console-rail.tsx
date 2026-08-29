@@ -84,16 +84,20 @@ export const CONSOLE_SECTIONS = [
   {
     id: 'overview', label: 'Overview', group: null, eyebrow: 'OVERVIEW',
     blurb: 'What you have, and where to make more.', extension: EXT_ORGANIZE,
+    // The one section that is not a list + detail pair, so the one with nothing
+    // to filter. It is a map of six cards, all on screen at once.
+    filterable: false,
   },
   { id: 'routines', label: 'Routines', group: 'CONTAINERS', eyebrow: 'ROUTINES',
-    blurb: 'Pause a stack of items together.', extension: EXT_ORGANIZE },
+    blurb: 'Pause a stack of items together.', extension: EXT_ORGANIZE, filterable: true },
   { id: 'programs', label: 'Programs', group: null, eyebrow: 'PROGRAMS',
-    blurb: 'A stretch of life that switches routines on.', extension: EXT_ORGANIZE },
+    blurb: 'A stretch of life that switches routines on.', extension: EXT_ORGANIZE,
+    filterable: true },
   // Third in CONTAINERS, and last of the three on purpose: routines and
   // programs answer "is this on today", goals answer "why is any of it here".
   // The daily questions sit above the long one.
   { id: 'goals', label: 'Goals', group: null, eyebrow: 'GOALS',
-    blurb: 'Why the work matters.', extension: EXT_GOALS },
+    blurb: 'Why the work matters.', extension: EXT_GOALS, filterable: true },
   // The whole CLASSIFY axis in one row since migration 039. 'Habit groups' sat
   // below 'Item types' until then (Kirby, 2026-08-11 decision 7); the fold that
   // ordering was making cheap is this one, and it went to projects rather than
@@ -104,14 +108,15 @@ export const CONSOLE_SECTIONS = [
   // supplies both strings below.
   { id: 'projects', label: CONTAINER_KINDS.project.labelPlural, group: 'LABELS',
     eyebrow: CONTAINER_KINDS.project.labelPlural.toUpperCase(),
-    blurb: 'File your tasks; carry a repeating block.', extension: EXT_ORGANIZE },
+    blurb: 'File your tasks; carry a repeating block.', extension: EXT_ORGANIZE,
+    filterable: true },
   { id: 'types', label: 'Item types', group: null, eyebrow: 'ITEM TYPES',
-    blurb: 'Your own kinds of task.', extension: EXT_ORGANIZE },
+    blurb: 'Your own kinds of task.', extension: EXT_ORGANIZE, filterable: true },
   // Behind a rule, pinned to the foot, the way a bin is pinned to the foot of a
   // dock. Trash is a lifecycle surface, not a peer of either group — and
   // `extension: null` is that same sentence said to the gate. See the header.
   { id: 'trash', label: 'Trash', group: 'RULE', eyebrow: 'TRASH',
-    blurb: 'Anything deleted, kept 30 days.', extension: null },
+    blurb: 'Anything deleted, kept 30 days.', extension: null, filterable: true },
 ] as const satisfies readonly {
   id: ConsoleSection;
   label: string;
@@ -121,6 +126,18 @@ export const CONSOLE_SECTIONS = [
   blurb: string;
   /** The slug this section rides, or `null` for one that may never be gated. */
   extension: string | null;
+  /**
+   * Whether this section renders a filter field — which is to say, whether the
+   * footer's `/` hint is telling the truth here.
+   *
+   * A field rather than an `id === 'overview'` test, for the same reason the
+   * gate above is: the footer bar is the console's teaching surface, and a hint
+   * that over-promises on one section is the failure this repo already named
+   * once ("the footer bar teaches `/`, so leaving it unbuilt shipped a promise
+   * the plate did not keep"). The next section that is a map rather than a list
+   * should not have to remember to edit a boolean expression in another file.
+   */
+  filterable: boolean;
 }[];
 
 export type ConsoleSectionSpec = (typeof CONSOLE_SECTIONS)[number];

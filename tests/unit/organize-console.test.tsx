@@ -204,3 +204,34 @@ describe('console section slugs', () => {
     expect(isConsoleSection('groups')).toBe(false);
   });
 });
+
+describe('the footer bar only teaches keys that work', () => {
+  /**
+   * The footer is the console's teaching surface, and this repo has already
+   * paid for it once: "the footer bar teaches `/`, so leaving it unbuilt
+   * shipped a promise the plate did not keep."
+   *
+   * The Overview is the first section that is a MAP rather than a list — six
+   * cards, all on screen, no filter field — so the hint that every other
+   * section earns would point at nothing here. `/` is also swallowed rather
+   * than passed on (the plate sets `data-keys-local`), so an unkept promise is
+   * the whole of the failure: a key that is taught, pressed, and inert.
+   */
+  it('offers no Filter hint on the Overview, which has no filter field', () => {
+    render(<OrganizeConsole open onOpenChange={() => {}} section="overview" />);
+    expect(screen.queryByTestId('organize-footer-filter')).toBeNull();
+  });
+
+  it('offers it on a list section', () => {
+    render(<OrganizeConsole open onOpenChange={() => {}} section="routines" />);
+    expect(screen.getByTestId('organize-footer-filter')).toBeTruthy();
+  });
+
+  it('claims a filter for every section that is not the Overview', () => {
+    // Guards the pair: a new section added to the rail without a filter field
+    // would otherwise inherit the hint by default.
+    for (const s of CONSOLE_SECTIONS) {
+      expect(s.filterable).toBe(s.id !== 'overview');
+    }
+  });
+});

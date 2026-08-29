@@ -472,11 +472,15 @@ function FooterBar({
             ? meta.label
             : `${meta.label} · nothing selected`}
       </span>
-      <span className="ml-auto flex items-center">
-        Filter
-        <KeyCap>/</KeyCap>
-      </span>
-      <span className="flex items-center">
+      {/* Only where there is a field for it to land in. The Overview is a map,
+          not a list, so `/` there would teach a key that does nothing. */}
+      {meta.filterable && (
+        <span className="ml-auto flex items-center" data-testid="organize-footer-filter">
+          Filter
+          <KeyCap>/</KeyCap>
+        </span>
+      )}
+      <span className={cn('flex items-center', !meta.filterable && 'ml-auto')}>
         Close
         <KeyCap>Esc</KeyCap>
       </span>
