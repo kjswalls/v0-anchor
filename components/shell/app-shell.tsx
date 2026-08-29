@@ -34,6 +34,7 @@ import { EODReview } from '@/components/ai/eod-review';
 import { MobileShell } from '@/components/shell/mobile-shell';
 import { OnboardingTour } from '@/components/onboarding/onboarding-tour';
 import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
+import { OneTimeNudge } from '@/components/primitives/one-time-nudge';
 import { HelpMenu } from '@/components/shell/help-menu';
 
 import { usePlannerStore } from '@/lib/planner-store';
@@ -45,6 +46,9 @@ import { useChatStore } from '@/lib/chat-store';
 import { flushSettings } from '@/lib/settings-service';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { ITEM_TYPES } from '@/lib/item-registry';
+import { useStreaksEnabled } from '@/lib/extension-gates';
+import { useExtensionsStore } from '@/lib/extensions-store';
+import { NUDGE_STREAKS_ON } from '@/lib/nudges/registry';
 import { adoptLegacyViewPrefs, useViewStore } from '@/lib/view-store';
 import { useDragStore } from '@/lib/drag-store';
 import { useSelectionStore } from '@/lib/selection-store';
@@ -187,6 +191,13 @@ export function AppShell() {
   const [mounted, setMounted] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [tourUserId, setTourUserId] = useState<string | null>(null);
+  // The streak nudge fires only when streaks are provably ON: `configsLoaded`
+  // means the extensions store has answered, so we never nudge "turn streaks
+  // off" at someone who already did (streaksOn reads its default-true before
+  // hydration), and never at all when the extensions table is undeployed
+  // (configsLoaded stays false — the toggle would be a no-op there anyway).
+  const streaksOn = useStreaksEnabled();
+  const extReady = useExtensionsStore((s) => s.configsLoaded);
 
   useEffect(() => {
     setMounted(true);
@@ -610,6 +621,10 @@ export function AppShell() {
           onSetActiveTab={(tab) => useMobileNavStore.getState().setActiveTab(tab as MobileTab)}
         />
       )}
+
+      {/* First-run orientation, shown once: streaks are on, and how to quiet
+          them. Persistent toast, dismissed forever server-side. */}
+      <OneTimeNudge id={NUDGE_STREAKS_ON} enabled={extReady && streaksOn} />
 
       <EODReview />
 

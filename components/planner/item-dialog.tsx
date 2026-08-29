@@ -67,7 +67,7 @@ import {
   PropertyChip,
 } from '@/components/primitives/property-chip';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useGoalsEnabled, useOrganizeEnabled } from '@/lib/extension-gates';
+import { useGoalsEnabled, useOrganizeEnabled, useStreaksEnabled } from '@/lib/extension-gates';
 import { accentColorForName } from '@/lib/accent-colors';
 import { goalItemIds, nextMilestone } from '@/lib/goals';
 import { formatShort } from '@/lib/collections';
@@ -647,6 +647,9 @@ function ItemDialogInner({
    */
   const goalsOn = useGoalsEnabled();
   const organizeOn = useOrganizeEnabled();
+  // Streaks off hides the whole streak strip AND the reset controls below: a
+  // reset for a number you cannot see is a control with nothing to act on.
+  const streaksOn = useStreaksEnabled();
 
   // Hoisted out of renderChips, which runs on every render of a component that
   // subscribes to the whole store — so this rebuilt an N-item Map on every
@@ -2420,7 +2423,7 @@ function ItemDialogInner({
                   </DropdownMenuItem>
                 </>
               ))}
-            {editConfig?.counters.streak && (
+            {streaksOn && editConfig?.counters.streak && (
               <DropdownMenuItem
                 data-testid="item-dialog-reset-streak"
                 onSelect={() => setShowResetConfirm(true)}
@@ -2718,7 +2721,7 @@ function ItemDialogInner({
                 </div>
               )}
 
-              {editConfig?.counters.streak && editItem && (
+              {streaksOn && editConfig?.counters.streak && editItem && (
                 <div className="bg-warning/10 flex items-center gap-2.5 rounded-md px-2.5 py-2">
                   <Flame className="text-warning size-4 shrink-0" />
                   <span className="text-warning-text text-xs font-semibold">
@@ -2818,7 +2821,7 @@ function ItemDialogInner({
         </SurfaceContent>
       </SurfaceRoot>
 
-      {editConfig?.counters.streak && (
+      {streaksOn && editConfig?.counters.streak && (
         <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
           <AlertDialogContent data-testid="reset-streak-confirm">
             <AlertDialogHeader>

@@ -2,7 +2,7 @@
 
 import { useCallback, useMemo } from 'react';
 
-import { EXT_GOALS, EXT_ORGANIZE, extensionManifest, resolveEnabled } from './extension-registry';
+import { EXT_GOALS, EXT_ORGANIZE, EXT_STREAKS, extensionManifest, resolveEnabled } from './extension-registry';
 import { useExtensionsStore } from './extensions-store';
 import { useViewStore, type BraindumpGroupBy } from './view-store';
 import { goalFilterItemIds } from './goals';
@@ -112,11 +112,11 @@ import type { Goal, GroupBy } from './planner-types';
  * Never let a store read take down the surface asking the question.
  *
  * The catch arm falls back to the MANIFEST DEFAULT rather than to a hard-coded
- * `false`, and that distinction is currently invisible — no catalog entry has
- * `defaultEnabled: true` — but it is the difference between "a thrown read
- * quietly switches your extension off" and "a thrown read leaves you where a
- * fresh account would be" the day one does. `extensionManifest` is a plain
- * array find over a module constant, so it cannot itself be the thing that
+ * `false`, and `streaks` is the entry that makes the distinction load-bearing:
+ * it ships `defaultEnabled: true`, so a thrown read that fell back to `false`
+ * would quietly hide the flame from an account that never turned streaks off,
+ * instead of leaving it where a fresh account sits. `extensionManifest` is a
+ * plain array find over a module constant, so it cannot itself be the thing that
  * threw; the double guard is for the pathological case where it is.
  */
 function safeEnabled(enabled: Record<string, boolean>, slug: string): boolean {
@@ -170,6 +170,8 @@ export const useGoalsEnabled = (): boolean => useExtensionEnabled(EXT_GOALS);
 export const goalsEnabled = (): boolean => extensionEnabled(EXT_GOALS);
 export const useOrganizeEnabled = (): boolean => useExtensionEnabled(EXT_ORGANIZE);
 export const organizeEnabled = (): boolean => extensionEnabled(EXT_ORGANIZE);
+export const useStreaksEnabled = (): boolean => useExtensionEnabled(EXT_STREAKS);
+export const streaksEnabled = (): boolean => extensionEnabled(EXT_STREAKS);
 
 /* ── grouping ─────────────────────────────────────────────────────────────── */
 

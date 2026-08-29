@@ -62,6 +62,7 @@ import {
   groupByOptionsFor,
   organizeEnabled,
   resolvedCanvasGroupBy,
+  streaksEnabled,
 } from '../extension-gates';
 import { useSidebarStore } from '../sidebar-store';
 import { useSelectionStore, selectableIdsInDom } from '../selection-store';
@@ -347,8 +348,8 @@ export const STATIC_COMMANDS: Command[] = [
     aliases: ['streak'],
     placeholder: 'Which habit?',
     emptyLabel: 'No habit has a streak to reset',
-    eligible: (item) => isHabit(item) && item.streak > 0,
-    detail: (item) => (isHabit(item) ? `🔥 ${item.streak}` : undefined),
+    eligible: (item) => isHabit(item) && item.streak > 0 && streaksEnabled(),
+    detail: (item) => (isHabit(item) && streaksEnabled() ? `🔥 ${item.streak}` : undefined),
     run: (item) => planner().resetHabitStreak(item.id),
   }),
   itemCommand({

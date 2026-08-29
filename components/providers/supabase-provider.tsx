@@ -12,6 +12,7 @@ import { usePaletteStore } from '@/lib/palette-store';
 import { PALETTE_STORAGE_KEY, isThemePalette, paletteDef } from '@/lib/theme-palettes';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
+import { useNudgeStore } from '@/lib/nudge-store';
 import { adoptLocalState, clearUserScopedLocalState } from '@/lib/local-state';
 import { fetchContainersSeeded, fetchTrashedNames, markContainersSeeded } from '@/lib/db';
 import { runFirstRunSeed } from '@/lib/seed-containers';
@@ -326,6 +327,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // fire-and-forget posture: a settings page that cannot say "saved" is a
       // cosmetic loss; a planner that failed to load is not.
       useChannelSecretsStore.getState().hydrate(userId);
+      // One-time nudges' dismissed-forever set. Same fire-and-forget posture:
+      // a nudge that fails to load stays inert, never a failed data load.
+      useNudgeStore.getState().hydrate(userId);
     };
 
     // Check current session on mount
@@ -345,6 +349,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         // where the only gap they have (a sign-out with no sign-in after it) is.
         useExtensionsStore.getState().reset();
         useChannelSecretsStore.getState().reset();
+        useNudgeStore.getState().reset();
         // clearStore only resets the planner's DATA. Everything this browser
         // has persisted ABOUT the account — the Beacon API key and its
         // transcripts, the canvas filters, the morning decay policy, the
