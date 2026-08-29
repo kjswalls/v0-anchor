@@ -19,6 +19,7 @@ import {
   type ConsoleSectionSpec,
 } from './console-rail';
 import { useExtensionPredicate } from '@/lib/extension-gates';
+import { useConsoleHost } from '@/lib/console-door';
 import { KeyCap } from './primitives';
 import { useEscapeLadder } from './escape-ladder';
 import { RoutinesSection } from './sections/routines';
@@ -82,6 +83,13 @@ export function OrganizeConsole({
   focusId,
   focusNew,
 }: OrganizeConsoleProps) {
+  /* "A console exists in this tree" — registered here, by the component that
+     cannot be wrong about it, so that an Organize door on a route without one
+     navigates instead of arming a slot nothing reads. First statement in the
+     body, above every early return below, because hook order has to hold on
+     every path through this component. See lib/console-door.ts. */
+  useConsoleHost();
+
   /**
    * The sections this account actually has, and the console's own gate.
    *

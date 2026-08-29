@@ -189,6 +189,18 @@ expected to be safe to re-run.
   persistence key for a rebinding and the second half of a permanent settings id
   (`keys.<shortcutId>`), so renaming one breaks two things at once. Tests scope by
   `data-shortcuts-variant`. See [keyboard-shortcuts.md](memory/plans/keyboard-shortcuts.md).
+- **The Organize console is a component, not a route**, mounted once inside `AppShell` —
+  which only `app/page.tsx` renders. So on every other route the console does not
+  exist, and `openDialog({type:'organize'})` there is worse
+  than a no-op: `ui-store` is a module singleton, so the armed slot survives the navigation
+  and springs the console open unasked on the next trip home. Open it through
+  `useOpenConsole()` ([lib/console-door.ts](lib/console-door.ts)), which arms the slot and
+  then goes where the console lives. `OrganizeConsole` registers itself as the host, so
+  nothing else has to declare one; a test enumerates every file still allowed to arm the
+  slot directly and fails on any new one. The console's own outward links must
+  `closeDialog()` on the way out (via `onNavigate`, so a ⌘-click into a new tab
+  doesn't shut the one you are looking at), and `ConsoleSlotGuard` in the root
+  layout drops a stranded slot when you leave `/` by any other means.
 - **Design source of truth is the Figma file, not the mockup PNGs in the repo.** Pull
   specs live via the Figma MCP; the checked-in PNGs drift.
 - Some settings persist but are read by no view. That's deliberate — leave them alone
