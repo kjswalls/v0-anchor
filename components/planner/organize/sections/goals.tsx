@@ -442,6 +442,20 @@ function GoalDetail({
         <Link
           href={`/goal/${goal.id}`}
           data-testid="goal-open-page"
+          /* Shuts the console on the way out. These two links are the console's
+             own EXITS, and they leave the route that mounts it — so without
+             this the dialog slot stays armed at a console that no longer
+             exists, and the breadcrumb back to Anchor springs it open unasked.
+             That is the same stale-slot ambush lib/console-door.ts exists to
+             end, arriving from the other direction.
+
+             `onNavigate`, NOT `onClick`: next/link runs an onClick handler
+             first and unconditionally, before it has decided whether this click
+             is a navigation at all — so ⌘-clicking to read the goal in a
+             background tab would slam the console shut in this one, selection
+             and all. onNavigate fires only once a real client-side navigation
+             is going ahead, past the modified-key and local-URL checks. */
+          onNavigate={() => useUIStore.getState().closeDialog()}
           className="text-muted-foreground hover:text-foreground inline-flex items-center gap-1 text-[11px] transition-colors"
         >
           Open as page
@@ -700,6 +714,9 @@ function EndedNotice({
             <Link
               href={`/item/${item.id}`}
               data-testid="goal-wind-down-open"
+              /* Shuts the console behind you — see `goal-open-page` above,
+                 including why this is onNavigate and not onClick. */
+              onNavigate={() => useUIStore.getState().closeDialog()}
               className="text-muted-foreground hover:text-foreground shrink-0 text-[11px] transition-colors"
             >
               Open

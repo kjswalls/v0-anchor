@@ -74,6 +74,7 @@ import { accentColorForName } from '@/lib/accent-colors';
 import { goalItemIds, nextMilestone } from '@/lib/goals';
 import { formatShort } from '@/lib/collections';
 import { useUIStore, openBulkAdd } from '@/lib/ui-store';
+import { useOpenConsole } from '@/lib/console-door';
 import { isBulkPaste } from '@/lib/bulk-add';
 import type {
   HabitItem,
@@ -757,6 +758,11 @@ function ItemDialogInner({
 
   const router = useRouter();
   const pathname = usePathname();
+
+  /* Every "Organize …" door below goes through this rather than arming the
+     dialog slot directly. This component renders in three shells and only two
+     of them mount the console — see lib/console-door.ts. */
+  const openConsole = useOpenConsole();
 
   // Tab order: built-ins first (pinned), then user-defined types.
   const typeNames = useMemo(
@@ -1654,8 +1660,10 @@ function ItemDialogInner({
                   close();
                   // Replaces this dialog rather than stacking on it —
                   // openDialog swaps the single active slot. Same escape the
-                  // type chip's "Organize types…" row makes.
-                  useUIStore.getState().openDialog({ type: 'organize', section: 'routines' });
+                  // type chip's "Organize types…" row makes. And on a route
+                  // with no console mounted it goes where the console is,
+                  // instead of arming a slot nothing reads (console-door.ts).
+                  openConsole({ section: 'routines' });
                 }}
                 testId="item-dialog-routine-manage"
               >
@@ -1754,10 +1762,7 @@ function ItemDialogInner({
                 tone="muted"
                 onSelect={() => {
                   close();
-                  useUIStore.getState().openDialog({
-                    type: 'organize',
-                    section: 'programs',
-                  });
+                  openConsole({ section: 'programs' });
                 }}
                 testId="item-dialog-program-manage"
               >
@@ -1894,7 +1899,7 @@ function ItemDialogInner({
               tone="muted"
               onSelect={() => {
                 close();
-                useUIStore.getState().openDialog({ type: 'organize', section: 'goals' });
+                openConsole({ section: 'goals' });
               }}
               testId="item-dialog-goal-manage"
             >
@@ -2823,9 +2828,7 @@ function ItemDialogInner({
                         close();
                         // Replaces this dialog rather than stacking on it: openDialog
                         // swaps the single active slot.
-                        useUIStore
-                          .getState()
-                          .openDialog({ type: 'organize', section: 'types' });
+                        openConsole({ section: 'types' });
                       }}
                     >
                       <Plus className="size-3.5" />
