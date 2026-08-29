@@ -51,7 +51,7 @@ export const useNudgeStore = create<NudgeStore>((set, get) => ({
     if (get().hydratedUserId === userId) return;
 
     const ids = await loadDismissedNudges(userId);
-    // Null = couldn't read (transient, or migration 040 not applied here): stay
+    // Null = couldn't read (transient, or migration 043 not applied here): stay
     // unhydrated so nudges remain inert rather than firing against an empty set.
     if (ids === null) return;
 

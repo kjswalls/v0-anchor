@@ -7,7 +7,7 @@ import { Flame, type LucideIcon } from 'lucide-react';
  * A "nudge" is a single orientation message shown to a user ONCE and never
  * again: first-run copy that points out a feature or a setting, not a recurring
  * reminder and not an error. Dismissal is stored server-side (a per-user set,
- * migration 040), so "never again" spans devices and survives a reload.
+ * migration 043), so "never again" spans devices and survives a reload.
  *
  * The id is permanent: it is the dismissed-set key AND the persisted value, so
  * renaming one un-dismisses it for everyone who had. Add, never rename — the

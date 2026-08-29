@@ -14,7 +14,6 @@ import { itemChatStore } from '@/lib/chat-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { EXT_HABIT_HEATMAP, resolveEnabled } from '@/lib/extension-registry';
-import { useStreaksEnabled } from '@/lib/extension-gates';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import { BandLabel } from '@/components/planner/item-bands';
 import { isBulkPaste, MAX_BULK_ITEMS, splitBulkLinesWithMeta } from '@/lib/bulk-add';
@@ -439,9 +438,6 @@ export function ItemDetailSections({ item, withThread }: { item: Item; withThrea
   // Extension gate + capability gate: the heatmap is opt-in (Settings →
   // Extensions) and only meaningful where the registry says a streak exists.
   const heatmapOn = useExtensionsStore((s) => resolveEnabled(s.enabled, EXT_HABIT_HEATMAP));
-  // Streaks is the parent gate: the heatmap is a six-month picture of the same
-  // streak pressure, so hiding streaks hides it too — even if its own opt-in is on.
-  const streaksOn = useStreaksEnabled();
   return (
     // data-sub-input on the CONTAINER: the dialog's Enter-submit guard checks
     // closest('[data-sub-input]'), and everything in here — inputs AND buttons
@@ -450,7 +446,7 @@ export function ItemDetailSections({ item, withThread }: { item: Item; withThrea
     <div className="flex flex-col gap-4" data-sub-input>
       {config.subtasks && <SubtasksSection item={item} />}
       {config.agentAssignable && <AgentSection item={item} />}
-      {streaksOn && heatmapOn && config.counters.streak && <HeatmapSection item={item} />}
+      {heatmapOn && config.counters.streak && <HeatmapSection item={item} />}
       <ActivitySection itemId={item.id} />
       {withThread && <ItemThread item={item} />}
     </div>
