@@ -32,6 +32,7 @@ import { OrganizeConsole } from '@/components/planner/organize/organize-console'
 import { KeyboardShortcutsModal } from '@/components/planner/keyboard-shortcuts-modal';
 import { EODReview } from '@/components/ai/eod-review';
 import { MobileShell } from '@/components/shell/mobile-shell';
+import { ZenRoom } from '@/components/zen/zen-room';
 import { OnboardingTour } from '@/components/onboarding/onboarding-tour';
 import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
 import { OneTimeNudge } from '@/components/primitives/one-time-nudge';
@@ -221,6 +222,11 @@ export function AppShell() {
   // Content typeface toggle — stamp <html data-type-mode> so the CSS token
   // pair in globals.css flips item-title family/weight/size app-wide.
   const typeMode = useViewStore((s) => s.typeMode);
+  // Zen REPLACES the desktop shell rather than covering it: an overlay would
+  // leave a full second tree mounted and measuring underneath (the schedule
+  // grid derives its hour height from live layout), and every TaskRow under it
+  // would still be writing lib/hovered-item.ts on mouseenter.
+  const zenOpen = useViewStore((s) => s.zenOpen);
   useEffect(() => {
     document.documentElement.dataset.typeMode = typeMode;
   }, [typeMode]);
@@ -571,15 +577,19 @@ export function AppShell() {
       {/* One shell mounts at a time (post-hydration) so the shared view
           components don't register duplicate dnd-kit droppable ids across the
           two trees — and mobile no longer pays for the desktop tree, or v.v. */}
-      {isMobile ? <MobileShell /> : <DesktopShell />}
+      {isMobile ? <MobileShell /> : zenOpen ? <ZenRoom /> : <DesktopShell />}
 
       <DragGhost />
 
       {/* Add is always the modal. Desktop EDIT is the docked panel, which
           DesktopShell mounts as a layout sibling of the canvas; mobile edit
           stays the bottom sheet, where there is no room to dock anything. */}
+      {/* …and EDIT is the modal in Zen too, for the same reason it is on
+          mobile: the docked panel belongs to DesktopShell, which Zen replaces.
+          Without this arm, editing an item from the ⌘K palette inside Zen would
+          fill the dialog slot and render nothing at all. */}
       <ItemDialog
-        state={itemDialogState?.mode === 'add' || isMobile ? itemDialogState : null}
+        state={itemDialogState?.mode === 'add' || isMobile || zenOpen ? itemDialogState : null}
         onOpenChange={(open) => !open && closeDialog()}
       />
 
@@ -635,10 +645,18 @@ export function AppShell() {
 
       <ConfirmDialog />
 
-      <BulkActionBar />
+      {/* Both are AppShell-level siblings rather than DesktopShell children, so
+          without this they float over the Zen room — the help bubble is pinned
+          bottom-right on exactly the platform Zen runs on, and the bulk bar
+          appears over it whenever a selection made before entering is still
+          held. Unmounting the bar also settles Escape: its own window listener
+          would otherwise clear the selection on the SAME keypress that leaves
+          the room, so one press did two things. The selection itself is left
+          alone, and is still there when you come back. */}
+      {!zenOpen && <BulkActionBar />}
 
       {/* Floating "?" help hub — desktop only, bottom-right corner */}
-      <HelpMenu />
+      {!zenOpen && <HelpMenu />}
     </DndContext>
   );
 }

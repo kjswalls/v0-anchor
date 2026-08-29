@@ -19,6 +19,8 @@ import { SwipeRow } from '@/components/mobile/swipe-row';
 import { isRecurring, isCompletedOnDate, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
 import { suppressionLabel, suppressionReason } from '@/lib/active';
 import { setHoveredItemRef } from '@/lib/hovered-item';
+// One definition of what a tick means, shared with the Zen room — see lib/item-toggle.ts.
+import { toggleHabitDone, toggleTaskDone } from '@/lib/item-toggle';
 import {
   PriorityGlyph,
   RailTooltip,
@@ -266,7 +268,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
    * store must not be handed a date it would resolve and ignore.
    */
   const handleTaskToggle = () =>
-    toggleTaskStatus(item.id, undefined, taskRecurring ? rowDate : undefined);
+    task && toggleTaskDone(task, { date: rowDate, dateStr }, { toggleTaskStatus, toggleHabitStatus });
 
   /** One step up; landing on the target marks the habit done. */
   const handleHabitIncrement = () => {
@@ -286,12 +288,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
    */
   const handleHabitToggle = () => {
     if (!habit) return;
-    if (multiTarget > 0) {
-      if (habitStatus === 'done') toggleHabitStatus(habit.id, 'pending', 0, rowDate);
-      else handleHabitIncrement();
-    } else {
-      toggleHabitStatus(habit.id, habitStatus === 'pending' ? 'done' : 'pending', undefined, rowDate);
-    }
+    toggleHabitDone(habit, { date: rowDate, dateStr }, { toggleTaskStatus, toggleHabitStatus });
   };
 
   const handleDelete = () => {

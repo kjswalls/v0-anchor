@@ -17,6 +17,7 @@ import {
   Inbox,
   Keyboard,
   Layers,
+  Leaf,
   ListPlus,
   MessageSquare,
   Moon,
@@ -678,6 +679,44 @@ export const STATIC_COMMANDS: Command[] = [
     // visible effect.
     hidden: (ctx) => ctx.isMobile,
     run: () => view().setScope(view().scope === 'week' ? 'day' : 'week'),
+  },
+  {
+    id: 'view.zen',
+    // Neutral, like every other toggle in here, and NOT 'Enter Zen': the
+    // shortcuts table renders the STATIC label — DEFAULT_SHORTCUTS is built at
+    // module scope and has no ctx to run `dynamicLabel` against — so a
+    // state-named label would have the ⌘/ overlay offering to "Enter Zen" while
+    // you are sitting in it. The palette still says the state-accurate thing.
+    label: 'Toggle Zen',
+    dynamicLabel: () => (view().zenOpen ? 'Leave Zen' : 'Enter Zen'),
+    description: 'The day, one thing at a time, on a quiet screen',
+    group: 'view',
+    icon: Leaf,
+    keywords: 'zen focus distraction free quiet calm room now one thing full screen',
+    aliases: ['zen'],
+    /*
+     * Bare `z`, in the house style of `n` for new and `v` for view — and NOT
+     * ⌘⇧Z, which reads as the obvious choice and is unavailable: normalizeBinding
+     * folds `ctrl` and `meta` into one MOD token, so ⌘⇧Z and the redo binding
+     * ⌃⇧Z are the same combination to every lookup, and the collision test in
+     * tests/unit/commands.test.ts fails on it.
+     */
+    shortcut: {
+      id: 'toggle_zen',
+      keys: ['z'],
+      context: 'Desktop only — the phone opens on its own Today tab.',
+    },
+    /*
+     * availableWhen, not just `hidden`. The two are independent: `hidden` keeps
+     * a row out of the palette, while the keyboard dispatcher gates on
+     * `isAvailable` alone (hooks/use-command-shortcuts.ts) — so without this a
+     * hardware keyboard paired to a phone could still fire `z` and set a flag
+     * nothing in the mobile tree renders, stranding the user in a shell that
+     * looks unchanged but is one reload from a room they cannot leave.
+     */
+    availableWhen: (ctx) => !ctx.isMobile,
+    hidden: (ctx) => ctx.isMobile,
+    run: () => view().toggleZen(),
   },
   /*
    * Week column scale. ⌘+ / ⌘− / ⌘0 are the browser's page-zoom keys, and the

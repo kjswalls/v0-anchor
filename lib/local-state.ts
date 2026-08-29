@@ -103,7 +103,7 @@ import { useViewStore } from './view-store';
  *   anchor-view            canvasFilters / braindumpFilters DISCLOSIVE (they
  *                          hold `project:`/`group:` refs, tag names and goal ids
  *                          lifted from the account's own containers). The other
- *                          12 INERT. `adoptedLegacy` never cleared at all.
+ *                          13 INERT. `adoptedLegacy` never cleared at all.
  *   anchor-ai-settings     all DISCLOSIVE — apiKey is a credential,
  *                          systemPrompt and assistantName are text the user
  *                          wrote, and provider/model name the paid vendor
@@ -213,6 +213,14 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
       'weekDaysVisible',
       'bucketStyle',
       'collapsedBuckets',
+      // Inert on the same test every field above it passes: a boolean saying
+      // which of two screens is showing, and nothing whatever about the person
+      // looking at it. The sharper reason to spare it under 'disclosive' is
+      // that clearing it there would be a silent eviction — an unstamped
+      // browser is every existing install exactly once, and someone who left
+      // the room open would find the planner instead with nothing on screen to
+      // explain why.
+      'zenOpen',
     ],
     clear: ({ scope }) => useViewStore.getState().clearUserScopedState(scope),
   },
