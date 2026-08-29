@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus, Sparkles, SlashSquare, CheckCircle2, Flame, X,
-  Target,
+  Target, Search, CornerDownLeft,
 } from 'lucide-react';
 import { Command as CommandPrimitive } from 'cmdk';
 import {
@@ -109,7 +109,9 @@ const CAPTURE_SWELL_MS = 700;
  *
  *   Dock-only, and ignored under variant="launcher": a summoned modal closes on
  *   the add it would be answering, so the field would unmount before the ripple
- *   had crossed the bar. The launcher keeps the halo like the desktop dock.
+ *   had crossed the bar. The launcher carries NO relay at all — neither this
+ *   in-pill one nor the outer halo — because it renders as a card, not a pill,
+ *   and the card's own elevation is what lifts it off the scrim.
  */
 export function Omnibar({
   variant = 'dock',
@@ -473,6 +475,26 @@ export function Omnibar({
 
   /* ── rendering ─────────────────────────────────────────────────────── */
 
+  /**
+   * Launcher only: a lime "↵ verb" pill previewing what Enter does on the
+   * HIGHLIGHTED row. Hidden until the row is cmdk-selected (via group-data on the
+   * CommandItem, which carries `group` + `data-selected`), so exactly one is ever
+   * lit — the accent spent once, on the active row. Returns null in the dock,
+   * which keeps its plain right-aligned key hints. The `ml-auto` right-aligns it;
+   * where a row also has a CommandShortcut, the pill sits just left of it.
+   */
+  const enterPill = (verb: string) =>
+    isLauncher ? (
+      <span
+        aria-hidden
+        data-testid="omnibar-enter-pill"
+        className="ml-auto hidden items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground group-data-[selected=true]:inline-flex"
+      >
+        <CornerDownLeft className="size-3" />
+        {verb}
+      </span>
+    ) : null;
+
   const renderCommandRow = (row: CommandRow) => {
     const Icon = row.arg?.icon ?? row.command.icon;
     const needsArgument = !!row.command.argument && !row.arg;
@@ -491,6 +513,7 @@ export function Omnibar({
         value={row.value}
         disabled={row.disabled}
         data-testid="omnibar-row"
+        className="group"
         // The command id, not the row copy. Row labels collide with their own
         // group headings ('Settings' is both a command and a group), so text
         // matching resolves by scoring accident and becomes a strict-mode
@@ -504,6 +527,7 @@ export function Omnibar({
           {row.label}
           {needsArgument && <span className="text-muted-foreground">…</span>}
         </span>
+        {enterPill('run')}
         {hint && (
           <CommandShortcut className={cn(!keyHint && 'font-mono tracking-normal')}>
             {hint}
@@ -582,17 +606,38 @@ export function Omnibar({
 
   return (
     <div ref={containerRef} className="relative" data-tour="omnibar" data-omnibar-variant={variant}>
-      <Command shouldFilter={false} loop className="overflow-visible bg-transparent">
-        {/* Panel above the input */}
+      <Command
+        shouldFilter={false}
+        loop
+        className={cn(
+          // Launcher: ONE floating card. The input row and the results stack
+          // inside it (Command is already flex-col; `order` puts the input on
+          // top — see the input wrapper below). The card owns the border +
+          // elevation, so its children carry no chrome of their own.
+          // Dock: transparent; the pill and its floating panel are the surfaces.
+          //
+          // The radius/shadow use the bracket form on purpose: --radius-card is
+          // an @theme token (so `rounded-card` mints), but the cmdk base Command
+          // already carries `rounded-md`, and twMerge doesn't know `rounded-card`
+          // is a radius — it would keep BOTH and let source order pick. The
+          // arbitrary form IS recognised, so it drops the base rounded-md.
+          // --shadow-elev-lg is declared OUTSIDE @theme, so `shadow-elev-lg`
+          // mints nothing; the var form is how the rest of the app spends it.
+          isLauncher
+            ? 'h-auto overflow-hidden rounded-[var(--radius-card)] border border-border bg-popover shadow-[var(--shadow-elev-lg)]'
+            : 'overflow-visible bg-transparent',
+        )}
+      >
+        {/* Results panel. Dock: floats above the pill (absolute). Launcher: a
+            flush section inside the card, below the input, divided by a hairline. */}
         {open && (
           <CommandList
             data-testid="omnibar-panel"
             className={cn(
-              'absolute left-0 right-0 z-50 max-h-80 overflow-y-auto rounded-card border border-border bg-popover p-1 shadow-soft-lg',
-              // The dock sits at the bottom of the sidebar, so its panel grows
-              // upward; the launcher sits near the top of the screen, so it
-              // drops downward like a normal command palette.
-              isLauncher ? 'top-full mt-2' : 'bottom-full mb-2',
+              'overflow-y-auto p-1',
+              isLauncher
+                ? 'order-2 max-h-[min(20rem,55vh)] border-t border-border'
+                : 'absolute left-0 right-0 bottom-full z-50 mb-2 max-h-80 rounded-card border border-border bg-popover shadow-soft-lg',
             )}
           >
             {/* Argument mode owns the whole panel — nothing else is relevant
@@ -641,7 +686,7 @@ export function Omnibar({
               <>
                 {isChatMode && (
                   <CommandGroup heading="Chat">
-                    <CommandItem value="action-chat" onSelect={askBeacon}>
+                    <CommandItem value="action-chat" className="group" onSelect={askBeacon}>
                       <Sparkles className="h-4 w-4 text-ai" />
                       <span className="truncate">
                         Ask Beacon
@@ -654,6 +699,7 @@ export function Omnibar({
                           '…'
                         )}
                       </span>
+                      {enterPill('ask')}
                     </CommandItem>
                   </CommandGroup>
                 )}
@@ -668,6 +714,7 @@ export function Omnibar({
                         key={goal.id}
                         value={`goal-${goal.id}`}
                         data-testid="omnibar-goal-result"
+                        className="group"
                         data-goal-id={goal.id}
                         onSelect={() => {
                           closeAndClear();
@@ -677,6 +724,7 @@ export function Omnibar({
                       >
                         <Target className="size-4 shrink-0" />
                         <span className="truncate">{goal.name}</span>
+                        {enterPill('open')}
                         {goal.state !== 'active' && (
                           <span className="text-muted-foreground ml-auto text-[11px]">
                             {goal.state === 'achieved' ? 'Achieved' : 'Set aside'}
@@ -715,6 +763,7 @@ export function Omnibar({
                           key={item.id}
                           value={`${group.type}-${item.id}`}
                           data-testid="omnibar-result"
+                          className="group"
                           data-item-id={item.id}
                           data-item-type={group.type}
                           data-paused={paused || undefined}
@@ -746,6 +795,7 @@ export function Omnibar({
                           </span>
                           {/* Short on purpose: the panel is ~320px and the
                               title truncates against it. */}
+                          {enterPill('open')}
                           {paused && <CommandShortcut>Paused</CommandShortcut>}
                         </CommandItem>
                       );
@@ -771,7 +821,7 @@ export function Omnibar({
                 {!grouped && !isChatMode && (
                   <CommandGroup heading={isCommandMode ? 'Commands' : 'Actions'}>
                     {!isCommandMode && (
-                      <CommandItem value="action-add" data-testid="omnibar-add-row" onSelect={quickAdd}>
+                      <CommandItem value="action-add" data-testid="omnibar-add-row" className="group" onSelect={quickAdd}>
                         <Plus className="h-4 w-4 text-success-text" />
                         <span className="truncate">
                           Add task
@@ -784,11 +834,12 @@ export function Omnibar({
                             '…'
                           )}
                         </span>
+                        {enterPill('add')}
                       </CommandItem>
                     )}
                     {commandRows.map(renderCommandRow)}
                     {!isCommandMode && !isAddMode && (
-                      <CommandItem value="action-chat" onSelect={askBeacon}>
+                      <CommandItem value="action-chat" className="group" onSelect={askBeacon}>
                         <Sparkles className="h-4 w-4 text-ai" />
                         <span className="truncate">
                           Ask Beacon
@@ -801,6 +852,7 @@ export function Omnibar({
                             '…'
                           )}
                         </span>
+                        {enterPill('ask')}
                       </CommandItem>
                     )}
                     {isCommandMode && commandRows.length === 0 && (
@@ -816,7 +868,9 @@ export function Omnibar({
                     (above), so this branch is dock-only. */}
                 {!isCommandMode && !isLauncher && recentGroup}
 
-                {!isChatMode && !isCommandMode && !trimmed && (
+                {/* Dock-only: the launcher shows the same affordances in its
+                    persistent footer bar below the panel (see the card footer). */}
+                {!isChatMode && !isCommandMode && !trimmed && !isLauncher && (
                   <div className="flex items-center gap-3 px-3 py-1.5 text-2xs text-muted-foreground/70">
                     <span className="flex items-center gap-1">
                       <Plus className="h-3 w-3" /> add
@@ -834,8 +888,11 @@ export function Omnibar({
           </CommandList>
         )}
 
-        <div className="relative isolate">
-          {RELAY.omnibar && !inPillRelay && (
+        <div className={cn('relative isolate', isLauncher && 'order-1')}>
+          {/* The pill halo is a DOCK affordance: it's a glow around a floating
+              pill. In the launcher there is no pill — the card is the surface —
+              so it's suppressed, and the card's own elevation does the lifting. */}
+          {RELAY.omnibar && !inPillRelay && !isLauncher && (
             <RelayField
               className="absolute -inset-3 z-0"
               focalY={0.5}
@@ -847,56 +904,76 @@ export function Omnibar({
               mask="radial-gradient(closest-side, black, transparent)"
             />
           )}
-          {/* Resting: a raised pill floating above the dock. Focus: it presses
-              down into it — the drop shadow cross-fades to an inner one, the
-              surface darkens a hair toward the well, and it nudges 1px lower.
-              A tactile "key pressed" feel.
+          {/* DOCK — a raised pill that presses down into the dock on focus (a
+              tactile "key pressed" feel): the drop shadow cross-fades to an inner
+              one, the surface darkens a hair toward the well, and it nudges 1px
+              lower. This is a dock idiom — the pill sits on a real surface (the
+              grey well) to press into.
 
-              The states live on this WRAPPER rather than on the input, because
-              the input now shares the pill with the argument chip. They are
-              driven off the same `focused` state the relay uses, not
-              :focus-within, which sticks when a child unmounts.
+              LAUNCHER — the input is the flat top row of the card, floating on a
+              scrim with nothing beneath it to press into. So it drops the keycap
+              entirely: no shadow, no press, no rounded pill; the card is the
+              surface, and focus is signalled by the caret and the selected row.
 
-              All three properties animate, so all three need an explicit
-              resting value, and every animated property is named in the
-              transition list. Two things that look like details but are not:
+              The states live on this WRAPPER (not the input) because the input
+              shares the pill with the argument chip, and they read off the same
+              `focused` state the relay uses — NOT :focus-within, which sticks
+              when a child unmounts. Two dock details that look minor and are not:
                 • Tailwind v4 presses via the standalone `translate` property,
-                  NOT `transform` — listing `transform` here animates nothing.
+                  NOT `transform` — listing `transform` animates nothing.
                 • The shadow uses the --shadow-key-* PAIR rather than
                   elev-sm → inset-sm. A box-shadow list whose layers disagree on
                   `inset` is uninterpolable and hard-swaps mid-transition; the
                   pair is padded so it actually cross-fades. See globals.css. */}
           <div
-            // The pill LOOKS like the text field, so all of it has to behave
-            // like one. The input is a flex item roughly 20px tall inside a
-            // 48px pill, which leaves dead bands above and below it plus the
-            // side padding; a click there would otherwise focus nothing. The
-            // target check keeps the chip button's own clicks intact — it only
-            // redirects hits that landed on this wrapper itself.
+            // The row LOOKS like the text field, so all of it has to behave like
+            // one. The input is a flex item ~20px tall inside a 48–54px row,
+            // leaving dead bands above and below it plus the side padding; a
+            // click there would otherwise focus nothing. The target check keeps
+            // the chip button's own clicks intact — it only redirects hits that
+            // landed on this wrapper itself.
             onMouseDown={(e) => {
               if (e.target !== e.currentTarget) return;
               e.preventDefault();
               inputRef.current?.focus();
             }}
             className={cn(
-              'relative z-10 flex h-[48px] w-full items-center gap-2 rounded-[10px] bg-surface-2',
-              activeCommand ? 'pl-2.5 pr-[22px]' : 'px-[22px]',
-              'translate-y-0 shadow-[var(--shadow-key-rest)]',
-              'transition-[box-shadow,translate,background-color] duration-150 ease-[var(--ease-out-soft)]',
-              // Hover, only while NOT focused (focus keeps its clean pressed
-              // look): a 1px inner hairline traces the pill on top of its raised
-              // rest shadow — parity with the braindump quick-add tray.
-              '[&:hover:not(:focus-within)]:shadow-[var(--shadow-key-rest),inset_0_0_0_1px_var(--border)]',
-              focused &&
-                'translate-y-px bg-[var(--surface-2-pressed)] shadow-[var(--shadow-key-pressed)]',
-              // Only where the field is actually mounted, so the desktop pill
-              // keeps the exact box it has always had. `isolate` is what lets a
-              // -z-10 child sit ABOVE this pill's own fill (it would otherwise
-              // fall through to the dock's stacking context and paint under it),
-              // and the clip is what keeps the ripple inside the radius.
-              relayOnCapture && 'isolate overflow-hidden'
+              'relative z-10 flex w-full items-center',
+              isLauncher
+                ? cn('h-[54px] gap-3 bg-transparent', activeCommand ? 'pl-3 pr-4' : 'px-4')
+                : cn(
+                    'h-[48px] gap-2 rounded-[10px] bg-surface-2',
+                    activeCommand ? 'pl-2.5 pr-[22px]' : 'px-[22px]',
+                    'translate-y-0 shadow-[var(--shadow-key-rest)]',
+                    'transition-[box-shadow,translate,background-color] duration-150 ease-[var(--ease-out-soft)]',
+                    // Hover, only while NOT focused (focus keeps its clean pressed
+                    // look): a 1px inner hairline traces the pill on top of its
+                    // raised rest shadow — parity with the braindump quick-add tray.
+                    '[&:hover:not(:focus-within)]:shadow-[var(--shadow-key-rest),inset_0_0_0_1px_var(--border)]',
+                    focused &&
+                      'translate-y-px bg-[var(--surface-2-pressed)] shadow-[var(--shadow-key-pressed)]',
+                    // Only where the field is actually mounted, so the desktop pill
+                    // keeps the exact box it has always had. `isolate` is what lets a
+                    // -z-10 child sit ABOVE this pill's own fill (it would otherwise
+                    // fall through to the dock's stacking context and paint under it),
+                    // and the clip is what keeps the ripple inside the radius.
+                    relayOnCapture && 'isolate overflow-hidden',
+                  ),
             )}
           >
+            {/* Launcher only: a dark leading tile with a white glyph — the
+                mockup's icon chip, in the input row. Decorative (aria-hidden);
+                pointer-events-none lets a click fall through to the wrapper's
+                focus handler. Hidden while an argument chip owns the lead slot. */}
+            {isLauncher && !activeCommand && (
+              <span
+                aria-hidden
+                data-testid="omnibar-launcher-tile"
+                className="pointer-events-none flex size-[30px] shrink-0 items-center justify-center rounded-[9px] bg-[var(--omni-tile)] text-[var(--omni-tile-ink)]"
+              >
+                <Search className="size-4" />
+              </span>
+            )}
             {/* The relay, struck by an item filing itself — the app's core verb,
                 and the only thing this bar lights for. Rests at zero: between
                 strikes the canvas paints nothing, because a bar that shimmers
@@ -1086,6 +1163,36 @@ export function Omnibar({
             />
           </div>
         </div>
+        {/* Launcher footer: a persistent hint bar pinned to the card bottom
+            (order-3, so it sits BELOW the order-2 panel and outside its scroll).
+            The left mirrors the dock's in-panel prefix hint; the right spells out
+            the Enter / Beacon / Escape keys. Dock renders no footer — its hint
+            lives inside the panel. */}
+        {isLauncher && (
+          <div
+            data-testid="omnibar-launcher-footer"
+            className="order-3 flex items-center justify-between gap-3 border-t border-border px-4 py-2 text-2xs text-muted-foreground/70"
+          >
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1">
+                <Plus className="h-3 w-3" /> add
+              </span>
+              <span className="flex items-center gap-1">
+                <SlashSquare className="h-3 w-3" /> commands
+              </span>
+              <span className="flex items-center gap-1">
+                <Sparkles className="h-3 w-3" /> chat
+              </span>
+            </div>
+            <div className="flex items-center gap-2 font-mono tracking-normal">
+              <span>↵ open</span>
+              <span aria-hidden>·</span>
+              <span>{isMac ? '⌘' : 'Ctrl'}↵ Beacon</span>
+              <span aria-hidden>·</span>
+              <span>esc</span>
+            </div>
+          </div>
+        )}
       </Command>
     </div>
   );

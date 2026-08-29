@@ -17,7 +17,7 @@ import { useUIStore } from '@/lib/ui-store';
  * Opened via the `launcher` ActiveDialog variant (⌘K → the registry's
  * `workspace.focusOmnibar` command on desktop); closed by Escape, the scrim, or
  * — once wired — running an action. The content is deliberately transparent and
- * unpadded so the omnibar's own pill is the visible surface rather than a
+ * unpadded so the omnibar's own card is the visible surface rather than a
  * box-in-a-box; DialogContent supplies only the centered position, the scrim,
  * and the focus trap.
  */
@@ -41,9 +41,11 @@ export function OmniLauncher() {
         // !defaultPrevented), handing Escape to the omnibar, which closes via
         // ui-store when there's nothing left to clear.
         onEscapeKeyDown={(e) => e.preventDefault()}
-        // Sit in the upper third like a normal command palette, so the panel has
-        // room to drop below the input (overrides DialogContent's centering).
-        className="top-[12%] translate-y-0 gap-0 border-0 bg-transparent p-0 shadow-none sm:max-w-xl"
+        // Anchor the bar's top a little above centre so the whole bar + panel
+        // ASSEMBLY reads balanced — the panel drops below and its optical centre
+        // lands ~mid-viewport (overrides DialogContent's own centering). The
+        // omnibar supplies the card surface, so the content stays transparent.
+        className="top-[22%] translate-y-0 gap-0 border-0 bg-transparent p-0 shadow-none sm:max-w-xl"
         data-testid="omni-launcher"
       >
         {/* Radix requires a labelled title + description for the dialog; the
