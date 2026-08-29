@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { User, Settings, LogOut, Undo2, Redo2, ChevronDown, Flame, Trash2 } from 'lucide-react';
 import {
@@ -150,9 +151,16 @@ export function UserCard() {
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => router.push('/settings')} className="cursor-pointer">
-            <Settings className="mr-2 h-4 w-4" />
-            <span>Settings</span>
+          {/* A Link, not a router.push: opening the menu mounts it, and a
+              mounted Link is what gets the route chunk prefetched in prod —
+              an imperative push always pays the fetch at click time. The
+              canonical pane URL (not bare /settings) also skips the
+              replace-to-/settings/day hop the page would otherwise do. */}
+          <DropdownMenuItem asChild className="cursor-pointer">
+            <Link href="/settings/day">
+              <Settings className="mr-2 h-4 w-4" />
+              <span>Settings</span>
+            </Link>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
