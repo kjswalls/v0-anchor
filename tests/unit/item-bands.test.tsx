@@ -222,68 +222,67 @@ const bandLabels = () =>
     (row) => row.querySelector('p')?.textContent ?? ''
   );
 
-describe('the edit panel renders bands', () => {
-  it('stacks When above the container bands, in registry role order', () => {
+describe('the edit panel renders the Clearing field, not bands', () => {
+  it('drops the labelled band stack for one label-less field', () => {
     panel();
-    expect(bandLabels()).toEqual([
-      'When',
-      CONTAINER_KINDS.project.label,
-      CONTAINER_KINDS.routine.label,
-      CONTAINER_KINDS.program.label,
-      CONTAINER_KINDS.goal.label,
-    ]);
+    expect(screen.getByTestId('item-clearing-field')).toBeTruthy();
+    // The band grammar belongs to the /item readout and the capture modal now;
+    // the editing panel shows only what the item actually carries.
+    expect(document.querySelectorAll('[data-testid^="item-band-"]').length).toBe(0);
   });
 
-  it('leaves an unused band on screen, carrying an affordance and not a blank', () => {
+  it('shows only SET properties, folding the rest behind one "+ Add property" seed', () => {
+    // A bare task carries nothing but a title, so the field is just the seed —
+    // none of the four containers render a chip while empty.
     panel();
-    const row = screen.getByTestId(bandTestId('goal'));
-    const control = row.querySelector('button');
-    // Visibly a verb — the band's label is already the noun, and saying it twice
-    // is how a labelled layout gets wider without getting clearer.
-    expect(control?.textContent).toContain('Add');
-    // Audibly the noun, so a control read out of its row still says which band
-    // it belongs to.
-    expect(control?.getAttribute('aria-label')).toBe(CONTAINER_KINDS.goal.label);
-    // Not a disabled placeholder: the thing has to be pressable.
-    expect(control?.hasAttribute('disabled')).toBe(false);
+    const field = screen.getByTestId('item-clearing-field');
+    expect(field.querySelector('[data-testid="item-clearing-seed"]')).toBeTruthy();
+    for (const kind of ['project', 'routine', 'program', 'goal'] as const) {
+      expect(field.textContent).not.toContain(CONTAINER_KINDS[kind].label);
+    }
   });
 
-  it('names the value once a band holds one, and keeps the noun in the a11y name', () => {
+  it('renders a set membership as its value chip, the noun kept in the a11y name', () => {
     seed({ routines: [routine({ itemIds: ['t1'] })] });
     panel();
-    const control = screen.getByTestId(bandTestId('routine')).querySelector('button');
-    expect(control?.textContent).toContain('Deep work');
-    expect(control?.getAttribute('aria-label')).toBe(
-      `${CONTAINER_KINDS.routine.label}: Deep work`
+    const field = screen.getByTestId('item-clearing-field');
+    expect(field.textContent).toContain('Deep work');
+    const chip = Array.from(field.querySelectorAll('button')).find((b) =>
+      b.textContent?.includes('Deep work')
     );
+    expect(chip?.getAttribute('aria-label')).toBe(`${CONTAINER_KINDS.routine.label}: Deep work`);
   });
 
-  it('drops a gate band with nothing to join once the console is off too', () => {
-    disableExtensions(EXT_ORGANIZE);
-    seed({ routines: [], programs: [] });
+  it('moves Priority into the field — a value when set, in the seed when not', () => {
+    panel(); // unset (the seeded t1 has no priority)
+    expect(screen.getByTestId('item-clearing-field').textContent).not.toContain('Medium');
+    cleanup();
+    // editItem re-resolves against the store, so the priority must live there.
+    seed({ items: [task({ priority: 'medium' })] });
     panel();
-    expect(bandLabels()).toEqual([
-      'When',
-      CONTAINER_KINDS.project.label,
-      CONTAINER_KINDS.goal.label,
-    ]);
+    expect(screen.getByTestId('item-clearing-field').textContent).toContain('Medium');
   });
 
-  it('drops the aspire band with Goals switched off, and nothing else', () => {
-    disableExtensions(EXT_GOALS);
+  it('offers every unset property by its registry noun in the seed, and a revealed container keeps that noun', () => {
     panel();
-    expect(bandLabels()).not.toContain(CONTAINER_KINDS.goal.label);
-    expect(bandLabels()).toContain(CONTAINER_KINDS.routine.label);
-  });
-
-  it('keeps Priority out of the band stack — it is neither a time nor a container', () => {
-    panel();
-    const inBands = Array.from(
-      document.querySelectorAll('[data-testid^="item-band-"] button')
-    ).map((b) => b.textContent);
-    expect(inBands.some((t) => t?.includes('Priority'))).toBe(false);
-    // Still on the surface, on the identity line beside the type.
-    expect(screen.getByText('Priority')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('item-clearing-seed'));
+    const optionText = () =>
+      Array.from(document.querySelectorAll('[data-testid="item-clearing-seed-option"]')).map(
+        (o) => o.textContent ?? ''
+      );
+    // The container nouns and Priority are all reachable from the seed.
+    expect(optionText().some((t) => t.includes(CONTAINER_KINDS.routine.label))).toBe(true);
+    expect(optionText().some((t) => t.includes('Priority'))).toBe(true);
+    // Revealing a container gives it a chip that carries its kind noun — not a
+    // bare "Add" (the band label that used to sit beside it is gone).
+    const routineOption = Array.from(
+      document.querySelectorAll('[data-testid="item-clearing-seed-option"]')
+    ).find((o) => o.textContent?.includes(CONTAINER_KINDS.routine.label));
+    fireEvent.click(routineOption!);
+    const revealed = Array.from(
+      screen.getByTestId('item-clearing-field').querySelectorAll('button')
+    ).find((b) => b.getAttribute('aria-label') === CONTAINER_KINDS.routine.label);
+    expect(revealed?.textContent).toContain(CONTAINER_KINDS.routine.label);
   });
 });
 
@@ -373,7 +372,8 @@ describe('closing the panel gives the cursor back', () => {
     // Radix's FocusScope returned focus for the modal, and the bare <aside>
     // (Phase 8) has nothing that does, so the cursor landed on <body> and the
     // next Tab restarted at the top of the document.
-    const inside = screen.getByTestId('item-dialog-close');
+    // Clearing dropped the close-X; "Done" is the in-panel focusable now.
+    const inside = screen.getByTestId('item-dialog-submit');
     inside.focus();
     expect(document.activeElement).toBe(inside);
 
@@ -402,7 +402,7 @@ describe('closing the panel gives the cursor back', () => {
 
     screen.getByTestId('elsewhere').focus();
     view.rerender(<Harness open item={task({ id: 't2', title: 'Another' })} />);
-    screen.getByTestId('item-dialog-close').focus();
+    screen.getByTestId('item-dialog-submit').focus();
 
     view.rerender(<Harness open={false} />);
     expect(document.activeElement).toBe(opener);

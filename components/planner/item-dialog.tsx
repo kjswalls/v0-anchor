@@ -1,6 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { addDays, format, parseISO, startOfDay, subDays } from 'date-fns';
 import {
@@ -21,6 +29,7 @@ import {
   RotateCcw,
   Trash2,
   X,
+  type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -51,7 +60,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { IconPicker } from '@/components/primitives/icon-picker';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
-import { ItemDetailSections } from '@/components/planner/item-detail-sections';
+import { ClearingFooter, ItemDetailSections } from '@/components/planner/item-detail-sections';
 import {
   ChipOption,
   ChipSectionLabel,
@@ -592,6 +601,14 @@ export function ItemDialog({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showPauseUntil, setShowPauseUntil] = useState(false);
+  // Clearing layout only: the unset properties the user has summoned back from
+  // the "+ Add property" seed. A property leaves this set the moment it holds a
+  // value (it is then set, and shows for that reason); until then it stays a
+  // dashed chip in the field rather than folding back into the seed mid-edit.
+  // Keyed by property id ('date', 'repeat', 'routine', …). Reset per item below.
+  const [revealed, setRevealed] = useState<ReadonlySet<string>>(() => new Set());
+  const revealProp = (key: string) =>
+    setRevealed((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
 
   // Latch the last payload so content doesn't flicker to defaults while the
   // close animation plays (same render-phase pattern app-shell used for add).
@@ -605,12 +622,23 @@ export function ItemDialog({
     // Disarmed with its siblings for the same reason: a picker left open across
     // a payload change would pause the wrong item.
     setShowPauseUntil(false);
+    // A revealed property is about THIS item; a fresh payload starts calm again.
+    setRevealed(new Set());
   }
   const open = !!state;
   const mode = last?.mode ?? 'add';
   const isPanel = presentation === 'panel';
   /** Only the docked panel saves itself; the modal still commits on submit. */
   const autosaves = isPanel && mode === 'edit';
+  /**
+   * The "Clearing" layout: a label-less field of only the properties that are
+   * SET, plus one "+ Add property" seed, with the title in serif and Done in the
+   * top rail. It rides exactly the autosaving surfaces — the docked edit panel
+   * and the /item editor — while the add-capture modal and the mobile drawer
+   * keep the labelled-band layout. Same coincidence as `autosaves`, named apart
+   * because it is a layout decision, not a persistence one.
+   */
+  const clearing = isPanel && mode === 'edit';
   const addPayload = last?.mode === 'add' ? last : null;
 
   // The payload carries a SNAPSHOT (ui-store stamps it at open time). Re-resolve
@@ -1270,7 +1298,10 @@ export function ItemDialog({
         // verb: "+ Add" when nothing is chosen, the value itself once something
         // is. The accessible name keeps the noun either way — a control read out
         // of its row has to say which band it belongs to.
-        label="Add"
+        // Band layout: "Add" (the band label two inches left IS the noun).
+        // Clearing has no band label, so an unset (revealed or required)
+        // container must carry its own kind noun or it reads as a nameless "Add".
+        label={clearing ? config.form.containerLabel : 'Add'}
         ariaLabel={
           d.container === 'none'
             ? config.form.containerLabel
@@ -1378,7 +1409,7 @@ export function ItemDialog({
         // verb: "+ Add" when nothing is chosen, the value itself once something
         // is. The accessible name keeps the noun either way — a control read out
         // of its row has to say which band it belongs to.
-        label="Add"
+        label={clearing ? CONTAINER_KINDS.routine.label : 'Add'}
         ariaLabel={
           routineChipValue
             ? `${CONTAINER_KINDS.routine.label}: ${routineChipValue}`
@@ -1474,7 +1505,7 @@ export function ItemDialog({
         // verb: "+ Add" when nothing is chosen, the value itself once something
         // is. The accessible name keeps the noun either way — a control read out
         // of its row has to say which band it belongs to.
-        label="Add"
+        label={clearing ? CONTAINER_KINDS.program.label : 'Add'}
         ariaLabel={
           programChipValue
             ? `${CONTAINER_KINDS.program.label}: ${programChipValue}`
@@ -1550,7 +1581,7 @@ export function ItemDialog({
         // verb: "+ Add" when nothing is chosen, the value itself once something
         // is. The accessible name keeps the noun either way — a control read out
         // of its row has to say which band it belongs to.
-        label="Add"
+        label={clearing ? CONTAINER_KINDS.goal.label : 'Add'}
         ariaLabel={
           goalChipValue
             ? `${CONTAINER_KINDS.goal.label}: ${goalChipValue}`
@@ -2027,6 +2058,134 @@ export function ItemDialog({
     };
     const hasWhen = !!(dateChip || timeChip || timesPerDayChip || repeatChip || remindChip);
 
+    // ── Clearing: one label-less field of the SET properties, plus a seed ─────
+    //
+    // Same chips, same pickers — only the arrangement changes. The labelled
+    // bands are replaced by a single wrapping row that shows ONLY what the item
+    // actually carries: a set property renders its value chip, an unset one is
+    // absent, folded into the "+ Add property" seed at the tail. So the surface's
+    // height tracks what the item IS, not what its type COULD be, and there is no
+    // column of nouns to read before the two values you came to change.
+    //
+    // The exceptions to "hidden while unset": a property the user just summoned
+    // from the seed (`revealed`), and a mandatory container (`required`, a habit's
+    // project) — a required-but-empty field that vanished would be a bug, not calm.
+    if (clearing) {
+      const containerSet: Record<ContainerKind, boolean> = {
+        project: d.container !== 'none',
+        routine: memberRoutines.length > 0,
+        program: memberPrograms.length > 0,
+        goal: memberGoals.length > 0,
+      };
+
+      interface ClearingProp {
+        key: string;
+        /** Scan order: priority leads, the When cluster follows, containers last. */
+        group: 'lead' | 'when' | 'container';
+        /** The noun, for the seed menu — the bands supplied it before. */
+        label: string;
+        /** Does the type expose this property at all? */
+        can: boolean;
+        /** Is it set? Set properties show at rest. */
+        set: boolean;
+        node: ReactNode;
+        icon: LucideIcon;
+        /** A mandatory container stays visible even while empty. */
+        required?: boolean;
+      }
+
+      const props: ClearingProp[] = [
+        {
+          key: 'priority',
+          group: 'lead',
+          label: 'Priority',
+          can: config.fields.includes('priority'),
+          set: d.priority !== 'none',
+          node: renderPriorityChip(type, d),
+          icon: Flag,
+        },
+        { key: 'date', group: 'when', label: 'Date', can: !!dateChip, set: !!d.startDate, node: dateChip, icon: CalendarIcon },
+        { key: 'time', group: 'when', label: 'Time', can: !!timeChip, set: timeParts.length > 0, node: timeChip, icon: Clock },
+        {
+          key: 'timesPerDay',
+          group: 'when',
+          label: 'Times per day',
+          can: !!timesPerDayChip,
+          // Always carries a value (defaults to 1×), so it is never in the seed.
+          set: true,
+          node: timesPerDayChip,
+          icon: Repeat2,
+        },
+        { key: 'repeat', group: 'when', label: 'Repeat', can: !!repeatChip, set: d.repeatFrequency !== 'none', node: repeatChip, icon: Repeat },
+        { key: 'remind', group: 'when', label: 'Remind', can: !!remindChip, set: !!d.reminderTime, node: remindChip, icon: Bell },
+        ...bands.map(
+          (band): ClearingProp => ({
+            key: band.kind,
+            group: 'container',
+            label: band.label,
+            can: true,
+            set: containerSet[band.kind],
+            node: bandControls[band.kind],
+            icon: Plus,
+            required: band.kind === 'project' && config.containerRequired,
+          })
+        ),
+      ];
+
+      const shows = (p: ClearingProp) => p.can && (p.set || p.required || revealed.has(p.key));
+      const visible = props.filter(shows);
+      const leadWhen = visible.filter((p) => p.group !== 'container');
+      const containerVisible = visible.filter((p) => p.group === 'container');
+      const seedItems = props.filter((p) => p.can && !p.set && !p.required && !revealed.has(p.key));
+
+      return (
+        <div className="flex flex-wrap items-center gap-1.5" data-testid="item-clearing-field">
+          {leadWhen.map((p) => (
+            <Fragment key={p.key}>{p.node}</Fragment>
+          ))}
+          {/* One hairline groups the When cluster off from the containers, so
+              the two families stay legible even when the wrap scatters them. */}
+          {leadWhen.length > 0 && containerVisible.length > 0 && (
+            <span aria-hidden className="bg-border mx-0.5 inline-block h-3.5 w-px shrink-0" />
+          )}
+          {containerVisible.map((p) => (
+            <Fragment key={p.key}>{p.node}</Fragment>
+          ))}
+          {seedItems.length > 0 && (
+            <PropertyChip
+              icon={Plus}
+              // The noun-carrying "Add property" when the field is empty; a bare
+              // "+" once anything is set, because the chips beside it are the
+              // context the words would only repeat.
+              label={visible.length > 0 ? '' : 'Add property'}
+              ariaLabel="Add property"
+              testId="item-clearing-seed"
+              contentClassName="w-60"
+            >
+              {(close) => (
+                <div className="max-h-72 overflow-y-auto" data-chip-scroll>
+                  {seedItems.map((p) => (
+                    <ChipOption
+                      key={p.key}
+                      testId="item-clearing-seed-option"
+                      value={p.key}
+                      onSelect={() => {
+                        revealProp(p.key);
+                        close();
+                      }}
+                    >
+                      <p.icon className="size-3.5 shrink-0" />
+                      {p.label}
+                    </ChipOption>
+                  ))}
+                </div>
+              )}
+            </PropertyChip>
+          )}
+        </div>
+      );
+    }
+
     return (
       <ItemBandGroup>
         {hasWhen && (
@@ -2263,6 +2422,29 @@ export function ItemDialog({
   // in the same top band the canvas and braindump headers occupy — while the
   // modal (and mobile drawer) keep the type-first layout unchanged.
 
+  // The autosaving panel's explicit exit — flush pending writes, then close,
+  // exactly what the footer's "Done" did. In the Clearing layout it rides the
+  // top rail (and stands in for the close-X, which Clearing drops) so the
+  // footer's bottom-right corner is free for the history line.
+  const doneButton = (
+    <Button
+      // Autosave means there is nothing to "submit" — Done just flushes what's
+      // queued and closes, exactly as the old close-X did. Never disabled: a
+      // titleless draft (which autosave won't persist anyway) must still be
+      // dismissable, since Clearing drops the X.
+      onClick={() => {
+        flushNow();
+        onOpenChange(false);
+      }}
+      data-testid="item-dialog-submit"
+      variant="outline"
+      size="sm"
+      className="h-7 px-3 text-xs"
+    >
+      Done
+    </Button>
+  );
+
   const headerActions = (
     <div className="ml-auto flex items-center gap-0.5">
       {mode === 'edit' && editItem && pathname !== `/item/${editItem.id}` && (
@@ -2346,8 +2528,10 @@ export function ItemDialog({
       )}
 
       {/* The modal gets Radix's own close button; the panel has to bring one —
-          and it must flush before it goes. */}
-      {isPanel && (
+          and it must flush before it goes. Clearing drops this: its top-rail
+          "Done" already flushes + closes, so a second dismiss control (which did
+          the identical thing) is just noise beside it. */}
+      {!clearing && isPanel && (
         <Button
           variant="ghost"
           size="icon"
@@ -2436,6 +2620,21 @@ export function ItemDialog({
     </span>
   );
 
+  // Clearing's Zone 0 identity mark: a colour square + the type name, whispered
+  // (11px, muted) rather than worn as a filled chip. Non-interactive on purpose —
+  // edit mode shows the type but never offers to convert it (streaks, completion
+  // history are a data decision, not a control), the same rule `typeControl`'s
+  // edit branch already keeps.
+  const typeWhisper = (
+    <span
+      data-testid="item-dialog-type-whisper"
+      className="text-muted-foreground inline-flex items-center gap-1.5 text-[11px]"
+    >
+      <ColorSquare color={activeConfig.accent} />
+      {activeConfig.label}
+    </span>
+  );
+
   // The title — the only required field, so it carries the dialog.
   const titleInput = activeDraft ? (
     <Input
@@ -2479,7 +2678,14 @@ export function ItemDialog({
       // dark:bg-transparent is load-bearing: Input carries dark:bg-input/30,
       // which tailwind-merge keeps (different modifier) and which outranks
       // bg-transparent on specificity.
-      className="h-auto border-0 bg-transparent px-0 py-0 text-base font-medium shadow-none placeholder:font-normal focus-visible:ring-0 md:text-base dark:bg-transparent"
+      className={cn(
+        'h-auto border-0 bg-transparent px-0 py-0 shadow-none placeholder:font-normal focus-visible:ring-0 dark:bg-transparent',
+        // Clearing sets the title in serif at a heading size — prose against the
+        // sans + mono metadata below it. The modal/mobile keep the sans base.
+        clearing
+          ? 'font-serif text-lg leading-snug font-medium md:text-lg'
+          : 'text-base font-medium md:text-base'
+      )}
     />
   ) : null;
 
@@ -2566,21 +2772,21 @@ export function ItemDialog({
                   drawer — keep the original type-first row with the title under
                   it. Both share the same pieces (headerActions / typeControl /
                   modeLabel / titleInput), only reordered. */}
-              {isPanel && mode === 'edit' ? (
-                <div className="flex flex-col gap-1.5">
-                  {/* The breathing dot that used to lead here (mirroring the
-                      selected row) is retired for now — the persistent row
-                      highlight is the current-row indicator, and the pulse dot
-                      is being reserved for an OpenClaw "working on it" signal. */}
+              {clearing ? (
+                <div className="flex flex-col gap-3">
+                  {/* Zone 0 — the type whisper on the left, the actions and the
+                      exit on the right. "Done" flushes and closes, standing in
+                      for the close-X (which Clearing drops). */}
                   <div className="flex items-center gap-2">
-                    <div className="min-w-0 flex-1">{titleInput}</div>
+                    {typeWhisper}
                     {headerActions}
+                    {doneButton}
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {typeControl}
-                    {renderPriorityChip(activeTypeName, activeDraft)}
-                    {modeLabel}
-                  </div>
+                  {/* Zone 1 — the title, set in serif: the one element that makes
+                      the surface read as a document, not a form. Priority and the
+                      mode label leave the header — priority rides the chip field
+                      below; the mode label is deleted (you can see you're editing). */}
+                  {titleInput}
                 </div>
               ) : (
                 <>
@@ -2674,7 +2880,12 @@ export function ItemDialog({
                   // min-h-0 unpins the primitive's min-h-16; the rest is the
                   // title Input's borderless recipe, dark:bg-transparent
                   // included (dark:bg-input/30 survives tailwind-merge).
-                  className="min-h-0 resize-none overflow-y-auto border-0 bg-transparent px-0 py-0 text-sm leading-relaxed shadow-none focus-visible:ring-0 md:text-sm dark:bg-transparent"
+                  className={cn(
+                    'min-h-0 resize-none overflow-y-auto border-0 bg-transparent px-0 py-0 leading-relaxed shadow-none focus-visible:ring-0 dark:bg-transparent',
+                    // Clearing pairs notes with the serif title as "what you
+                    // wrote", set against the sans + mono metadata around it.
+                    clearing ? 'font-serif text-sm placeholder:italic md:text-sm' : 'text-sm md:text-sm'
+                  )}
                 />
               )}
 
@@ -2682,41 +2893,55 @@ export function ItemDialog({
                   growth plan. Live data (subtasks/agent state read the store),
                   while the property draft above stays snapshot-based. */}
               {withDetailSections && mode === 'edit' && editItem && (
-                <ItemDetailSections item={editItem} withThread />
+                <ItemDetailSections item={editItem} withThread withActivity={!clearing} />
               )}
 
-              <div className="flex items-center justify-between gap-3 border-t pt-3">
-                {autosaves ? (
-                  // No Save button means no moment of commitment, so the panel
-                  // has to be legible about it: it says it keeps up, and says
-                  // when it hasn't yet.
-                  <span
-                    // The only signal that anything is being persisted, so it
-                    // has to reach a screen reader too.
-                    role="status"
-                    aria-live="polite"
-                    className="text-muted-foreground hidden items-center gap-1.5 text-xs sm:flex"
+              {/* Clearing's footer folds the edit history into one line in the
+                  bottom-right, across from "Saves as you go", and lifts Done to
+                  the top rail. Every other surface keeps the status + submit row. */}
+              {clearing ? (
+                editItem && (
+                  <ClearingFooter
+                    key={editItem.id}
+                    itemId={editItem.id}
+                    saving={saving}
+                    showHistory={withDetailSections}
+                  />
+                )
+              ) : (
+                <div className="flex items-center justify-between gap-3 border-t pt-3">
+                  {autosaves ? (
+                    // No Save button means no moment of commitment, so the panel
+                    // has to be legible about it: it says it keeps up, and says
+                    // when it hasn't yet.
+                    <span
+                      // The only signal that anything is being persisted, so it
+                      // has to reach a screen reader too.
+                      role="status"
+                      aria-live="polite"
+                      className="text-muted-foreground hidden items-center gap-1.5 text-xs sm:flex"
+                    >
+                      {saving ? 'Saving…' : 'Saves as you go'}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground hidden items-center gap-1.5 text-xs sm:flex">
+                      <kbd className="border-border text-muted-foreground rounded-xs border px-1 font-mono text-[10px]">
+                        ↵
+                      </kbd>
+                      to {mode === 'add' ? 'add' : 'save'}
+                    </span>
+                  )}
+                  <Button
+                    onClick={handleSubmit}
+                    data-testid="item-dialog-submit"
+                    variant={autosaves ? 'outline' : 'default'}
+                    disabled={invalidCustomDays(activeDraft) || !activeDraft.title.trim()}
+                    className="h-9 max-sm:w-full"
                   >
-                    {saving ? 'Saving…' : 'Saves as you go'}
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground hidden items-center gap-1.5 text-xs sm:flex">
-                    <kbd className="border-border text-muted-foreground rounded-xs border px-1 font-mono text-[10px]">
-                      ↵
-                    </kbd>
-                    to {mode === 'add' ? 'add' : 'save'}
-                  </span>
-                )}
-                <Button
-                  onClick={handleSubmit}
-                  data-testid="item-dialog-submit"
-                  variant={autosaves ? 'outline' : 'default'}
-                  disabled={invalidCustomDays(activeDraft) || !activeDraft.title.trim()}
-                  className="h-9 max-sm:w-full"
-                >
-                  {mode === 'add' ? `Add ${activeConfig.label}` : autosaves ? 'Done' : 'Save Changes'}
-                </Button>
-              </div>
+                    {mode === 'add' ? `Add ${activeConfig.label}` : autosaves ? 'Done' : 'Save Changes'}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </SurfaceContent>

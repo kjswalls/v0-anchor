@@ -139,6 +139,15 @@ export interface RelayFieldProps {
    * catalog default ('gray'); this is the seam for future user theming.
    */
   lightPalette?: RelayLightPaletteKey;
+  /**
+   * An explicit DARK-mode palette (oklch/color strings) that overrides the live
+   * lime-dominant tokens dark normally reads — for a field that must key to a
+   * different accent than the app's `--primary`, e.g. the honey relay behind
+   * Beacon's working block. Light contexts still use `lightPalette`. Pass a
+   * STABLE array (a module constant): it is an effect dependency, so a fresh
+   * array each render would re-initialise the field.
+   */
+  darkPalette?: readonly string[];
 }
 
 interface Cell {
@@ -225,8 +234,16 @@ function buildSprite(color: string, dark: boolean): HTMLCanvasElement {
  * alpha envelope deepens tiles toward the color at the ripple crest — the
  * light-mode, subtractive mirror of the dark additive bloom.
  */
-function readPalette(dark: boolean, el: Element, lightKey: RelayLightPaletteKey): string[] {
+function readPalette(
+  dark: boolean,
+  el: Element,
+  lightKey: RelayLightPaletteKey,
+  darkOverride?: readonly string[]
+): string[] {
   if (dark) {
+    // An explicit dark palette (e.g. the honey field behind Beacon) wins over
+    // the live lime-dominant tokens; light contexts still read the catalog.
+    if (darkOverride && darkOverride.length > 0) return [...darkOverride];
     const cs = getComputedStyle(el);
     const read = (name: string, fallback: string) => cs.getPropertyValue(name).trim() || fallback;
     const primary = read('--primary', 'oklch(0.84 0.15 125)');
@@ -302,6 +319,7 @@ export function RelayField({
   pointerEase = 0.12,
   pointerParallax = 1,
   lightPalette = DEFAULT_LIGHT_PALETTE,
+  darkPalette,
 }: RelayFieldProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -349,7 +367,7 @@ export function RelayField({
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     let dark = isDarkContext(container);
-    let palette = readPalette(dark, container, lightPalette);
+    let palette = readPalette(dark, container, lightPalette, darkPalette);
     let sprites = palette.map((c) => buildSprite(c, dark));
     let cells: Cell[] = [];
     let gridPitch = pitch;
@@ -538,7 +556,7 @@ export function RelayField({
       const nowDark = isDarkContext(container);
       if (nowDark === dark) return;
       dark = nowDark;
-      palette = readPalette(dark, container, lightPalette);
+      palette = readPalette(dark, container, lightPalette, darkPalette);
       sprites = palette.map((c) => buildSprite(c, dark));
       if (reduced) draw(0);
     };
@@ -606,7 +624,7 @@ export function RelayField({
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerdown', onPointerDown);
     };
-  }, [focalY, focalX, pitch, lightPalette, pointerFocus, pointerBurst]);
+  }, [focalY, focalX, pitch, lightPalette, darkPalette, pointerFocus, pointerBurst]);
 
   return (
     <div

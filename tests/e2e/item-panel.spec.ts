@@ -104,7 +104,8 @@ test.describe('Item panel', () => {
       await expect(page.getByRole('dialog')).toHaveCount(0);
       await expect(panel).toBeVisible();
 
-      await panel.getByTestId('item-dialog-close').click();
+      // Clearing drops the close-X; "Done" flushes pending writes and closes.
+      await panel.getByTestId('item-dialog-submit').click();
       await expect(page.getByTestId('item-dialog')).toHaveCount(0);
     } finally {
       await cleanupTestData(page, accessToken, [taskId]);
