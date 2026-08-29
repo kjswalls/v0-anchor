@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { useSwipeable } from 'react-swipeable';
 
 import { UserProfileDropdown } from '@/components/planner/user-profile-dropdown';
@@ -71,7 +71,7 @@ function useKeyboardSafeHeight(): number | null {
  * full-height ScrollArea has something to be full-height OF) were already
  * duplicated by the keyed cross-fade box below, which now carries them alone.
  */
-export function MobileShell() {
+export const MobileShell = memo(function MobileShell() {
   const activeTab = useMobileNavStore((s) => s.activeTab);
   const openDialog = useUIStore((s) => s.openDialog);
   const router = useRouter();
@@ -117,7 +117,7 @@ export function MobileShell() {
     // and the Today card's copy keep the default.
     <span className="flex [&>button]:size-7 [&_[data-slot=avatar]]:size-6">
       <UserProfileDropdown
-        onOpenSettings={() => router.push('/settings')}
+        onOpenSettings={() => router.push('/settings/day')}
         onOpenBugReport={() => openDialog({ type: 'bug-report' })}
       />
     </span>
@@ -155,7 +155,7 @@ export function MobileShell() {
       {/* One card, not two: the week strip is a row inside the header now, so
           the shell no longer mounts a day-strip beside it. */}
       <MobileHeader
-        onOpenSettings={() => router.push('/settings')}
+        onOpenSettings={() => router.push('/settings/day')}
         onOpenBugReport={() => openDialog({ type: 'bug-report' })}
       />
 
@@ -208,4 +208,4 @@ export function MobileShell() {
       <ScheduleSheet />
     </div>
   );
-}
+});

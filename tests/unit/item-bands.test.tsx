@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 /**
  * THE BANDS — the item surface stops rendering four questions as one row.
@@ -284,6 +284,47 @@ describe('the edit panel renders bands', () => {
     expect(inBands.some((t) => t?.includes('Priority'))).toBe(false);
     // Still on the surface, on the identity line beside the type.
     expect(screen.getByText('Priority')).toBeTruthy();
+  });
+});
+
+describe('a cancelled add keeps its draft across the body unmount', () => {
+  /**
+   * "A cancelled dialog deliberately keeps its other draft fields" used to be
+   * held trivially: the body was mounted for the whole session, so its
+   * useState never died. The body now unmounts after the close grace and the
+   * contract flows through the wrapper's draft stash — this is the only test
+   * that walks that path (close → grace elapses → body unmounts → reopen), so
+   * a later edit to the stash plumbing fails HERE rather than silently
+   * dropping half-typed drafts.
+   */
+  it('keeps a typed title through close, the grace unmount, and reopen', () => {
+    vi.useFakeTimers();
+    try {
+      const { rerender } = render(
+        <ItemDialog state={{ mode: 'add', type: 'task' }} onOpenChange={() => {}} />
+      );
+      fireEvent.change(screen.getByTestId('item-dialog-title-input'), {
+        target: { value: 'Halfway through a thought' },
+      });
+
+      // Cancel. Advancing well past the close grace forces the body's unmount,
+      // so the reopen below can only re-seed from the wrapper's stash.
+      rerender(<ItemDialog state={null} onOpenChange={() => {}} />);
+      act(() => {
+        vi.advanceTimersByTime(2_000);
+      });
+      expect(screen.queryByTestId('item-dialog-title-input')).toBeNull();
+
+      // A fresh payload object, as ui-store's openDialog stamps per open.
+      rerender(
+        <ItemDialog state={{ mode: 'add', type: 'task' }} onOpenChange={() => {}} />
+      );
+      expect(
+        (screen.getByTestId('item-dialog-title-input') as HTMLInputElement).value
+      ).toBe('Halfway through a thought');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

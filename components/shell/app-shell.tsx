@@ -155,21 +155,23 @@ export function beginDrag(event: DragStartEvent) {
  * Extracted from app/page.tsx (P2 of the redesign plan).
  */
 export function AppShell() {
-  const {
-    tasks,
-    habits,
-    scheduleTask,
-    assignHabitToBucket,
-    unscheduleTask,
-    scheduleHabit,
-    deleteTask,
-    deleteHabit,
-    moveTaskToProjectBlock,
-    selectedDate,
-    userTimezone,
-  } = usePlannerStore();
-  const { setChatExpanded } = useSidebarStore();
-  const { activeDialog, openDialog, closeDialog, confirm } = useUIStore();
+  // No planner-store subscription here. Every planner value this shell touches
+  // is consumed inside event handlers (drag end, hovered-item shortcuts), so
+  // they read usePlannerStore.getState() at event time instead — a reactive
+  // subscription made every item write re-render the whole app tree, the same
+  // failure mode the DragGhost and hovered-item comments below record.
+  const setChatExpanded = useSidebarStore((s) => s.setChatExpanded);
+  // The launcher slot is masked out: AppShell never renders it (OmniLauncher
+  // subscribes to it itself), so ⌘K must not re-render the shell tree. The
+  // mask maps launcher → null, and Object.is(null, null) skips the render
+  // when the launcher opens over an empty slot.
+  const activeDialog = useUIStore((s) =>
+    s.activeDialog?.type === 'launcher' ? null : s.activeDialog
+  );
+  // Actions are stable references on the store; selecting them never
+  // re-renders. `confirm` is read via getState() at event time below.
+  const openDialog = useUIStore((s) => s.openDialog);
+  const closeDialog = useUIStore((s) => s.closeDialog);
   const isMobile = useIsMobile();
   const commandContext = useCommandContext();
 
@@ -282,6 +284,12 @@ export function AppShell() {
     useDragStore.getState().endDrag();
     if (!over) return;
 
+    // Event-time snapshot — the drop resolves against whatever the store holds
+    // at release, and reading it here is what lets AppShell go without a
+    // planner subscription at all.
+    const planner = usePlannerStore.getState();
+    const { tasks, habits, selectedDate, userTimezone } = planner;
+
     const itemId = active.id as string;
     const draggedTask = tasks.find((t) => t.id === itemId);
     const draggedHabit = habits.find((h) => h.id === itemId);
@@ -319,7 +327,6 @@ export function AppShell() {
       // unschedule and date-move no-op on habits, so gate `acted` on this so a
       // fully-ineligible group falls through instead of silently clearing.
       const taskLikeIds = groupIds.filter((id) => tasks.some((t) => t.id === id));
-      const planner = usePlannerStore.getState();
       // DELIBERATELY NOT GATED on the Goals extension, unlike every other
       // goal read in the app. This set is what stops a bulk date verb from
       // overwriting a milestone's target date, and that write is not
@@ -398,19 +405,19 @@ export function AppShell() {
 
     switch (command.kind) {
       case 'schedule-task':
-        scheduleTask(command.taskId, command.bucket, command.time, command.dateStr);
+        planner.scheduleTask(command.taskId, command.bucket, command.time, command.dateStr);
         break;
       case 'schedule-habit':
-        scheduleHabit(command.habitId, command.bucket, command.time);
+        planner.scheduleHabit(command.habitId, command.bucket, command.time);
         break;
       case 'assign-habit-bucket':
-        assignHabitToBucket(command.habitId, command.bucket);
+        planner.assignHabitToBucket(command.habitId, command.bucket);
         break;
       case 'unschedule':
-        unscheduleTask(command.itemId);
+        planner.unscheduleTask(command.itemId);
         break;
       case 'move-task-to-project-block':
-        moveTaskToProjectBlock(command.taskId);
+        planner.moveTaskToProjectBlock(command.taskId);
         break;
     }
   };
@@ -422,6 +429,7 @@ export function AppShell() {
   const handleShortcutEdit = useCallback(() => {
     const { id, type } = hoveredItem;
     if (!id || !type) return;
+    const { tasks, habits } = usePlannerStore.getState();
     if (type === 'task') {
       const task = tasks.find((t) => t.id === id);
       if (task) openEditFor(task, 'task');
@@ -429,13 +437,15 @@ export function AppShell() {
       const habit = habits.find((h) => h.id === id);
       if (habit) openEditFor(habit, 'habit');
     }
-  }, [tasks, habits]);
+  }, []);
 
   const handleShortcutDelete = useCallback(() => {
     // A genuine multi-selection (>=2) wins over the hovered item: Backspace
     // deletes the whole selection (one confirm, one undo). A single selected row
     // is just the "current / open row" (every plain click selects one), so at
     // size 1 we fall through to the hovered-item path as before.
+    const { confirm } = useUIStore.getState();
+    const { tasks, habits, deleteTask, deleteHabit } = usePlannerStore.getState();
     const selection = useSelectionStore.getState();
     if (selection.selectedIds.size >= 2) {
       const ids = [...selection.selectedIds];
@@ -468,7 +478,7 @@ export function AppShell() {
       destructive: true,
       onConfirm: () => (type === 'task' ? deleteTask(item.id) : deleteHabit(item.id)),
     });
-  }, [tasks, habits, confirm, deleteTask, deleteHabit]);
+  }, []);
 
   // Every other binding is owned by its command in lib/commands/registry.ts.
   // These two stay here because they act on the item under the mouse, which
