@@ -720,6 +720,11 @@
      than staying the same colour it had while floating. */
   --surface-2-pressed: color-mix(in oklab, var(--surface-2), var(--surface-3) 8%);
 
+  /* Launcher input's leading-glyph tile — a dark chip with a white mark, kept
+     dark in BOTH themes (the summoned card's one spot of deliberate chrome). */
+  --omni-tile: oklch(0.28 0.012 272);
+  --omni-tile-ink: oklch(0.98 0 0);
+
   /* Body panel. The elev family is all vertical offsets (0 x), so nothing ever
      falls on the sidebar sitting to the panel's left — the edge where the two
      meet read flat. This adds a leftward cast plus a left-edge light-catch, so
@@ -979,6 +984,10 @@
 
   --surface-2-pressed: color-mix(in oklab, var(--surface-2), var(--surface-3) 10%);
 
+  /* Launcher tile — slightly below the card so the white mark reads (see :root). */
+  --omni-tile: oklch(0.20 0.006 286);
+  --omni-tile-ink: oklch(0.96 0.002 286);
+
   /* Body panel, dark: same two-part trick the elev family uses here — a 1px
      inset light-catch simulating light hitting the raised lip (now on the LEFT
      edge as well as the top, since that lip faces the sidebar) plus a stronger
@@ -1113,6 +1122,16 @@
 .dark .mobile-ground {
   --bkt-tray: color-mix(in oklab, oklch(0 0 0) 13%, var(--surface-0));      /* 0.1505 */
   --bkt-tray-armed: color-mix(in oklab, var(--primary) 10%, var(--bkt-tray));
+}
+
+/* Launcher card: a straight, full-width hairline between adjacent result rows.
+   Scoped to the launcher variant so the dock's floating panel is untouched. The
+   `+ [cmdk-item]` combinator only matches items that are siblings — i.e. within
+   the same cmdk group — so it never draws a line across a group heading, and the
+   first row of each group (and of the panel) has none. It sits on the item's top
+   edge as a straight line, independent of the row's rounded hover highlight. */
+[data-omnibar-variant='launcher'] [cmdk-item] + [cmdk-item] {
+  border-top: 1px solid var(--border);
 }
 
 /* Content typeface toggle (settings → Appearance → Typeface). Flips the
