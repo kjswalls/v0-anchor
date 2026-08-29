@@ -441,6 +441,9 @@ describe('the trashed-name guard does not go stale mid-session', () => {
       } as never)
     );
 
+    // The list is populated again, so the create form is no longer standing in
+    // for an empty section — open it from the list head.
+    fireEvent.click(screen.getByTestId('project-new'));
     fireEvent.change(screen.getByTestId('project-new-name'), { target: { value: 'Work' } });
     expect(screen.queryByTestId('project-new-problem')).toBeNull();
   });

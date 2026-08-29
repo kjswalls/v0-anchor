@@ -20,13 +20,14 @@ import {
   BackRow,
   DangerZone,
   DayField,
+  CreateForm,
   DetailColumn,
-  DraftRow,
   IdentityRow,
   ListColumn,
   SectionWelcome,
 } from '../detail-parts';
 import { ItemMemberList, RoutineMemberList } from '../member-list';
+import { makeIconToken } from '@/lib/category-icons';
 import type { Item, Program, Routine } from '@/lib/planner-types';
 
 /**
@@ -45,11 +46,15 @@ import type { Item, Program, Routine } from '@/lib/planner-types';
 export function ProgramsSection({
   selectedId,
   onSelect,
-  focusNew,
+  creating,
+  onNew,
+  onCreated,
 }: {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
-  focusNew: boolean;
+  creating: boolean;
+  onNew: () => void;
+  onCreated: (id: string | null) => void;
 }) {
   const programs = usePlannerStore((s) => s.programs);
   const collectionsAvailable = usePlannerStore((s) => s.collectionsAvailable);
@@ -65,36 +70,26 @@ export function ProgramsSection({
   const selected = programs.find((p) => p.id === selectedId) ?? null;
   const visible = matching(programs, query, byName);
   const canCreate = collectionsAvailable && !!userId && !isLoading;
+  const showCreate = canCreate && (creating || programs.length === 0);
 
   return (
     <>
       <ListColumn
         eyebrow="PROGRAMS"
         count={visible.length}
-        hasSelection={!!selected}
+        hasSelection={!!selected || showCreate}
         filter={{
           value: query,
           onChange: setQuery,
           placeholder: 'Filter programs…',
           testId: 'program-filter',
         }}
-        footer={
-          <DraftRow
-            placeholder="New program…"
-            addLabel="Add program"
-            testPrefix="program"
-            disabled={!canCreate}
-            autoFocus={focusNew}
-            onAdd={(name, icon) =>
-              onSelect(
-                // `auto` with no dates, never 'active': a program you just made
-                // must not hide anything, and an always-on default is the one
-                // state that cannot.
-                addProgram({ name, icon, state: 'auto', itemIds: [], routineIds: [] })
-              )
-            }
-          />
-        }
+        onNew={{
+          onClick: onNew,
+          label: 'New program',
+          testId: 'program-new',
+          disabled: !canCreate,
+        }}
       >
         {!collectionsAvailable ? (
           <p
@@ -130,8 +125,27 @@ export function ProgramsSection({
         )}
       </ListColumn>
 
-      <DetailColumn hasSelection={!!selected}>
-        {selected ? (
+      <DetailColumn hasSelection={!!selected || showCreate}>
+        {showCreate ? (
+          <CreateForm
+            eyebrow="NEW PROGRAM"
+            placeholder="Name your program…"
+            addLabel="Create program"
+            icon={makeIconToken('CalendarRange')}
+            testPrefix="program"
+            autoFocus={creating}
+            hint="A program is a stretch of life — a summer, a term — that switches whole routines on and off. It starts always-on, hiding nothing."
+            onCreate={(name, icon) =>
+              onCreated(
+                // `auto` with no dates, never 'active': a program you just made
+                // must not hide anything, and an always-on default is the one
+                // state that cannot.
+                addProgram({ name, icon, state: 'auto', itemIds: [], routineIds: [] })
+              )
+            }
+            onCancel={programs.length > 0 ? () => onCreated(null) : undefined}
+          />
+        ) : selected ? (
           <ProgramDetail program={selected} onBack={() => onSelect(null)} />
         ) : (
           <SectionWelcome section="programs">

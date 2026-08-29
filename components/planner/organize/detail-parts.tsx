@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
 import { ChevronLeft, Plus, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -45,7 +45,7 @@ export function ListColumn({
   filter,
   suppressNoMatch,
   children,
-  footer,
+  onNew,
 }: {
   eyebrow: string;
   /** Rows currently SHOWING — so it reads as a match count while filtering. */
@@ -71,8 +71,16 @@ export function ListColumn({
    * surface can give.
    */
   suppressNoMatch?: boolean;
-  /** The create row — pinned outside the scroller. */
-  footer?: React.ReactNode;
+  /**
+   * Start creating. Renders the "+ New" verb in the head; the FORM it opens
+   * lives in the detail pane (see CreateForm).
+   *
+   * This replaced a create row pinned to the foot of the column. That row was
+   * 26px of borderless input under the fold of a scrolling list — the least
+   * prominent thing in the section, for the one gesture a section exists to
+   * offer. Omitted when a section cannot create (Trash).
+   */
+  onNew?: { onClick: () => void; label: string; testId: string; disabled?: boolean };
 }) {
   return (
     <div
@@ -90,11 +98,24 @@ export function ListColumn({
         hasSelection && 'hidden md:flex'
       )}
     >
-      <div className="flex h-[30px] shrink-0 items-center gap-2 px-[15px]">
+      <div className="flex h-[34px] shrink-0 items-center gap-2 pr-[9px] pl-[15px]">
         <Eyebrow className="flex-1">{eyebrow}</Eyebrow>
         {/* The count lives HERE and in the detail meta line — never in the rail,
             where it would reflow as data loads and join a tab's accessible name. */}
         <span className="text-muted-foreground font-num text-2xs">{count}</span>
+        {onNew && (
+          <button
+            type="button"
+            onClick={onNew.onClick}
+            disabled={onNew.disabled}
+            aria-label={onNew.label}
+            data-testid={onNew.testId}
+            className="border-border text-secondary-foreground hover:bg-accent hover:text-foreground focus-visible:outline-ring flex h-[22px] shrink-0 items-center gap-1 rounded-[6px] border pr-2 pl-1.5 text-xs font-medium disabled:opacity-40 focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-solid"
+          >
+            <Plus className="h-3 w-3" />
+            New
+          </button>
+        )}
       </div>
 
       {filter && <FilterRow {...filter} />}
@@ -112,7 +133,6 @@ export function ListColumn({
           children
         )}
       </div>
-      {footer}
     </div>
   );
 }
@@ -363,6 +383,179 @@ export function IdentityRow({
  * making it conditional times out every container-creating test in both spec
  * files. `disabled` gates the button, never the row's existence.
  */
+/**
+ * MAKING SOMETHING, in the detail pane — the console's create surface.
+ *
+ * The verb starts in the list head ("+ New"); this is what it opens, and it gets
+ * the whole third pane: a pickable glyph, a heading-sized name, the section's own
+ * definition as the hint, and one primary button. Creating is a deliberate act
+ * and now looks like one — the same shape as the add-item dialog, where the app
+ * already teaches that a name and an icon make a thing.
+ *
+ * It KEEPS DraftRow's testids (`{prefix}-new-name`, `{prefix}-add`,
+ * `{prefix}-new-problem`) because it is the same gesture in a better place: the
+ * suites that drive creation only have to open it first, and the validate
+ * contract — a SENTENCE, never a silent disabled button — is unchanged.
+ *
+ * An EMPTY section opens straight into this, which is why `onCancel` is
+ * optional: with no rows behind it there is nothing to cancel back to, and a
+ * button that returns you to a blank pane is a button that does nothing.
+ */
+export function CreateForm({
+  eyebrow,
+  placeholder,
+  addLabel,
+  hint,
+  icon: initialIcon,
+  testPrefix,
+  disabled,
+  autoFocus,
+  validate,
+  onCreate,
+  onCancel,
+}: {
+  /** "NEW ROUTINE" — names what is being made. */
+  eyebrow: string;
+  placeholder: string;
+  /** "Create routine" — the button, and the field's accessible name. */
+  addLabel: string;
+  /** The section's definition, doing its teaching where it is now useful. */
+  hint: React.ReactNode;
+  /** The glyph a new one starts with; the picker can change it. */
+  icon: string;
+  testPrefix: string;
+  disabled?: boolean;
+  /**
+   * Take the cursor. TRUE only when the user asked to create — never when the
+   * form is merely standing in for an empty section.
+   *
+   * An empty section shows this form on arrival, and a form that focused itself
+   * on arrival would rip the cursor out of the rail the moment ↓ landed on a
+   * section with nothing in it — you could not walk past an empty section. Same
+   * hazard the old create row's latch existed for, one surface up.
+   */
+  autoFocus?: boolean;
+  validate?: (name: string) => string | null;
+  onCreate: (name: string, icon: string | undefined) => void;
+  onCancel?: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [icon, setIcon] = useState<string | undefined>(initialIcon);
+  const ref = useRef<HTMLInputElement>(null);
+
+  const trimmed = name.trim();
+  const problem = trimmed && validate ? validate(trimmed) : null;
+  const valid = !!trimmed && !disabled && !problem;
+
+  /**
+   * Take the cursor when the flag turns on — not merely when this mounts.
+   *
+   * React applies `autoFocus` at MOUNT only. An empty section already has this
+   * form on screen (standing in for the empty list), so pressing its "+ New"
+   * flipped the flag on an ALREADY-MOUNTED form and the attribute did nothing:
+   * the section's one primary verb answered with no cursor and no visible
+   * change. Driving the ref off the flag covers both arrivals — mounted-by-a-
+   * click and already-here.
+   */
+  useEffect(() => {
+    if (autoFocus) ref.current?.focus();
+  }, [autoFocus]);
+
+  // Two rungs in one, in the order a step back happens: clear a half-typed name
+  // FIRST, leave the form second. Escaping straight out of a form you have typed
+  // into throws the typing away in the same keystroke that leaves.
+  //
+  // BOTH are guarded on focus, which is the idiom every other rung in the plate
+  // follows (the create row's was, the filter's is, IdentityRow's is). Unguarded,
+  // an Escape aimed at the filter or a rail row reached in here and destroyed a
+  // half-typed name — first by wiping it, then, once only the clear was guarded,
+  // by closing the whole form out from under it. A rung must not fire for a
+  // keystroke that was never aimed at it.
+  //
+  // Falling through is correct in the two cases left: an empty name in a section
+  // with nothing to cancel back to (the plate closes, as it always did), and any
+  // press while the cursor is elsewhere (whatever owns it answers).
+  useEscapeRung(() => {
+    if (document.activeElement !== ref.current) return false;
+    if (name) {
+      setName('');
+      return true;
+    }
+    if (!onCancel) return false;
+    onCancel();
+    return true;
+  });
+
+  const submit = () => {
+    if (!valid) return;
+    onCreate(trimmed, icon);
+  };
+
+  return (
+    <div className="flex flex-col" data-testid={`${testPrefix}-create-form`}>
+      <Eyebrow>{eyebrow}</Eyebrow>
+
+      <div className="mt-3.5 flex items-center gap-3">
+        <IconPicker value={icon} name={name} onSelect={setIcon} />
+        <input
+          ref={ref}
+          value={name}
+          placeholder={placeholder}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              submit();
+            }
+          }}
+          aria-label={addLabel}
+          data-testid={`${testPrefix}-new-name`}
+          aria-invalid={!!problem || undefined}
+          aria-describedby={problem ? `${testPrefix}-new-problem` : undefined}
+          // The same borderless heading field IdentityRow uses, so the thing you
+          // are naming looks like the thing it will become.
+          className="text-foreground placeholder:text-muted-foreground focus:bg-surface-3 -mx-1 min-w-0 flex-1 truncate rounded-[5px] border-0 bg-transparent px-1 py-0.5 text-lg font-semibold outline-none focus:shadow-[var(--shadow-inset-well)]"
+        />
+      </div>
+
+      {problem && (
+        <p
+          id={`${testPrefix}-new-problem`}
+          data-testid={`${testPrefix}-new-problem`}
+          className="text-muted-foreground mt-2 max-w-[46ch] text-xs"
+        >
+          {problem}
+        </p>
+      )}
+
+      <p className="text-muted-foreground mt-3 max-w-[46ch] text-sm">{hint}</p>
+
+      <div className="mt-5 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!valid}
+          data-testid={`${testPrefix}-add`}
+          className="bg-primary text-primary-foreground hover:bg-primary/90 focus-visible:outline-ring flex h-8 shrink-0 items-center rounded-[6px] px-3.5 text-sm font-medium disabled:opacity-40 focus-visible:outline-1 focus-visible:outline-offset-1 focus-visible:outline-solid"
+        >
+          {addLabel}
+        </button>
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            data-testid={`${testPrefix}-cancel`}
+            className="border-border text-secondary-foreground hover:bg-accent hover:text-foreground focus-visible:outline-ring flex h-8 shrink-0 items-center rounded-[6px] border px-3 text-sm focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-solid"
+          >
+            Cancel
+          </button>
+        )}
+        <span className="text-muted-foreground font-num ml-auto text-2xs">↵ to create</span>
+      </div>
+    </div>
+  );
+}
+
 export function DraftRow({
   placeholder,
   addLabel,

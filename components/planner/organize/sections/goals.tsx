@@ -24,6 +24,7 @@ import {
   BufferedTextarea,
   DangerZone,
   DayField,
+  CreateForm,
   DetailColumn,
   DraftRow,
   IdentityRow,
@@ -32,6 +33,7 @@ import {
   TeachingLine,
 } from '../detail-parts';
 import { ItemMemberList } from '../member-list';
+import { makeIconToken } from '@/lib/category-icons';
 import type { Goal, Item } from '@/lib/planner-types';
 
 /**
@@ -117,12 +119,16 @@ const EMPTY_IDS: ReadonlySet<string> = new Set();
 export function GoalsSection({
   selectedId,
   onSelect,
-  focusNew,
+  creating,
+  onNew,
+  onCreated,
 }: {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
-  /** The console's "opened straight into a new row" signal — see its callers. */
-  focusNew: boolean;
+  /** The console's "opened straight into making one" signal — see its callers. */
+  creating: boolean;
+  onNew: () => void;
+  onCreated: (id: string | null) => void;
 }) {
   const goals = usePlannerStore((s) => s.goals);
   const items = usePlannerStore((s) => s.items);
@@ -144,6 +150,7 @@ export function GoalsSection({
   // row the user just made while its INSERT usually succeeds — so they make it
   // again and own two. That is the trap the scope rail shipped once.
   const canCreate = goalsAvailable && !!userId && !isLoading;
+  const showCreate = canCreate && (creating || goals.length === 0);
 
   const [query, setQuery] = useState('');
   const liveItemIds = useLiveItemIds();
@@ -240,7 +247,7 @@ export function GoalsSection({
       milestoneIds: [],
       checkinIds: [],
     });
-    onSelect(id);
+    onCreated(id);
   };
 
   // BOTH columns, always — the console's contract (organize-console.tsx: "Each
@@ -253,23 +260,14 @@ export function GoalsSection({
       <ListColumn
         eyebrow="GOALS"
         count={shown.length}
-        hasSelection={!!selected}
+        hasSelection={!!selected || showCreate}
         filter={{
           value: query,
           onChange: setQuery,
           placeholder: 'Filter goals…',
           testId: 'goals-filter',
         }}
-        footer={
-          <DraftRow
-            placeholder="New goal…"
-            addLabel="Add goal"
-            testPrefix="goal"
-            disabled={!canCreate}
-            autoFocus={focusNew}
-            onAdd={(name, icon) => create(name, icon)}
-          />
-        }
+        onNew={{ onClick: onNew, label: 'New goal', testId: 'goal-new', disabled: !canCreate }}
       >
         {!goalsAvailable ? (
           <p className="text-muted-foreground px-[7px] pt-2 text-xs" data-testid="goals-unavailable">
@@ -327,8 +325,20 @@ export function GoalsSection({
         )}
       </ListColumn>
 
-      <DetailColumn hasSelection={!!selected}>
-        {selected ? (
+      <DetailColumn hasSelection={!!selected || showCreate}>
+        {showCreate ? (
+          <CreateForm
+            eyebrow="NEW GOAL"
+            placeholder="Name your goal…"
+            addLabel="Create goal"
+            icon={makeIconToken('Target')}
+            testPrefix="goal"
+            autoFocus={creating}
+            hint="A goal is the reason a stretch of work exists. It holds the habits and tasks that serve it, the checkpoints along the way, and a recurring check-in — and it never hides anything."
+            onCreate={(name, icon) => create(name, icon)}
+            onCancel={goals.length > 0 ? () => onCreated(null) : undefined}
+          />
+        ) : selected ? (
           <GoalDetail
             goal={selected}
             itemsById={itemsById}

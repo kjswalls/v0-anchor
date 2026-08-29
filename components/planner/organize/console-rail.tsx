@@ -1,7 +1,16 @@
 'use client';
 
 import * as TabsPrimitive from '@radix-ui/react-tabs';
-import { CalendarRange, Folder, type LucideIcon, Repeat, Shapes, Target, Trash2 } from 'lucide-react';
+import {
+  CalendarRange,
+  Folder,
+  LayoutGrid,
+  type LucideIcon,
+  Repeat,
+  Shapes,
+  Target,
+  Trash2,
+} from 'lucide-react';
 import { Eyebrow } from './primitives';
 import { EXT_GOALS, EXT_ORGANIZE } from '@/lib/extension-registry';
 import { cn } from '@/lib/utils';
@@ -28,6 +37,7 @@ import { CONTAINER_KINDS } from '@/lib/container-registry';
  */
 
 export type ConsoleSection =
+  | 'overview'
   | 'routines'
   | 'programs'
   | 'goals'
@@ -67,12 +77,23 @@ export type ConsoleSection =
  * a field, not a code path.
  */
 export const CONSOLE_SECTIONS = [
-  { id: 'routines', label: 'Routines', group: 'CONTAINERS', eyebrow: 'ROUTINES', extension: EXT_ORGANIZE },
-  { id: 'programs', label: 'Programs', group: null, eyebrow: 'PROGRAMS', extension: EXT_ORGANIZE },
+  // The map, and the console's front door when no caller asked for a section.
+  // It rides EXT_ORGANIZE like the rest of the console's own furniture: with the
+  // console switched off, a Goals-only plate should open on Goals, not on an
+  // overview of one thing.
+  {
+    id: 'overview', label: 'Overview', group: null, eyebrow: 'OVERVIEW',
+    blurb: 'What you have, and where to make more.', extension: EXT_ORGANIZE,
+  },
+  { id: 'routines', label: 'Routines', group: 'CONTAINERS', eyebrow: 'ROUTINES',
+    blurb: 'Pause a stack of items together.', extension: EXT_ORGANIZE },
+  { id: 'programs', label: 'Programs', group: null, eyebrow: 'PROGRAMS',
+    blurb: 'A stretch of life that switches routines on.', extension: EXT_ORGANIZE },
   // Third in CONTAINERS, and last of the three on purpose: routines and
   // programs answer "is this on today", goals answer "why is any of it here".
   // The daily questions sit above the long one.
-  { id: 'goals', label: 'Goals', group: null, eyebrow: 'GOALS', extension: EXT_GOALS },
+  { id: 'goals', label: 'Goals', group: null, eyebrow: 'GOALS',
+    blurb: 'Why the work matters.', extension: EXT_GOALS },
   // The whole CLASSIFY axis in one row since migration 039. 'Habit groups' sat
   // below 'Item types' until then (Kirby, 2026-08-11 decision 7); the fold that
   // ordering was making cheap is this one, and it went to projects rather than
@@ -82,17 +103,22 @@ export const CONSOLE_SECTIONS = [
   // The section ID is NOT the noun. `CONTAINER_KINDS.project.label` is, and it
   // supplies both strings below.
   { id: 'projects', label: CONTAINER_KINDS.project.labelPlural, group: 'LABELS',
-    eyebrow: CONTAINER_KINDS.project.labelPlural.toUpperCase(), extension: EXT_ORGANIZE },
-  { id: 'types', label: 'Item types', group: null, eyebrow: 'ITEM TYPES', extension: EXT_ORGANIZE },
+    eyebrow: CONTAINER_KINDS.project.labelPlural.toUpperCase(),
+    blurb: 'File your tasks; carry a repeating block.', extension: EXT_ORGANIZE },
+  { id: 'types', label: 'Item types', group: null, eyebrow: 'ITEM TYPES',
+    blurb: 'Your own kinds of task.', extension: EXT_ORGANIZE },
   // Behind a rule, pinned to the foot, the way a bin is pinned to the foot of a
   // dock. Trash is a lifecycle surface, not a peer of either group — and
   // `extension: null` is that same sentence said to the gate. See the header.
-  { id: 'trash', label: 'Trash', group: 'RULE', eyebrow: 'TRASH', extension: null },
+  { id: 'trash', label: 'Trash', group: 'RULE', eyebrow: 'TRASH',
+    blurb: 'Anything deleted, kept 30 days.', extension: null },
 ] as const satisfies readonly {
   id: ConsoleSection;
   label: string;
   group: string | null;
   eyebrow: string;
+  /** One short line for the Overview card — never the full definition. */
+  blurb: string;
   /** The slug this section rides, or `null` for one that may never be gated. */
   extension: string | null;
 }[];
@@ -119,6 +145,9 @@ export const SECTION_IDENTITY: Record<
   ConsoleSection,
   { icon: LucideIcon; accent: string }
 > = {
+  // Neutral: the map is not a kind of work, so it takes the ink the rail's
+  // resting rows already use rather than a sixth hue.
+  overview: { icon: LayoutGrid, accent: 'var(--muted-foreground)' },
   routines: { icon: Repeat, accent: 'var(--accent-2)' },
   programs: { icon: CalendarRange, accent: 'var(--accent-3)' },
   goals: { icon: Target, accent: 'var(--accent-6)' },
@@ -217,7 +246,10 @@ function RailEntry({ section }: { section: ConsoleSectionSpec }) {
         // legible.
         style={{ '--tick': SECTION_IDENTITY[section.id].accent } as React.CSSProperties}
         className={cn(
-          'relative flex h-[30px] w-full items-center gap-2 rounded-[5px] px-[7px] text-left text-sm font-medium',
+          // One size up (30→36px row, 16px glyph, 13px label): the rail reads
+          // like the Overview's index rather than a dense nav strip, and the
+          // extra height holds the coloured glyph without crowding.
+          'group relative flex h-[36px] w-full items-center gap-2.5 rounded-[7px] px-[9px] text-left text-[13px] font-medium',
           'text-muted-foreground hover:bg-accent hover:text-foreground',
           // Counts still never live here — they reflow as data loads and would
           // JOIN THE TAB'S ACCESSIBLE NAME, making the e2e role queries depend
@@ -225,21 +257,24 @@ function RailEntry({ section }: { section: ConsoleSectionSpec }) {
           // head and the detail meta line.
           'data-[state=active]:bg-[var(--row-selected)] data-[state=active]:text-foreground',
           // A 2px accent tick on the active row, the same mark a modified
-          // setting wears — 16px tall, centred in the 30px row, the section's
-          // hue. Colour enters the rail only here, never as a fill.
-          'before:absolute before:top-[7px] before:bottom-[7px] before:left-0 before:w-[2px] before:rounded-full before:bg-transparent',
+          // setting wears — centred in the row, the section's hue. Paired with
+          // the glyph going colour on the active row (below).
+          'before:absolute before:top-[8px] before:bottom-[8px] before:left-0 before:w-[2px] before:rounded-full before:bg-transparent',
           'data-[state=active]:before:bg-[var(--tick)]',
           'focus-visible:outline-ring focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-solid'
         )}
       >
-        {/* The section's fixed silhouette, QUIET: it inherits the row's text
-            colour (muted at rest, foreground when active), so it is never the
-            accent — the old ban was on five near-identical GREY glyphs, and six
-            distinct shapes answer it without spending colour on structure. The
-            hue stays on the 2px tick. aria-hidden so the tab's accessible name
-            is exactly its label ("Routines"), which the e2e role queries and
-            organize-rail.test.tsx's toHaveAccessibleName both require. */}
-        <Icon className="size-3.5 shrink-0" aria-hidden />
+        {/* The section's fixed silhouette. GREY at rest, its section hue ONLY on
+            the active row — colour rides one row at a time, never the whole
+            column, so the rail warms up without becoming a legend. distinct
+            shapes answer the old "near-identical grey glyphs" ban. aria-hidden so
+            the tab's accessible name stays exactly its label ("Routines"), which
+            the e2e role queries and organize-rail.test.tsx's toHaveAccessibleName
+            both require. */}
+        <Icon
+          className="size-4 shrink-0 text-muted-foreground group-hover:text-foreground group-data-[state=active]:text-[var(--tick)]"
+          aria-hidden
+        />
         {section.label}
       </TabsPrimitive.Trigger>
     </>

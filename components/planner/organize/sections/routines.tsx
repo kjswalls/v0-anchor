@@ -27,14 +27,15 @@ import {
 import { Eyebrow, ObjectRow, Segmented, SegmentedOption, SettingRow } from '../primitives';
 import {
   BackRow,
+  CreateForm,
   DangerZone,
   DayField,
   DetailColumn,
-  DraftRow,
   IdentityRow,
   ListColumn,
   SectionWelcome,
 } from '../detail-parts';
+import { makeIconToken } from '@/lib/category-icons';
 import { ItemMemberList } from '../member-list';
 import { cn } from '@/lib/utils';
 import type { Item, Program, Routine } from '@/lib/planner-types';
@@ -128,13 +129,17 @@ export function RoutinesSection({
   selectedId,
   onSelect,
   onOpenProgram,
-  focusNew,
+  creating,
+  onNew,
+  onCreated,
 }: {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
   /** Cross-section jump, for the reverse view — see ProgramHolders. */
   onOpenProgram: (id: string) => void;
-  focusNew: boolean;
+  creating: boolean;
+  onNew: () => void;
+  onCreated: (id: string | null) => void;
 }) {
   const routines = usePlannerStore((s) => s.routines);
   // For the pill: a routine held off by a program is not "Paused", and saying
@@ -156,29 +161,29 @@ export function RoutinesSection({
   // load window is silently erased when initializeStore's set() replaces
   // `routines`, and the user then owns two.
   const canCreate = collectionsAvailable && !!userId && !isLoading;
+  // A section with nothing in it opens straight into the form: "make your first
+  // routine" and "make another" are then the same screen, and the definition
+  // does its teaching as the form's hint rather than as a line you cannot act on.
+  const showCreate = canCreate && (creating || routines.length === 0);
 
   return (
     <>
       <ListColumn
         eyebrow="ROUTINES"
         count={visible.length}
-        hasSelection={!!selected}
+        hasSelection={!!selected || showCreate}
         filter={{
           value: query,
           onChange: setQuery,
           placeholder: 'Filter routines…',
           testId: 'routine-filter',
         }}
-        footer={
-          <DraftRow
-            placeholder="New routine…"
-            addLabel="Add routine"
-            testPrefix="routine"
-            disabled={!canCreate}
-            autoFocus={focusNew}
-            onAdd={(name, icon) => onSelect(addRoutine({ name, icon, itemIds: [] }))}
-          />
-        }
+        onNew={{
+          onClick: onNew,
+          label: 'New routine',
+          testId: 'routine-new',
+          disabled: !canCreate,
+        }}
       >
         {!collectionsAvailable ? (
           <p
@@ -208,8 +213,21 @@ export function RoutinesSection({
         )}
       </ListColumn>
 
-      <DetailColumn hasSelection={!!selected}>
-        {selected ? (
+      <DetailColumn hasSelection={!!selected || showCreate}>
+        {showCreate ? (
+          <CreateForm
+            eyebrow="NEW ROUTINE"
+            placeholder="Name your routine…"
+            addLabel="Create routine"
+            icon={makeIconToken('Repeat')}
+            testPrefix="routine"
+            autoFocus={creating}
+            hint="A routine groups items you want to pause together. You can add items once it exists."
+            onCreate={(name, icon) => onCreated(addRoutine({ name, icon, itemIds: [] }))}
+            // Nothing to cancel back to when the list is empty.
+            onCancel={routines.length > 0 ? () => onCreated(null) : undefined}
+          />
+        ) : selected ? (
           <RoutineDetail
             routine={selected}
             onBack={() => onSelect(null)}

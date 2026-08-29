@@ -1229,7 +1229,10 @@ export const SETTINGS: SettingRecord[] = [
     write: (v, ctx) => {
       if (ctx.userId) ext().setEnabled(ctx.userId, EXT_ORGANIZE, Boolean(v));
     },
-    defaultValue: false,
+    // ON by default (see extension-registry). Must track the manifest default, or
+    // a fresh account draws the "modified" bar and a per-row reset would write
+    // OFF into the user's row — isModified is read() !== defaultValue.
+    defaultValue: true,
   },
   {
     id: 'extensions.streaks',

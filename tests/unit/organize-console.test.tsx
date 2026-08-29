@@ -48,7 +48,7 @@ beforeEach(enableGoalsAndOrganize);
 describe('the Organize console frame', () => {
   afterEach(cleanup);
 
-  it('exposes all six sections as tabs, in the decided order', () => {
+  it('exposes every section as a tab, in the decided order', () => {
     render(<OrganizeConsole open onOpenChange={() => {}} />);
     // 'Habit groups' sat below 'Item types' until migration 039 (decision 7 put
     // it there to make a later fold cheap). The fold happened, and it went to
@@ -58,7 +58,10 @@ describe('the Organize console frame', () => {
     // Goals sit LAST in CONTAINERS: routines and programs answer "is this on
     // today", goals answer "why is any of it here", and the daily questions
     // belong above the long one.
+    // OVERVIEW leads: the console's front door and the map a first arrival
+    // meets, above the two groups rather than inside either.
     expect(screen.getAllByRole('tab').map((el) => el.textContent)).toEqual([
+      'Overview',
       'Routines',
       'Programs',
       'Goals',
@@ -79,17 +82,20 @@ describe('the Organize console frame', () => {
     expect(screen.queryByRole('tab', { name: /CONTAINERS|LABELS/ })).toBeNull();
   });
 
-  it('defaults to routines when no section is given', () => {
+  it('defaults to the Overview when no section is given', () => {
+    // Opening on Routines met a first-time arrival with one kind of thing and
+    // no word about the other five. The map greets instead.
     render(<OrganizeConsole open onOpenChange={() => {}} />);
-    expect(tab('Routines')).toHaveAttribute('aria-selected', 'true');
+    expect(tab('Overview')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('organize-overview')).toBeTruthy();
   });
 
-  it('falls back to routines for a section slug it does not know', () => {
+  it('falls back to the first available section for a slug it does not know', () => {
     // `tab` arrives as a bare string from ActiveDialog and from the palette, so
     // a stale or hand-typed value must land somewhere real rather than render an
     // empty plate.
     render(<OrganizeConsole open onOpenChange={() => {}} section="nonsense" />);
-    expect(tab('Routines')).toHaveAttribute('aria-selected', 'true');
+    expect(tab('Overview')).toHaveAttribute('aria-selected', 'true');
   });
 
   it('lands on the section it is opened with', () => {
