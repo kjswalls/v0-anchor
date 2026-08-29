@@ -193,6 +193,7 @@ export function ConsoleRail({ sections }: { sections: readonly ConsoleSectionSpe
 }
 
 function RailEntry({ section }: { section: ConsoleSectionSpec }) {
+  const Icon = SECTION_IDENTITY[section.id].icon;
   return (
     <>
       {section.group === 'RULE' ? (
@@ -216,7 +217,7 @@ function RailEntry({ section }: { section: ConsoleSectionSpec }) {
         // legible.
         style={{ '--tick': SECTION_IDENTITY[section.id].accent } as React.CSSProperties}
         className={cn(
-          'relative h-[30px] w-full rounded-[5px] px-[7px] text-left text-sm font-medium',
+          'relative flex h-[30px] w-full items-center gap-2 rounded-[5px] px-[7px] text-left text-sm font-medium',
           'text-muted-foreground hover:bg-accent hover:text-foreground',
           // Counts still never live here — they reflow as data loads and would
           // JOIN THE TAB'S ACCESSIBLE NAME, making the e2e role queries depend
@@ -225,13 +226,20 @@ function RailEntry({ section }: { section: ConsoleSectionSpec }) {
           'data-[state=active]:bg-[var(--row-selected)] data-[state=active]:text-foreground',
           // A 2px accent tick on the active row, the same mark a modified
           // setting wears — 16px tall, centred in the 30px row, the section's
-          // hue. Colour enters the rail only here (and on the icon), never as a
-          // fill.
+          // hue. Colour enters the rail only here, never as a fill.
           'before:absolute before:top-[7px] before:bottom-[7px] before:left-0 before:w-[2px] before:rounded-full before:bg-transparent',
           'data-[state=active]:before:bg-[var(--tick)]',
           'focus-visible:outline-ring focus-visible:outline-1 focus-visible:-outline-offset-1 focus-visible:outline-solid'
         )}
       >
+        {/* The section's fixed silhouette, QUIET: it inherits the row's text
+            colour (muted at rest, foreground when active), so it is never the
+            accent — the old ban was on five near-identical GREY glyphs, and six
+            distinct shapes answer it without spending colour on structure. The
+            hue stays on the 2px tick. aria-hidden so the tab's accessible name
+            is exactly its label ("Routines"), which the e2e role queries and
+            organize-rail.test.tsx's toHaveAccessibleName both require. */}
+        <Icon className="size-3.5 shrink-0" aria-hidden />
         {section.label}
       </TabsPrimitive.Trigger>
     </>
