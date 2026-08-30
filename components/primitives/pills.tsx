@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
-import { Flame } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Bot, Flame, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { agentStatusView, hasAgentState } from '@/lib/agent-status';
 import type { Priority, RepeatFrequency } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -610,5 +611,120 @@ export function CountBadge({
     >
       {count}
     </span>
+  );
+}
+
+
+/**
+ * How often the elapsed reading refreshes.
+ *
+ * `agentStatusView` is coarse — minutes, then hours, then days — so a
+ * per-second tick would re-render the row sixty times for one changed digit.
+ * A minute is the smallest interval that can ever change what it says.
+ */
+const AGENT_CLOCK_MS = 60_000;
+
+/**
+ * The delegated-work badge: what the agent is doing with this item, and for how
+ * long.
+ *
+ * A sibling of the title, NOT a rail column — the same call the goal-role glyph
+ * made, for the same two reasons. The rail's columns reserve width on EVERY row
+ * of both types, so a sixth would cost horizontal space app-wide to say
+ * something true of a handful of rows; and this needs a word, not a glyph,
+ * because "Working" and "Needs you" are not distinguishable as icons.
+ *
+ * "Working" alone is not information — an agent four minutes into a task is
+ * fine and the same agent three hours in has died somewhere. The elapsed
+ * reading is the entire point, which is why it comes from a dedicated
+ * `aiStatusAt` stamp (migration 041) rather than the item's `updated_at`:
+ * that one moves whenever anything is edited, so renaming the task mid-run
+ * would silently reset the clock and the row would report a confident wrong
+ * number. No number beats a wrong one.
+ *
+ * The interval lives in `AgentClock` below, which this renders only for an item
+ * that actually HAS a live agent state — so a planner with nothing delegated
+ * starts no timers. That split is load-bearing rather than tidy: hooks cannot
+ * be skipped by an early return, so a single component would have run an
+ * interval on every task row in the app to render nothing.
+ */
+export function AgentPill({
+  item,
+  className,
+}: {
+  item: { aiStatus?: string; aiStatusAt?: string; assignee?: string };
+  className?: string;
+}) {
+  // NO HOOKS HERE. This runs on every task row in the app, and hooks cannot be
+  // skipped by an early return — an interval declared above this line would run
+  // for all of them, ticking every minute to re-render a component that returns
+  // null. An earlier version of this file said the opposite, and was wrong.
+  // Splitting the decision from the clock is what makes the claim true: a
+  // planner with nothing delegated mounts no <AgentClock> and starts no timers.
+  //
+  // `hasAgentState` is the clockless half of the same decision — reading
+  // `Date.now()` during render is impure, and nothing about WHETHER to show the
+  // pill depends on the time. Only the elapsed reading does, and that lives
+  // below the mount boundary.
+  if (!hasAgentState(item)) return null;
+  return <AgentClock item={item} className={className} />;
+}
+
+function AgentClock({
+  item,
+  className,
+}: {
+  item: { aiStatus?: string; aiStatusAt?: string; assignee?: string };
+  className?: string;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), AGENT_CLOCK_MS);
+    return () => clearInterval(id);
+  }, []);
+
+  const view = agentStatusView(item, now);
+  if (!view) return null;
+
+  return (
+    <RailTooltip label="Agent" detail={view.detail}>
+      <span
+        data-testid="item-agent-status"
+        data-agent-state={item.aiStatus}
+        data-agent-stalled={view.stalled || undefined}
+        className={cn(
+          'flex flex-shrink-0 items-center gap-1 text-[10px] font-medium',
+          // Honey is reserved for the ONE state that wants something from the
+          // user. Everything else is the agent's business and stays muted —
+          // a row that shouts about work proceeding normally is a row that
+          // teaches you to stop reading it.
+          // Honey for the one state that wants something from the user, and
+          // for a run that has stopped — because that one now wants something
+          // too. Everything else is progress they are free to ignore.
+          view.needsUser || view.stalled ? 'text-warning-text' : 'text-muted-foreground/70',
+          className
+        )}
+      >
+        {view.stalled ? (
+          // No spinner on a run that has stopped — a spinner is a claim that
+          // something is happening, and this is the row saying it is not.
+          <Bot aria-hidden className="size-3 flex-shrink-0" />
+        ) : view.active ? (
+          <Loader2
+            aria-hidden
+            className={cn('size-3 flex-shrink-0', item.aiStatus === 'working' && 'animate-spin')}
+          />
+        ) : (
+          <Bot aria-hidden className="size-3 flex-shrink-0" />
+        )}
+        <span>{view.label}</span>
+        {view.elapsed && view.elapsed !== 'just now' && (
+          <span className="tabular-nums opacity-70">{view.elapsed}</span>
+        )}
+        {/* The tooltip never fires on touch and never reaches a screen reader. */}
+        <span className="sr-only">{view.detail}</span>
+      </span>
+    </RailTooltip>
   );
 }

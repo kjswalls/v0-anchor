@@ -71,6 +71,7 @@ import { useMobileNavStore } from '../mobile-nav-store';
 import { useMorningStore } from '../morning-store';
 import { useEODStore } from '../eod-store';
 import { useChatStore } from '../chat-store';
+import { useProposalStore } from '../proposal-store';
 import { goToDate, stepScope } from '../nav-commands';
 import { resolveCategoryIcon } from '../category-icons';
 import { getItemTypeConfig, isSkippable, isPausable, itemTypeName } from '../item-registry';
@@ -785,6 +786,21 @@ export const STATIC_COMMANDS: Command[] = [
     keywords: 'chat ai assistant beacon ask question',
     aliases: ['chat', 'beacon'],
     run: (ctx) => ctx.openChat(),
+  },
+  {
+    id: 'rituals.catchUp',
+    label: 'Pick things back up',
+    group: 'rituals',
+    icon: Wand2,
+    keywords: 'catch up overdue behind reschedule plan proposal beacon',
+    aliases: ['catchup'],
+    // Computed locally (lib/proposal.ts), so this works with no AI configured
+    // at all — the feature that matters most on the worst day must not depend
+    // on a provider being reachable.
+    run: (ctx) => {
+      ctx.openChat();
+      useProposalStore.getState().request('catch-up');
+    },
   },
   {
     id: 'rituals.planDay',

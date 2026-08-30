@@ -3,6 +3,7 @@
 import { useRouter } from 'next/navigation';
 import { Sparkles, ChevronDown } from 'lucide-react';
 import { ChatConversation } from '@/components/ai/chat-conversation';
+import { ProposalCard } from '@/components/ai/proposal-card';
 import { RelayField } from '@/components/primitives/relay-field';
 import { useChatStore } from '@/lib/chat-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
@@ -51,6 +52,10 @@ export function ChatPanel({ focusSignal }: { focusSignal: number }) {
             mask="linear-gradient(to bottom, transparent, black 12%, black 88%, transparent)"
           />
         )}
+        {/* Above the transcript: a proposal is a decision waiting on you, and
+            burying it under scrollback would make it exactly the thing this
+            design is trying to stop being — a message you have to go find. */}
+        <ProposalCard className="mx-2.5 mt-2.5 shrink-0" />
         <ChatConversation
           variant="desktop"
           hideHeader

@@ -44,6 +44,11 @@ const SIGNIFICANT_ACTIONS = [
   // a surface you aren't looking at — so it earns the receipt and the one-⌘Z
   // offer.
   'Bulk add:',
+  // planner-store.applyProposal emits exactly this prefix. Accepting an AI
+  // proposal is the single most important place to show the undo affordance:
+  // one tap changes several items at once, and the offer to take it back is
+  // what makes accepting feel safe rather than irreversible.
+  'Accept plan:',
 ];
 
 /**

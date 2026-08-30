@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ArrowUp, Mic, Plus } from 'lucide-react';
+import { ArrowUp, Mic, Plus, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
@@ -37,6 +37,7 @@ interface ChatComposerProps {
  */
 export function ChatComposer({ variant, touch, focusSignal }: ChatComposerProps) {
   const send = useChatStore((s) => s.send);
+  const stop = useChatStore((s) => s.stop);
   const isLoading = useChatStore((s) => s.isLoading);
   const provider = useAISettingsStore((s) => s.provider);
 
@@ -115,19 +116,36 @@ export function ChatComposer({ variant, touch, focusSignal }: ChatComposerProps)
           className="max-h-[120px] min-h-[22px] flex-1 resize-none border-0 bg-transparent p-0 text-sm leading-[22px] shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 dark:bg-transparent"
           disabled={isLoading}
         />
-        {hasText && (
+        {isLoading ? (
+          /* A reply that has started going wrong is worth interrupting, and the
+             store can (`abortController.abort()`) — there was simply no way to
+             ask. Send is disabled mid-stream anyway, so this occupies a slot
+             that was dead, and on the phone this bar is the only control the
+             Beacon tab has. */
           <Button
             size="icon"
-            // -my-[5px] lets the 32px button overhang the 22px text line rather
-            // than set the pill's floor — without it the bar is 58px tall the
-            // moment you type, and 10px taller than the omnibar it replaces.
             className="-my-[5px] size-8 shrink-0 rounded-full"
-            onClick={handleSend}
-            disabled={isLoading}
-            aria-label="Send"
+            onClick={stop}
+            aria-label="Stop generating"
+            data-testid="chat-stop"
           >
-            <ArrowUp className="size-4" />
+            <Square className="size-3 fill-current" />
           </Button>
+        ) : (
+          hasText && (
+            <Button
+              size="icon"
+              // -my-[5px] lets the 32px button overhang the 22px text line rather
+              // than set the pill's floor — without it the bar is 58px tall the
+              // moment you type, and 10px taller than the omnibar it replaces.
+              className="-my-[5px] size-8 shrink-0 rounded-full"
+              onClick={handleSend}
+              disabled={isLoading}
+              aria-label="Send"
+            >
+              <ArrowUp className="size-4" />
+            </Button>
+          )
         )}
       </div>
     );
@@ -158,7 +176,17 @@ export function ChatComposer({ variant, touch, focusSignal }: ChatComposerProps)
         >
           <Plus className={cn(touch ? 'h-5 w-5' : 'h-4 w-4')} />
         </Button>
-        {hasText ? (
+        {isLoading ? (
+          <Button
+            size="icon"
+            className={cn('rounded-full', touch ? 'h-9 w-9' : 'h-8 w-8')}
+            onClick={stop}
+            aria-label="Stop generating"
+            data-testid="chat-stop"
+          >
+            <Square className={cn('fill-current', touch ? 'h-3.5 w-3.5' : 'h-3 w-3')} />
+          </Button>
+        ) : hasText ? (
           <Button
             size="icon"
             className={cn('rounded-full', touch ? 'h-9 w-9' : 'h-8 w-8')}

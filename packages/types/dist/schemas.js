@@ -291,6 +291,18 @@ const taskShape = {
     aiStatus: z.string().optional(),
     /** Agent's latest result/summary for this item. */
     aiResult: z.string().optional(),
+    /**
+     * When `aiStatus` last changed (migration 041). Read-only client-side —
+     * stamped by lib/db.ts as a companion of the status write, never on its own,
+     * so it cannot drift from the state it timestamps.
+     *
+     * Same "small and stable" class as the three fields above it: it changes
+     * exactly as often as `aiStatus` does, which is a handful of times over a
+     * delegated task's life. That is what keeps it out of the hazard the schema
+     * note names — a field that changes OFTEN entering the frozen `tasks[]`
+     * projection and the 50-entry undo stack.
+     */
+    aiStatusAt: z.string().optional(),
     ...RecurrenceFieldsSchema.shape,
     ...pauseFields,
     ...reminderFields,
@@ -507,6 +519,16 @@ const rejectResumeWithDate = (data, ctx) => {
         });
     }
 };
+/**
+ * The delegation lifecycle.
+ *
+ * A FROZEN external contract from the moment a real agent writes it: the UI
+ * renders these values, the MCP tool surface offers them, and an agent that
+ * learned one spelling cannot be asked to relearn it. Extend additively, never
+ * rename. Named here rather than inlined so the app, the agent API and the tool
+ * surface cannot drift into three slightly different vocabularies.
+ */
+export const AiStatusSchema = z.enum(['queued', 'working', 'blocked', 'done', 'failed']);
 export const TaskCreateSchema = z
     .object({
     ...taskShape,
@@ -521,7 +543,7 @@ export const TaskCreateSchema = z
     // Growth fields are strict at the create boundary too (taskShape's reads
     // stay loose) — a bad uuid or status must 400 here, not 500 at Postgres.
     parentItemId: z.string().uuid().optional(),
-    aiStatus: z.enum(['queued', 'working', 'blocked', 'done', 'failed']).optional(),
+    aiStatus: AiStatusSchema.optional(),
     // Strict here, loose in taskShape — same split as aiStatus above.
     reminderTime: TimeOfDaySchema.optional(),
 })
@@ -544,7 +566,15 @@ export const TaskCreateSchema = z
     // resolver is what makes this omission safe rather than lossy — omitting the
     // field without it silently strips every agent write out of the rename
     // fan-out, which is the bug Phase 0 exists to remove.
-    .omit({ pausedAt: true, pausedUntil: true, projectId: true })
+    //
+    // `aiStatusAt` is omitted on the same principle as `projectId`: it is derived,
+    // not declared. Spreading `taskShape` makes every new field an accepted create
+    // body field automatically, which handed an agent two ways to be wrong — an
+    // unvalidated string reaching a `timestamptz` column 500s at Postgres instead
+    // of 400ing here (the rule the `aiStatus` line beside it states outright), and
+    // a well-formed past value manufactures a fake "Working 3h". The stamp is
+    // written by lib/db.ts alongside the status it describes, and by nothing else.
+    .omit({ pausedAt: true, pausedUntil: true, projectId: true, aiStatusAt: true })
     .superRefine(requireCustomDays);
 export const HabitCreateSchema = z
     .object({
@@ -609,7 +639,7 @@ export const TaskUpdateSchema = z
     // independently-deployed agent does, renaming a value costs a coordinated
     // release (the plugin safeParses and throws on drift). Growing the set
     // stays cheap forever; the read side is deliberately loose.
-    aiStatus: clearable(z.enum(['queued', 'working', 'blocked', 'done', 'failed'])),
+    aiStatus: clearable(AiStatusSchema),
     aiResult: clearable(z.string()),
     // Clearable both: null is how a reminder is turned OFF (migration 032's
     // null-means-off contract), which a plain .optional() could not express.
@@ -959,6 +989,82 @@ export const AnchorContextResponseSchema = z.object({
     // milestone, the target — instead of inferring purpose from item titles.
     schemaVersion: z.number().optional(),
 });
+// ── Proposals ──────────────────────────────────────────────────────────────────
+// A proposal is a planner diff the AI suggests and the user accepts with one
+// tap — the core interaction grammar (memory/plans/ai-vision.md). It lives here
+// rather than app-side because both tiers emit it: the assistant tier via a
+// structured completion, the agent tier via a gateway tool call.
+//
+// Two deliberate holes in the validation, both filled app-side by the type
+// registry (lib/item-registry.ts), which is the only authority on per-type
+// capability:
+//   - `itemType` is an open string (custom types are user-defined slugs).
+//   - `status` is an open string, NOT a union of the task/habit enums. The
+//     vocabularies are frozen and per-type; merging them here would invent a
+//     status vocabulary that no type actually accepts. validateProposal()
+//     checks each value against that type's allowedStatuses.
+const proposalFields = {
+    title: z.string().min(1).max(500).optional(),
+    startDate: z.string().optional(),
+    timeBucket: TimeBucketSchema.optional(),
+    startTime: z.string().optional(),
+    priority: PrioritySchema.optional(),
+    notes: z.string().max(10_000).optional(),
+};
+export const ProposalCreateOpSchema = z.object({
+    ...proposalFields,
+    kind: z.literal('create'),
+    /** Registry type name: 'task', 'habit', or a user-defined slug. */
+    itemType: z.string().min(1).max(100),
+    /** Required on create — the one field a new item cannot be missing. */
+    title: z.string().min(1).max(500),
+    project: z.string().max(200).optional(),
+    /**
+     * Create this as a child of an existing item (the panel's Subtasks section).
+     *
+     * The breakdown verb: "this is too big" → a handful of steps under it. Only
+     * valid on create — an EXISTING subtask may never be the target of an update
+     * operation, because no view outside its parent's panel shows it, so a
+     * change to one has no visible effect and no way to undo from where the user
+     * is looking. Validation additionally requires that the parent's type allows
+     * children and is not itself a child; nesting has no UI.
+     */
+    parentItemId: z.string().min(1).optional(),
+});
+export const ProposalUpdateOpSchema = z.object({
+    ...proposalFields,
+    kind: z.literal('update'),
+    itemId: z.string().min(1).max(200),
+    /** Null clears the field, matching the update-schema convention above. */
+    startDate: z.string().nullable().optional(),
+    timeBucket: TimeBucketSchema.nullable().optional(),
+    startTime: z.string().nullable().optional(),
+    priority: PrioritySchema.nullable().optional(),
+    status: z.string().optional(),
+});
+export const ProposalOperationSchema = z.discriminatedUnion('kind', [
+    ProposalCreateOpSchema,
+    ProposalUpdateOpSchema,
+]);
+export const ProposalSchema = z.object({
+    id: z.string(),
+    /** Card headline. Warm and specific — "Here's a lighter Tuesday". */
+    summary: z.string().min(1).max(200),
+    /** Optional second line explaining the thinking. Never scolding. */
+    rationale: z.string().max(1000).optional(),
+    /**
+     * Capped because the producer is untrusted by design — on the agent tier it
+     * is somebody else's gateway. The system prompts ask for at most eight;
+     * nothing enforced it, and a 5,000-operation reply would render six visible
+     * lines inside a scroll box under a button reading "Do all of it", then fan
+     * out 5,000 unthrottled inserts on one tap. Twenty is well clear of any
+     * honest plan, so exceeding it is malformed rather than merely long.
+     */
+    operations: z.array(ProposalOperationSchema).min(1).max(20),
+    createdAt: z.string(),
+});
+/** What the model is asked to return; ids and timestamps are stamped locally. */
+export const ProposalDraftSchema = ProposalSchema.omit({ id: true, createdAt: true });
 export const AnchorChangeEventSchema = z.object({
     event: z.enum([
         'tasks.updated',

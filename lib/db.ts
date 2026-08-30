@@ -57,6 +57,7 @@ interface ItemRow {
   assignee?: string | null;
   ai_status?: string | null;
   ai_result?: string | null;
+  ai_status_at?: string | null;
   // habit-side
   group?: string | null;
   streak?: number | null;
@@ -105,6 +106,7 @@ function itemFromRow(row: ItemRow): Item {
       assignee: row.assignee ?? undefined,
       aiStatus: row.ai_status ?? undefined,
       aiResult: row.ai_result ?? undefined,
+      aiStatusAt: row.ai_status_at ?? undefined,
       pausedAt: row.paused_at ?? undefined,
       pausedUntil: row.paused_until ?? undefined,
       reminderTime: row.reminder_time ?? undefined,
@@ -178,6 +180,7 @@ function itemFromRow(row: ItemRow): Item {
     assignee: row.assignee ?? undefined,
     aiStatus: row.ai_status ?? undefined,
     aiResult: row.ai_result ?? undefined,
+    aiStatusAt: row.ai_status_at ?? undefined,
     pausedAt: row.paused_at ?? undefined,
     pausedUntil: row.paused_until ?? undefined,
     reminderTime: row.reminder_time ?? undefined,
@@ -217,6 +220,23 @@ function pauseColumns(item: Item): Partial<Pick<ItemRow, 'paused_at' | 'paused_u
  */
 function containerColumns(item: Item): Partial<Pick<ItemRow, 'project_id'>> {
   return item.projectId !== undefined ? { project_id: item.projectId } : {};
+}
+
+/**
+ * The agent status stamp, emitted ONLY when set — the same PGRST204 guard as
+ * `pauseColumns` and `containerColumns`, and for the identical reason their
+ * headers give: an INSERT naming a column absent from PostgREST's schema cache
+ * is rejected outright, so writing this unconditionally would break EVERY task
+ * create against a pre-041 database, not only delegated ones.
+ *
+ * That window is real here rather than theoretical: Vercel deploys on push
+ * while `pnpm db:push` is run by hand, so the build can lead the schema. And
+ * `createItem`'s PGRST204 recovery only strips the reminder columns, so this
+ * would rethrow rather than degrade.
+ */
+function agentStampColumn(item: Item): Partial<Pick<ItemRow, 'ai_status_at'>> {
+  const stamp = (item as { aiStatusAt?: string }).aiStatusAt
+  return stamp !== undefined ? { ai_status_at: stamp } : {}
 }
 
 /**
@@ -297,6 +317,7 @@ function itemToRow(userId: string, item: Item): ItemRow {
     ai_status: item.aiStatus ?? null,
     ai_result: item.aiResult ?? null,
     ...pauseColumns(item),
+    ...agentStampColumn(item),
     ...containerColumns(item),
     ...reminderColumns(item),
   };
@@ -344,7 +365,22 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
   if ('notes' in updates) row.notes = updates.notes ?? null;
   if ('parentItemId' in updates) row.parent_item_id = updates.parentItemId ?? null;
   if ('assignee' in updates) row.assignee = updates.assignee ?? null;
-  if ('aiStatus' in updates) row.ai_status = updates.aiStatus ?? null;
+  if ('aiStatus' in updates) {
+    row.ai_status = updates.aiStatus ?? null;
+    // Stamped WITH the status, never on its own (migration 041). Writing them
+    // together is what stops the timestamp drifting from the state it
+    // describes — and it is why `aiStatusAt` has no branch of its own here:
+    // nothing may set it alone. The allowlist suite knows it as a declared
+    // COMPANION_COLUMN of `aiStatus`.
+    //
+    // An EXPLICIT stamp wins over `now`, and that is what makes undo honest.
+    // `diffItem` captures both fields together, so ⌘Z on an agent status
+    // change carries the original time back — without this the restored state
+    // would be dated to the moment of the undo, and a question asked six hours
+    // ago would read "Needs you just now" with the real time unrecoverable.
+    const explicit = (updates as { aiStatusAt?: string }).aiStatusAt;
+    row.ai_status_at = explicit ?? new Date().toISOString();
+  }
   if ('aiResult' in updates) row.ai_result = updates.aiResult ?? null;
   // Reminders (migration 032). Nulls pass through and MEAN something here —
   // null is how a reminder is turned off, so a `?? null` guard is the
@@ -452,6 +488,48 @@ export function getItemEventsAvailable(): boolean {
   return itemEventsAvailable;
 }
 
+/**
+ * The insert itself, awaitable.
+ *
+ * Split out from `recordItemEvent` so a caller that NEEDS to know whether the
+ * row landed can wait for it. Almost nothing does — a trace that failed is a
+ * missing line in a feed — but a question the user is supposed to answer is not
+ * a trace, and a route that returns 200 for a write it never confirmed is
+ * lying. Resolves false rather than throwing, because every existing caller
+ * treats a failed event as a non-event.
+ */
+async function insertItemEvent(
+  itemId: string,
+  itemType: string,
+  action: string,
+  payload: Record<string, unknown>,
+  userId?: string,
+  client?: DbClient,
+): Promise<boolean> {
+  if (!itemEventsAvailable) return false;
+  const supabase = client ?? createClient();
+  const cleanPayload = Object.fromEntries(
+    Object.entries(payload).map(([k, v]) => [k, v === undefined ? null : v])
+  );
+  try {
+    const { error } = await supabase.from('item_events').insert({
+      ...(userId ? { user_id: userId } : {}),
+      item_id: itemId,
+      item_type: itemType,
+      action,
+      payload: cleanPayload,
+    });
+    if (error) {
+      if (missingEventsTable(error)) itemEventsAvailable = false;
+      else console.error('item_events insert failed', error);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function recordItemEvent(
   itemId: string,
   itemType: string,
@@ -513,6 +591,68 @@ export function recordCheckin(
   note: string,
 ): void {
   recordItemEvent(itemId, itemType, 'checkin', { goalId, dateStr, note });
+}
+
+/**
+ * The user's answer to a question a delegated agent asked.
+ *
+ * `blocked` is the one agent state that wants something FROM the user, and
+ * until this existed the agent could ask and nobody could reply — the loop was
+ * open at exactly the point where a human was needed. The answer rides
+ * item_events rather than a new column because that is what the trail is for:
+ * it is a thing that happened, it belongs in the history beside the status
+ * changes it sits between, and it must survive the item's hard delete.
+ *
+ * Fire-and-forget like every other event write. The status flip back to
+ * `queued` is the load-bearing half and goes through the ordinary item update;
+ * losing the text would be a shame, losing the flip would strand the work.
+ */
+export function recordAgentReply(itemId: string, itemType: string, text: string): void {
+  recordItemEvent(itemId, itemType, 'agent_reply', { text });
+}
+
+/** How many tappable answers a question may offer. */
+export const MAX_QUESTION_OPTIONS = 4;
+
+/**
+ * The question half of `blocked`, with answers the user can tap.
+ *
+ * `aiResult` already carries the question text, and it always will — an agent
+ * that only reports `blocked` keeps working exactly as before. What it cannot
+ * carry is a SHAPE, and "which Dana?" deserves two buttons rather than a text
+ * box the user has to retype a name into.
+ *
+ * Options live in the event payload rather than in a new `items` column on
+ * purpose: every `taskShape` field spreads into the frozen `tasks[]`
+ * projection that the OpenClaw plugin `safeParse`s, and `item_events.payload`
+ * is already `jsonb` with an open `action` — its own header anticipated this
+ * ("a future action … is additive, not a migration"). So this costs no schema
+ * change and cannot drift a contract.
+ *
+ * The service-role path must pass `userId`: `item_events.user_id` defaults to
+ * `auth.uid()`, and the agent API has no auth context.
+ *
+ * AWAITED, unlike every other event writer. The rest of them are traces, and a
+ * lost trace is a missing line in a feed; this one is a question a human is
+ * meant to answer, and losing it strands the agent waiting on a reply that can
+ * never come.
+ */
+export async function recordAgentQuestion(
+  itemId: string,
+  itemType: string,
+  question: string,
+  options: string[],
+  userId?: string,
+  client?: DbClient,
+): Promise<boolean> {
+  return insertItemEvent(
+    itemId,
+    itemType,
+    'agent_question',
+    { question, options: options.slice(0, MAX_QUESTION_OPTIONS) },
+    userId,
+    client,
+  );
 }
 
 /**

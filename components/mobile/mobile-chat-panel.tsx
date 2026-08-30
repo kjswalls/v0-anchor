@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react';
 import { ChatConversation } from '@/components/ai/chat-conversation';
+import { ProposalCard } from '@/components/ai/proposal-card';
 import { SurfaceHeader } from '@/components/primitives/surface-header';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { useChatStore } from '@/lib/chat-store';
@@ -37,6 +38,7 @@ export function MobileChatPanel({ onOpenSettings, headerAccessory }: MobileChatP
       </SurfaceHeader>
 
       <div className="relative flex min-h-0 flex-1 flex-col">
+        <ProposalCard className="mx-[10px] shrink-0" />
         {/* cardedReplies: with the panel gone the conversation sits on the
             paper, and the card is what separates a reply from it
             (design/mobile-redesign/ChatTab.dc.html). */}

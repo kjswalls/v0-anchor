@@ -5,6 +5,7 @@ import { buildAnchorContext } from './ai-context';
 import { goalsEnabled } from './extension-gates';
 import { buildBeaconSystemPrompt } from './beacon-system-prompt';
 import { stripReasoningTags } from './chat-utils';
+import { parseSseFrames } from './sse';
 
 /**
  * Shared chat state + streaming logic for Beacon/OpenClaw, extracted from
@@ -55,6 +56,13 @@ interface ChatStore {
   openclawChatUrl: string | null;
   openclawAgentIdDisplay: string | null;
   openclawAnchorApiKey: string | null;
+  /**
+   * True once a gateway URL *and* token are stored server-side. Selects the
+   * transport: gateway chat is proxied through /api/chat (durable sessions,
+   * operator token never in the browser), and only accounts that have not set
+   * one up still POST at the plugin's /plugins/anchor/chat.
+   */
+  openclawGatewayConfigured: boolean;
 
   /** Load persisted history (24h TTL). Call once from the shell. */
   hydrate: () => void;
@@ -67,6 +75,18 @@ interface ChatStore {
 
 export function createChatStore(config: ChatThreadConfig) {
   const { historyKey, sessionKey, focusItemId } = config;
+
+  /**
+   * Resolves once this thread knows which transport it is on.
+   *
+   * syncOpenclawInfo fires unawaited, and send() reads the answer
+   * synchronously — so a user who opens the panel and types straight away
+   * could have their first message take the plugin path with a gateway
+   * configured, or be told "OpenClaw not connected yet" when it is. One
+   * message on the wrong transport is not a crash, which is exactly why it
+   * would have gone unnoticed.
+   */
+  let transportReady: Promise<void> | null = null;
 
   function saveHistory(messages: ChatMessage[]) {
     if (messages.length === 0) return;
@@ -98,6 +118,26 @@ export function createChatStore(config: ChatThreadConfig) {
       });
     };
 
+    /**
+     * Remove the placeholder turn a stopped reply never filled.
+     *
+     * `send` pushes an empty assistant message up front so the typing dots have
+     * somewhere to live. Aborting used to just return, leaving that empty
+     * bubble in the transcript AND in localStorage — a turn that never fills,
+     * offers no "Turn this into a plan" (gated on content), and suppresses the
+     * openers forever after, since those key on an empty transcript.
+     *
+     * Only ever drops a LAST assistant turn that is still empty, so a reply
+     * stopped halfway keeps whatever text had already arrived — that partial
+     * answer is usually why the user hit stop.
+     */
+    const dropEmptyAssistantTurn = () => {
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        return last?.role === 'assistant' && last.content === '' ? prev.slice(0, -1) : prev;
+      });
+    };
+
     return {
       messages: [],
       isLoading: false,
@@ -106,6 +146,7 @@ export function createChatStore(config: ChatThreadConfig) {
       openclawChatUrl: null,
       openclawAgentIdDisplay: null,
       openclawAnchorApiKey: null,
+      openclawGatewayConfigured: false,
 
       hydrate: () => {
         if (get().hydrated) return;
@@ -130,9 +171,28 @@ export function createChatStore(config: ChatThreadConfig) {
 
       syncOpenclawInfo: () => {
         if (useAISettingsStore.getState().provider !== 'openclaw') {
-          set({ openclawChatUrl: null, openclawAgentIdDisplay: null, openclawAnchorApiKey: null });
+          set({
+            openclawChatUrl: null,
+            openclawAgentIdDisplay: null,
+            openclawAnchorApiKey: null,
+            openclawGatewayConfigured: false,
+          });
           return;
         }
+
+        // Gateway status decides the transport; the legacy chat-url lookup
+        // stays as the fallback for accounts still on the plugin path.
+        // Independent requests so one failing endpoint cannot blank the other.
+        transportReady = fetch('/api/agent/gateway')
+          .then((r) => (r.ok ? r.json() : null))
+          .then((gateway) =>
+            set({
+              openclawGatewayConfigured: Boolean(gateway?.configured),
+              ...(gateway?.agentId ? { openclawAgentIdDisplay: gateway.agentId } : {}),
+            })
+          )
+          .catch(() => set({ openclawGatewayConfigured: false }));
+
         fetch('/api/agent/chat-url')
           .then((r) => {
             if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -174,6 +234,11 @@ export function createChatStore(config: ChatThreadConfig) {
         set({ isLoading: true });
         setMessages((prev) => [...prev, { role: 'assistant', content: '', timestamp: Date.now() }]);
 
+        // Declared out here so `finally` can tell "my controller" from a newer
+        // request's — clearing the store's reference unconditionally would let
+        // a finishing request disarm the stop button of the one after it.
+        let controller: AbortController | null = null;
+
         try {
           const { items, projects, itemTypes, routines, programs, goals, userTimezone } =
             usePlannerStore.getState();
@@ -195,7 +260,15 @@ export function createChatStore(config: ChatThreadConfig) {
             systemPrompt ||
             buildBeaconSystemPrompt(itemTypes.map((t) => t.labelPlural.toLowerCase()));
 
-          if (provider === 'openclaw') {
+          // Wait for the transport answer if it is still in flight, so the
+          // first message of a session cannot take the wrong path.
+          if (provider === 'openclaw' && transportReady) {
+            await transportReady;
+          }
+
+          // Gateway transport rides the shared /api/chat path below — one
+          // client code path for every tier, translation done server-side.
+          if (provider === 'openclaw' && !get().openclawGatewayConfigured) {
             const { openclawChatUrl, openclawAnchorApiKey } = get();
             if (!openclawChatUrl) {
               patchLastAssistant(() => ({
@@ -233,7 +306,10 @@ export function createChatStore(config: ChatThreadConfig) {
                 timestamp: Date.now(),
               }));
             } catch (err) {
-              if (err instanceof DOMException && err.name === 'AbortError') return;
+              if (err instanceof DOMException && err.name === 'AbortError') {
+                dropEmptyAssistantTurn();
+                return;
+              }
               const msg = err instanceof Error ? err.message : 'Unknown error';
               patchLastAssistant(() => ({
                 role: 'assistant',
@@ -247,9 +323,20 @@ export function createChatStore(config: ChatThreadConfig) {
             return;
           }
 
+          // The stop button reaches HERE, not just the plugin branch below it.
+          // This fetch carried no signal until now, so `stop()` was a silent
+          // no-op on the transport that serves openai and every gateway user —
+          // the square stayed up, the reply kept arriving, and the composer
+          // stayed disabled. Claimed otherwise in an earlier comment; it was
+          // wrong.
+          abortController?.abort();
+          controller = new AbortController();
+          abortController = controller;
+
           const res = await fetch('/api/chat', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            signal: controller.signal,
             body: JSON.stringify({
               messages: updatedMessages,
               context,
@@ -257,46 +344,39 @@ export function createChatStore(config: ChatThreadConfig) {
               apiKey,
               model,
               systemPrompt: effectiveSystemPrompt,
+              // Which THREAD this is, never the session key itself. The server
+              // derives the gateway key from this plus the authenticated user,
+              // so a browser can't address another thread or the gateway's
+              // reserved namespaces. Ignored by the non-gateway providers.
+              threadItemId: focusItemId ?? null,
             }),
           });
 
           if (!res.body) throw new Error('No response body');
 
-          const reader = res.body.getReader();
-          const decoder = new TextDecoder();
-          let buffer = '';
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split('\n');
-            buffer = lines.pop() ?? '';
-            for (const line of lines) {
-              if (!line.startsWith('data: ')) continue;
-              const payload = line.slice(6).trim();
-              if (payload === '[DONE]') break;
-              try {
-                const { content } = JSON.parse(payload);
-                if (content) {
-                  patchLastAssistant((last) => ({ ...last, content: last.content + content }));
-                }
-              } catch {
-                /* skip malformed */
-              }
+          // Token-by-token: /api/chat streams real provider deltas. Errors
+          // arrive as content ("[Error: …]"), so there is no error frame here.
+          for await (const frame of parseSseFrames(res.body)) {
+            if (frame.content) {
+              patchLastAssistant((last) => ({ ...last, content: last.content + frame.content }));
             }
           }
-        } catch {
-          patchLastAssistant((last) =>
-            last.content === ''
-              ? {
-                  role: 'assistant',
-                  content: 'Sorry, something went wrong. Please try again.',
-                  timestamp: Date.now(),
-                }
-              : last
-          );
+        } catch (err) {
+          if (err instanceof DOMException && err.name === 'AbortError') {
+            dropEmptyAssistantTurn();
+          } else {
+            patchLastAssistant((last) =>
+              last.content === ''
+                ? {
+                    role: 'assistant',
+                    content: 'Sorry, something went wrong. Please try again.',
+                    timestamp: Date.now(),
+                  }
+                : last
+            );
+          }
         } finally {
+          if (abortController === controller) abortController = null;
           set({ isLoading: false });
         }
       },

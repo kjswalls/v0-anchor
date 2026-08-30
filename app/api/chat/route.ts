@@ -1,6 +1,13 @@
 import { NextRequest } from 'next/server'
 import OpenAI from 'openai'
 import { BEACON_SYSTEM_PROMPT } from '@/lib/beacon-system-prompt'
+import { createClient } from '@/lib/supabase-server'
+import {
+  chatSessionKey,
+  getGatewayConfig,
+  itemSessionKey,
+  streamGatewayChat,
+} from '@/lib/openclaw-gateway'
 
 const COMING_SOON_MESSAGE =
   'This provider is coming soon! For now, add an OpenAI API key in Settings → AI Assistant.'
@@ -45,16 +52,60 @@ export async function POST(req: NextRequest) {
     apiKey,
     systemPrompt,
     context,
+    threadItemId,
   } = await req.json()
 
   const encoder = new TextEncoder()
 
-  // ── OpenClaw provider — use POST /api/openclaw/openclaw-chat ───────────────
+  // ── OpenClaw gateway ───────────────────────────────────────────────────────
+  // Proxied here rather than called from the browser: the gateway token is full
+  // operator access and stays server-side. Chunks are translated into Anchor's
+  // own frames, so the client parser is the same one the OpenAI path feeds.
   if (provider === 'openclaw') {
-    return new Response(
-      streamChars('OpenClaw chat uses /api/openclaw/openclaw-chat.'),
-      { status: 400, headers: SSE_HEADERS }
-    )
+    try {
+      const supabase = await createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        return new Response(streamChars('Sign in to use your OpenClaw gateway.'), {
+          headers: SSE_HEADERS,
+        })
+      }
+
+      const config = await getGatewayConfig(user.id)
+      if (!config) {
+        // Not an error: this account simply has not moved off the plugin chat
+        // path yet, and the client only routes here when it believes a gateway
+        // is configured.
+        return new Response(
+          streamChars('No OpenClaw gateway configured — add one in Settings → AI Assistant.'),
+          { headers: SSE_HEADERS }
+        )
+      }
+
+      const resolvedPrompt = systemPrompt || BEACON_SYSTEM_PROMPT
+      const stream = await streamGatewayChat({
+        config,
+        // Derived from the authenticated user, never taken from the body. The
+        // client names which THREAD it is (an item id, or nothing for the
+        // global conversation); the key itself is built here, so a browser
+        // cannot address another user's thread or a reserved gateway
+        // namespace. Per-item threads get their own durable gateway session.
+        sessionKey:
+          typeof threadItemId === 'string' && threadItemId
+            ? itemSessionKey(user.id, threadItemId)
+            : chatSessionKey(user.id),
+        messages: [
+          { role: 'system', content: context ? `${resolvedPrompt}\n\n${context}` : resolvedPrompt },
+          ...messages,
+        ],
+      })
+      return new Response(stream, { headers: SSE_HEADERS })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error'
+      return new Response(streamChars(`Could not reach your gateway — ${msg}`, 0), {
+        headers: SSE_HEADERS,
+      })
+    }
   }
 
   // ── Anthropic (coming soon) / none ─────────────────────────────────────────
@@ -72,6 +123,21 @@ export async function POST(req: NextRequest) {
   }
 
   // ── OpenAI provider ────────────────────────────────────────────────────────
+  // A caller's OWN key is self-funded and needs no session. Falling back to the
+  // deployment's key does: without this, anyone could POST here and spend the
+  // owner's OpenAI budget. Pre-dates the gateway work; same hole, same fix.
+  if (!apiKey && process.env.OPENAI_API_KEY) {
+    try {
+      const supabase = await createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) {
+        return new Response(streamChars('Sign in to use the assistant.'), { headers: SSE_HEADERS })
+      }
+    } catch {
+      return new Response(streamChars('Sign in to use the assistant.'), { headers: SSE_HEADERS })
+    }
+  }
+
   const resolvedSystemPrompt = systemPrompt || BEACON_SYSTEM_PROMPT
   const systemMessage = context ? `${resolvedSystemPrompt}\n\n${context}` : resolvedSystemPrompt
 

@@ -32,6 +32,11 @@ export type {
   Goal,
   GoalState,
   GoalRole,
+  Proposal,
+  ProposalDraft,
+  ProposalOperation,
+  ProposalCreateOp,
+  ProposalUpdateOp,
 } from '@anchor-app/types'
 
 // ── App-only types ────────────────────────────────────────────────────────────

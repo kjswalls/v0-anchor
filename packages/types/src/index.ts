@@ -34,6 +34,12 @@ export {
   GoalUpdateSchema,
   AnchorContextResponseSchema,
   AnchorChangeEventSchema,
+  AiStatusSchema,
+  ProposalCreateOpSchema,
+  ProposalUpdateOpSchema,
+  ProposalOperationSchema,
+  ProposalSchema,
+  ProposalDraftSchema,
 } from './schemas.js'
 
 // Schema-derived field lists (values, not types)
@@ -73,6 +79,12 @@ import {
   ItemTypeDefSchema,
   AnchorContextResponseSchema,
   AnchorChangeEventSchema,
+  AiStatusSchema,
+  ProposalCreateOpSchema,
+  ProposalUpdateOpSchema,
+  ProposalOperationSchema,
+  ProposalSchema,
+  ProposalDraftSchema,
 } from './schemas.js'
 
 export type Priority         = z.infer<typeof PrioritySchema>
@@ -103,3 +115,9 @@ export type KnownItemType    = TaskItem['type'] | HabitItem['type']
 export type ItemTypeDef      = z.infer<typeof ItemTypeDefSchema>
 export type AnchorContextResponse = z.infer<typeof AnchorContextResponseSchema>
 export type AnchorChangeEvent     = z.infer<typeof AnchorChangeEventSchema>
+export type AiStatus              = z.infer<typeof AiStatusSchema>
+export type ProposalCreateOp      = z.infer<typeof ProposalCreateOpSchema>
+export type ProposalUpdateOp      = z.infer<typeof ProposalUpdateOpSchema>
+export type ProposalOperation     = z.infer<typeof ProposalOperationSchema>
+export type Proposal              = z.infer<typeof ProposalSchema>
+export type ProposalDraft         = z.infer<typeof ProposalDraftSchema>

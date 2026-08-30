@@ -21,6 +21,7 @@ import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { usePaletteStore } from '@/lib/palette-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
+import { useGatewayStore } from '@/lib/gateway-store';
 import { useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
 import { useUIStore } from '@/lib/ui-store';
 import { flushSettings } from '@/lib/settings-service';
@@ -336,6 +337,11 @@ export default function SettingsPage() {
   const channelSecretsTick = useChannelSecretsStore(
     (s) => `${s.available}|${JSON.stringify(s.setKeys)}`
   );
+  // The URL is readable state and the text control compares against the last
+  // RENDERED value, so it has to ride the tick or the next edit is dropped.
+  const gatewayTick = useGatewayStore(
+    (s) => `${s.available}|${s.gatewayUrl}|${s.hasToken}|${s.error ?? ''}`
+  );
   // The Keyboard pane's own rows subscribe directly (ShortcutsPanel), so this
   // is for the OTHER path a binding is drawn on: a search result, which goes
   // through the generic rowFor and reads record.read(ctx) non-reactively.
@@ -404,6 +410,7 @@ export default function SettingsPage() {
       paletteTick,
       extensionsTick,
       channelSecretsTick,
+      gatewayTick,
       shortcutsTick,
     ]
   );

@@ -334,6 +334,18 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     aiStatus: z.ZodOptional<z.ZodString>;
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
+    /**
+     * When `aiStatus` last changed (migration 041). Read-only client-side —
+     * stamped by lib/db.ts as a companion of the status write, never on its own,
+     * so it cannot drift from the state it timestamps.
+     *
+     * Same "small and stable" class as the three fields above it: it changes
+     * exactly as often as `aiStatus` does, which is a handful of times over a
+     * delegated task's life. That is what keeps it out of the hazard the schema
+     * note names — a field that changes OFTEN entering the frozen `tasks[]`
+     * projection and the 50-entry undo stack.
+     */
+    aiStatusAt: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     status: "pending" | "completed" | "cancelled";
     id: string;
@@ -364,6 +376,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }, {
     status: "pending" | "completed" | "cancelled";
     id: string;
@@ -394,6 +407,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }>, {
     status: "pending" | "completed" | "cancelled";
     id: string;
@@ -424,6 +438,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }, {
     status: "pending" | "completed" | "cancelled";
     id: string;
@@ -454,6 +469,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }>;
 export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     group: z.ZodString;
@@ -673,6 +689,18 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     aiStatus: z.ZodOptional<z.ZodString>;
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
+    /**
+     * When `aiStatus` last changed (migration 041). Read-only client-side —
+     * stamped by lib/db.ts as a companion of the status write, never on its own,
+     * so it cannot drift from the state it timestamps.
+     *
+     * Same "small and stable" class as the three fields above it: it changes
+     * exactly as often as `aiStatus` does, which is a handful of times over a
+     * delegated task's life. That is what keeps it out of the hazard the schema
+     * note names — a field that changes OFTEN entering the frozen `tasks[]`
+     * projection and the 50-entry undo stack.
+     */
+    aiStatusAt: z.ZodOptional<z.ZodString>;
     type: z.ZodLiteral<"task">;
 }, "strip", z.ZodTypeAny, {
     type: "task";
@@ -705,6 +733,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }, {
     type: "task";
     status: "pending" | "completed" | "cancelled";
@@ -736,6 +765,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }>, {
     type: "task";
     status: "pending" | "completed" | "cancelled";
@@ -767,6 +797,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }, {
     type: "task";
     status: "pending" | "completed" | "cancelled";
@@ -798,6 +829,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }>;
 export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     /**
@@ -1018,6 +1050,18 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     aiStatus: z.ZodOptional<z.ZodString>;
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
+    /**
+     * When `aiStatus` last changed (migration 041). Read-only client-side —
+     * stamped by lib/db.ts as a companion of the status write, never on its own,
+     * so it cannot drift from the state it timestamps.
+     *
+     * Same "small and stable" class as the three fields above it: it changes
+     * exactly as often as `aiStatus` does, which is a handful of times over a
+     * delegated task's life. That is what keeps it out of the hazard the schema
+     * note names — a field that changes OFTEN entering the frozen `tasks[]`
+     * projection and the 50-entry undo stack.
+     */
+    aiStatusAt: z.ZodOptional<z.ZodString>;
     type: z.ZodLiteral<"custom">;
     /**
      * The user-defined type's machine name (item_types.name), e.g. 'errand'.
@@ -1061,6 +1105,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }, {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -1093,6 +1138,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }>, {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -1125,6 +1171,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }, {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -1157,6 +1204,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }>;
 export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z.ZodObject<{
     /**
@@ -1226,6 +1274,18 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus: z.ZodOptional<z.ZodString>;
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
+    /**
+     * When `aiStatus` last changed (migration 041). Read-only client-side —
+     * stamped by lib/db.ts as a companion of the status write, never on its own,
+     * so it cannot drift from the state it timestamps.
+     *
+     * Same "small and stable" class as the three fields above it: it changes
+     * exactly as often as `aiStatus` does, which is a handful of times over a
+     * delegated task's life. That is what keeps it out of the hazard the schema
+     * note names — a field that changes OFTEN entering the frozen `tasks[]`
+     * projection and the 50-entry undo stack.
+     */
+    aiStatusAt: z.ZodOptional<z.ZodString>;
     type: z.ZodLiteral<"task">;
 }, "strip", z.ZodTypeAny, {
     type: "task";
@@ -1258,6 +1318,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }, {
     type: "task";
     status: "pending" | "completed" | "cancelled";
@@ -1289,6 +1350,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }>, z.ZodObject<{
     /**
      * Optional, exactly like the task side's — one CLASSIFY axis means one field
@@ -1459,6 +1521,18 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     aiStatus: z.ZodOptional<z.ZodString>;
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
+    /**
+     * When `aiStatus` last changed (migration 041). Read-only client-side —
+     * stamped by lib/db.ts as a companion of the status write, never on its own,
+     * so it cannot drift from the state it timestamps.
+     *
+     * Same "small and stable" class as the three fields above it: it changes
+     * exactly as often as `aiStatus` does, which is a handful of times over a
+     * delegated task's life. That is what keeps it out of the hazard the schema
+     * note names — a field that changes OFTEN entering the frozen `tasks[]`
+     * projection and the 50-entry undo stack.
+     */
+    aiStatusAt: z.ZodOptional<z.ZodString>;
     type: z.ZodLiteral<"custom">;
     /**
      * The user-defined type's machine name (item_types.name), e.g. 'errand'.
@@ -1502,6 +1576,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }, {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -1534,6 +1609,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }>]>, {
     type: "habit";
     status: "pending" | "done" | "skipped";
@@ -1589,6 +1665,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 } | {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -1621,6 +1698,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }, {
     type: "habit";
     status: "pending" | "done" | "skipped";
@@ -1676,6 +1754,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 } | {
     type: "custom";
     status: "pending" | "completed" | "cancelled";
@@ -1708,6 +1787,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     assignee?: string | undefined;
     aiStatus?: string | undefined;
     aiResult?: string | undefined;
+    aiStatusAt?: string | undefined;
 }>;
 export declare const ItemTypeDefSchema: z.ZodObject<{
     id: z.ZodString;
@@ -1736,6 +1816,16 @@ export declare const ItemTypeDefSchema: z.ZodObject<{
     icon?: string | undefined;
     config?: Record<string, unknown> | undefined;
 }>;
+/**
+ * The delegation lifecycle.
+ *
+ * A FROZEN external contract from the moment a real agent writes it: the UI
+ * renders these values, the MCP tool surface offers them, and an agent that
+ * learned one spelling cannot be asked to relearn it. Extend additively, never
+ * rename. Named here rather than inlined so the app, the agent API and the tool
+ * surface cannot drift into three slightly different vocabularies.
+ */
+export declare const AiStatusSchema: z.ZodEnum<["queued", "working", "blocked", "done", "failed"]>;
 export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     id: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
     title: z.ZodString;
@@ -1797,7 +1887,19 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     assignee: z.ZodOptional<z.ZodString>;
     /** Agent's latest result/summary for this item. */
     aiResult: z.ZodOptional<z.ZodString>;
-}, "pausedAt" | "pausedUntil" | "projectId">, "strip", z.ZodTypeAny, {
+    /**
+     * When `aiStatus` last changed (migration 041). Read-only client-side —
+     * stamped by lib/db.ts as a companion of the status write, never on its own,
+     * so it cannot drift from the state it timestamps.
+     *
+     * Same "small and stable" class as the three fields above it: it changes
+     * exactly as often as `aiStatus` does, which is a handful of times over a
+     * delegated task's life. That is what keeps it out of the hazard the schema
+     * note names — a field that changes OFTEN entering the frozen `tasks[]`
+     * projection and the 50-entry undo stack.
+     */
+    aiStatusAt: z.ZodOptional<z.ZodString>;
+}, "pausedAt" | "pausedUntil" | "projectId" | "aiStatusAt">, "strip", z.ZodTypeAny, {
     title: string;
     status?: "pending" | "completed" | "cancelled" | undefined;
     repeatFrequency?: "none" | "daily" | "weekdays" | "weekends" | "monthly" | "custom" | undefined;
@@ -3168,6 +3270,18 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiStatus: z.ZodOptional<z.ZodString>;
         /** Agent's latest result/summary for this item. */
         aiResult: z.ZodOptional<z.ZodString>;
+        /**
+         * When `aiStatus` last changed (migration 041). Read-only client-side —
+         * stamped by lib/db.ts as a companion of the status write, never on its own,
+         * so it cannot drift from the state it timestamps.
+         *
+         * Same "small and stable" class as the three fields above it: it changes
+         * exactly as often as `aiStatus` does, which is a handful of times over a
+         * delegated task's life. That is what keeps it out of the hazard the schema
+         * note names — a field that changes OFTEN entering the frozen `tasks[]`
+         * projection and the 50-entry undo stack.
+         */
+        aiStatusAt: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         status: "pending" | "completed" | "cancelled";
         id: string;
@@ -3198,6 +3312,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }, {
         status: "pending" | "completed" | "cancelled";
         id: string;
@@ -3228,6 +3343,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }>, {
         status: "pending" | "completed" | "cancelled";
         id: string;
@@ -3258,6 +3374,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }, {
         status: "pending" | "completed" | "cancelled";
         id: string;
@@ -3288,6 +3405,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }>, "many">;
     habits: z.ZodArray<z.ZodEffects<z.ZodObject<{
         group: z.ZodString;
@@ -3551,6 +3669,18 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiStatus: z.ZodOptional<z.ZodString>;
         /** Agent's latest result/summary for this item. */
         aiResult: z.ZodOptional<z.ZodString>;
+        /**
+         * When `aiStatus` last changed (migration 041). Read-only client-side —
+         * stamped by lib/db.ts as a companion of the status write, never on its own,
+         * so it cannot drift from the state it timestamps.
+         *
+         * Same "small and stable" class as the three fields above it: it changes
+         * exactly as often as `aiStatus` does, which is a handful of times over a
+         * delegated task's life. That is what keeps it out of the hazard the schema
+         * note names — a field that changes OFTEN entering the frozen `tasks[]`
+         * projection and the 50-entry undo stack.
+         */
+        aiStatusAt: z.ZodOptional<z.ZodString>;
         type: z.ZodLiteral<"task">;
     }, "strip", z.ZodTypeAny, {
         type: "task";
@@ -3583,6 +3713,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }, {
         type: "task";
         status: "pending" | "completed" | "cancelled";
@@ -3614,6 +3745,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }>, z.ZodObject<{
         /**
          * Optional, exactly like the task side's — one CLASSIFY axis means one field
@@ -3784,6 +3916,18 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         aiStatus: z.ZodOptional<z.ZodString>;
         /** Agent's latest result/summary for this item. */
         aiResult: z.ZodOptional<z.ZodString>;
+        /**
+         * When `aiStatus` last changed (migration 041). Read-only client-side —
+         * stamped by lib/db.ts as a companion of the status write, never on its own,
+         * so it cannot drift from the state it timestamps.
+         *
+         * Same "small and stable" class as the three fields above it: it changes
+         * exactly as often as `aiStatus` does, which is a handful of times over a
+         * delegated task's life. That is what keeps it out of the hazard the schema
+         * note names — a field that changes OFTEN entering the frozen `tasks[]`
+         * projection and the 50-entry undo stack.
+         */
+        aiStatusAt: z.ZodOptional<z.ZodString>;
         type: z.ZodLiteral<"custom">;
         /**
          * The user-defined type's machine name (item_types.name), e.g. 'errand'.
@@ -3827,6 +3971,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }, {
         type: "custom";
         status: "pending" | "completed" | "cancelled";
@@ -3859,6 +4004,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }>]>, {
         type: "habit";
         status: "pending" | "done" | "skipped";
@@ -3914,6 +4060,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     } | {
         type: "custom";
         status: "pending" | "completed" | "cancelled";
@@ -3946,6 +4093,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }, {
         type: "habit";
         status: "pending" | "done" | "skipped";
@@ -4001,6 +4149,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     } | {
         type: "custom";
         status: "pending" | "completed" | "cancelled";
@@ -4033,6 +4182,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }>, "many">>;
     routines: z.ZodOptional<z.ZodArray<z.ZodObject<{
         /** Member item ids (routine_items), in routine-internal order. */
@@ -4245,6 +4395,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }[];
     habits: {
         status: "pending" | "done" | "skipped";
@@ -4344,6 +4495,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     } | {
         type: "custom";
         status: "pending" | "completed" | "cancelled";
@@ -4376,6 +4528,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     })[] | undefined;
     routines?: {
         id: string;
@@ -4449,6 +4602,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     }[];
     habits: {
         status: "pending" | "done" | "skipped";
@@ -4548,6 +4702,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     } | {
         type: "custom";
         status: "pending" | "completed" | "cancelled";
@@ -4580,6 +4735,7 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         assignee?: string | undefined;
         aiStatus?: string | undefined;
         aiResult?: string | undefined;
+        aiStatusAt?: string | undefined;
     })[] | undefined;
     routines?: {
         id: string;
@@ -4620,6 +4776,452 @@ export declare const AnchorContextResponseSchema: z.ZodObject<{
         achievedAt?: string | undefined;
     }[] | undefined;
     schemaVersion?: number | undefined;
+}>;
+export declare const ProposalCreateOpSchema: z.ZodObject<{
+    kind: z.ZodLiteral<"create">;
+    /** Registry type name: 'task', 'habit', or a user-defined slug. */
+    itemType: z.ZodString;
+    /** Required on create — the one field a new item cannot be missing. */
+    title: z.ZodString;
+    project: z.ZodOptional<z.ZodString>;
+    /**
+     * Create this as a child of an existing item (the panel's Subtasks section).
+     *
+     * The breakdown verb: "this is too big" → a handful of steps under it. Only
+     * valid on create — an EXISTING subtask may never be the target of an update
+     * operation, because no view outside its parent's panel shows it, so a
+     * change to one has no visible effect and no way to undo from where the user
+     * is looking. Validation additionally requires that the parent's type allows
+     * children and is not itself a child; nesting has no UI.
+     */
+    parentItemId: z.ZodOptional<z.ZodString>;
+    startDate: z.ZodOptional<z.ZodString>;
+    timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
+    startTime: z.ZodOptional<z.ZodString>;
+    priority: z.ZodOptional<z.ZodEnum<["low", "medium", "high"]>>;
+    notes: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    title: string;
+    kind: "create";
+    itemType: string;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+    startTime?: string | undefined;
+    priority?: "low" | "medium" | "high" | undefined;
+    project?: string | undefined;
+    startDate?: string | undefined;
+    notes?: string | undefined;
+    parentItemId?: string | undefined;
+}, {
+    title: string;
+    kind: "create";
+    itemType: string;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+    startTime?: string | undefined;
+    priority?: "low" | "medium" | "high" | undefined;
+    project?: string | undefined;
+    startDate?: string | undefined;
+    notes?: string | undefined;
+    parentItemId?: string | undefined;
+}>;
+export declare const ProposalUpdateOpSchema: z.ZodObject<{
+    kind: z.ZodLiteral<"update">;
+    itemId: z.ZodString;
+    /** Null clears the field, matching the update-schema convention above. */
+    startDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    timeBucket: z.ZodOptional<z.ZodNullable<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>>;
+    startTime: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    priority: z.ZodOptional<z.ZodNullable<z.ZodEnum<["low", "medium", "high"]>>>;
+    status: z.ZodOptional<z.ZodString>;
+    title: z.ZodOptional<z.ZodString>;
+    notes: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    kind: "update";
+    itemId: string;
+    status?: string | undefined;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+    startTime?: string | null | undefined;
+    title?: string | undefined;
+    priority?: "low" | "medium" | "high" | null | undefined;
+    startDate?: string | null | undefined;
+    notes?: string | undefined;
+}, {
+    kind: "update";
+    itemId: string;
+    status?: string | undefined;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+    startTime?: string | null | undefined;
+    title?: string | undefined;
+    priority?: "low" | "medium" | "high" | null | undefined;
+    startDate?: string | null | undefined;
+    notes?: string | undefined;
+}>;
+export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z.ZodObject<{
+    kind: z.ZodLiteral<"create">;
+    /** Registry type name: 'task', 'habit', or a user-defined slug. */
+    itemType: z.ZodString;
+    /** Required on create — the one field a new item cannot be missing. */
+    title: z.ZodString;
+    project: z.ZodOptional<z.ZodString>;
+    /**
+     * Create this as a child of an existing item (the panel's Subtasks section).
+     *
+     * The breakdown verb: "this is too big" → a handful of steps under it. Only
+     * valid on create — an EXISTING subtask may never be the target of an update
+     * operation, because no view outside its parent's panel shows it, so a
+     * change to one has no visible effect and no way to undo from where the user
+     * is looking. Validation additionally requires that the parent's type allows
+     * children and is not itself a child; nesting has no UI.
+     */
+    parentItemId: z.ZodOptional<z.ZodString>;
+    startDate: z.ZodOptional<z.ZodString>;
+    timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
+    startTime: z.ZodOptional<z.ZodString>;
+    priority: z.ZodOptional<z.ZodEnum<["low", "medium", "high"]>>;
+    notes: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    title: string;
+    kind: "create";
+    itemType: string;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+    startTime?: string | undefined;
+    priority?: "low" | "medium" | "high" | undefined;
+    project?: string | undefined;
+    startDate?: string | undefined;
+    notes?: string | undefined;
+    parentItemId?: string | undefined;
+}, {
+    title: string;
+    kind: "create";
+    itemType: string;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+    startTime?: string | undefined;
+    priority?: "low" | "medium" | "high" | undefined;
+    project?: string | undefined;
+    startDate?: string | undefined;
+    notes?: string | undefined;
+    parentItemId?: string | undefined;
+}>, z.ZodObject<{
+    kind: z.ZodLiteral<"update">;
+    itemId: z.ZodString;
+    /** Null clears the field, matching the update-schema convention above. */
+    startDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    timeBucket: z.ZodOptional<z.ZodNullable<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>>;
+    startTime: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    priority: z.ZodOptional<z.ZodNullable<z.ZodEnum<["low", "medium", "high"]>>>;
+    status: z.ZodOptional<z.ZodString>;
+    title: z.ZodOptional<z.ZodString>;
+    notes: z.ZodOptional<z.ZodString>;
+}, "strip", z.ZodTypeAny, {
+    kind: "update";
+    itemId: string;
+    status?: string | undefined;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+    startTime?: string | null | undefined;
+    title?: string | undefined;
+    priority?: "low" | "medium" | "high" | null | undefined;
+    startDate?: string | null | undefined;
+    notes?: string | undefined;
+}, {
+    kind: "update";
+    itemId: string;
+    status?: string | undefined;
+    timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+    startTime?: string | null | undefined;
+    title?: string | undefined;
+    priority?: "low" | "medium" | "high" | null | undefined;
+    startDate?: string | null | undefined;
+    notes?: string | undefined;
+}>]>;
+export declare const ProposalSchema: z.ZodObject<{
+    id: z.ZodString;
+    /** Card headline. Warm and specific — "Here's a lighter Tuesday". */
+    summary: z.ZodString;
+    /** Optional second line explaining the thinking. Never scolding. */
+    rationale: z.ZodOptional<z.ZodString>;
+    /**
+     * Capped because the producer is untrusted by design — on the agent tier it
+     * is somebody else's gateway. The system prompts ask for at most eight;
+     * nothing enforced it, and a 5,000-operation reply would render six visible
+     * lines inside a scroll box under a button reading "Do all of it", then fan
+     * out 5,000 unthrottled inserts on one tap. Twenty is well clear of any
+     * honest plan, so exceeding it is malformed rather than merely long.
+     */
+    operations: z.ZodArray<z.ZodDiscriminatedUnion<"kind", [z.ZodObject<{
+        kind: z.ZodLiteral<"create">;
+        /** Registry type name: 'task', 'habit', or a user-defined slug. */
+        itemType: z.ZodString;
+        /** Required on create — the one field a new item cannot be missing. */
+        title: z.ZodString;
+        project: z.ZodOptional<z.ZodString>;
+        /**
+         * Create this as a child of an existing item (the panel's Subtasks section).
+         *
+         * The breakdown verb: "this is too big" → a handful of steps under it. Only
+         * valid on create — an EXISTING subtask may never be the target of an update
+         * operation, because no view outside its parent's panel shows it, so a
+         * change to one has no visible effect and no way to undo from where the user
+         * is looking. Validation additionally requires that the parent's type allows
+         * children and is not itself a child; nesting has no UI.
+         */
+        parentItemId: z.ZodOptional<z.ZodString>;
+        startDate: z.ZodOptional<z.ZodString>;
+        timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
+        startTime: z.ZodOptional<z.ZodString>;
+        priority: z.ZodOptional<z.ZodEnum<["low", "medium", "high"]>>;
+        notes: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        title: string;
+        kind: "create";
+        itemType: string;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        priority?: "low" | "medium" | "high" | undefined;
+        project?: string | undefined;
+        startDate?: string | undefined;
+        notes?: string | undefined;
+        parentItemId?: string | undefined;
+    }, {
+        title: string;
+        kind: "create";
+        itemType: string;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        priority?: "low" | "medium" | "high" | undefined;
+        project?: string | undefined;
+        startDate?: string | undefined;
+        notes?: string | undefined;
+        parentItemId?: string | undefined;
+    }>, z.ZodObject<{
+        kind: z.ZodLiteral<"update">;
+        itemId: z.ZodString;
+        /** Null clears the field, matching the update-schema convention above. */
+        startDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        timeBucket: z.ZodOptional<z.ZodNullable<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>>;
+        startTime: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        priority: z.ZodOptional<z.ZodNullable<z.ZodEnum<["low", "medium", "high"]>>>;
+        status: z.ZodOptional<z.ZodString>;
+        title: z.ZodOptional<z.ZodString>;
+        notes: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        kind: "update";
+        itemId: string;
+        status?: string | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+        startTime?: string | null | undefined;
+        title?: string | undefined;
+        priority?: "low" | "medium" | "high" | null | undefined;
+        startDate?: string | null | undefined;
+        notes?: string | undefined;
+    }, {
+        kind: "update";
+        itemId: string;
+        status?: string | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+        startTime?: string | null | undefined;
+        title?: string | undefined;
+        priority?: "low" | "medium" | "high" | null | undefined;
+        startDate?: string | null | undefined;
+        notes?: string | undefined;
+    }>]>, "many">;
+    createdAt: z.ZodString;
+}, "strip", z.ZodTypeAny, {
+    id: string;
+    summary: string;
+    operations: ({
+        title: string;
+        kind: "create";
+        itemType: string;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        priority?: "low" | "medium" | "high" | undefined;
+        project?: string | undefined;
+        startDate?: string | undefined;
+        notes?: string | undefined;
+        parentItemId?: string | undefined;
+    } | {
+        kind: "update";
+        itemId: string;
+        status?: string | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+        startTime?: string | null | undefined;
+        title?: string | undefined;
+        priority?: "low" | "medium" | "high" | null | undefined;
+        startDate?: string | null | undefined;
+        notes?: string | undefined;
+    })[];
+    createdAt: string;
+    rationale?: string | undefined;
+}, {
+    id: string;
+    summary: string;
+    operations: ({
+        title: string;
+        kind: "create";
+        itemType: string;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        priority?: "low" | "medium" | "high" | undefined;
+        project?: string | undefined;
+        startDate?: string | undefined;
+        notes?: string | undefined;
+        parentItemId?: string | undefined;
+    } | {
+        kind: "update";
+        itemId: string;
+        status?: string | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+        startTime?: string | null | undefined;
+        title?: string | undefined;
+        priority?: "low" | "medium" | "high" | null | undefined;
+        startDate?: string | null | undefined;
+        notes?: string | undefined;
+    })[];
+    createdAt: string;
+    rationale?: string | undefined;
+}>;
+/** What the model is asked to return; ids and timestamps are stamped locally. */
+export declare const ProposalDraftSchema: z.ZodObject<Omit<{
+    id: z.ZodString;
+    /** Card headline. Warm and specific — "Here's a lighter Tuesday". */
+    summary: z.ZodString;
+    /** Optional second line explaining the thinking. Never scolding. */
+    rationale: z.ZodOptional<z.ZodString>;
+    /**
+     * Capped because the producer is untrusted by design — on the agent tier it
+     * is somebody else's gateway. The system prompts ask for at most eight;
+     * nothing enforced it, and a 5,000-operation reply would render six visible
+     * lines inside a scroll box under a button reading "Do all of it", then fan
+     * out 5,000 unthrottled inserts on one tap. Twenty is well clear of any
+     * honest plan, so exceeding it is malformed rather than merely long.
+     */
+    operations: z.ZodArray<z.ZodDiscriminatedUnion<"kind", [z.ZodObject<{
+        kind: z.ZodLiteral<"create">;
+        /** Registry type name: 'task', 'habit', or a user-defined slug. */
+        itemType: z.ZodString;
+        /** Required on create — the one field a new item cannot be missing. */
+        title: z.ZodString;
+        project: z.ZodOptional<z.ZodString>;
+        /**
+         * Create this as a child of an existing item (the panel's Subtasks section).
+         *
+         * The breakdown verb: "this is too big" → a handful of steps under it. Only
+         * valid on create — an EXISTING subtask may never be the target of an update
+         * operation, because no view outside its parent's panel shows it, so a
+         * change to one has no visible effect and no way to undo from where the user
+         * is looking. Validation additionally requires that the parent's type allows
+         * children and is not itself a child; nesting has no UI.
+         */
+        parentItemId: z.ZodOptional<z.ZodString>;
+        startDate: z.ZodOptional<z.ZodString>;
+        timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
+        startTime: z.ZodOptional<z.ZodString>;
+        priority: z.ZodOptional<z.ZodEnum<["low", "medium", "high"]>>;
+        notes: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        title: string;
+        kind: "create";
+        itemType: string;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        priority?: "low" | "medium" | "high" | undefined;
+        project?: string | undefined;
+        startDate?: string | undefined;
+        notes?: string | undefined;
+        parentItemId?: string | undefined;
+    }, {
+        title: string;
+        kind: "create";
+        itemType: string;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        priority?: "low" | "medium" | "high" | undefined;
+        project?: string | undefined;
+        startDate?: string | undefined;
+        notes?: string | undefined;
+        parentItemId?: string | undefined;
+    }>, z.ZodObject<{
+        kind: z.ZodLiteral<"update">;
+        itemId: z.ZodString;
+        /** Null clears the field, matching the update-schema convention above. */
+        startDate: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        timeBucket: z.ZodOptional<z.ZodNullable<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>>;
+        startTime: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        priority: z.ZodOptional<z.ZodNullable<z.ZodEnum<["low", "medium", "high"]>>>;
+        status: z.ZodOptional<z.ZodString>;
+        title: z.ZodOptional<z.ZodString>;
+        notes: z.ZodOptional<z.ZodString>;
+    }, "strip", z.ZodTypeAny, {
+        kind: "update";
+        itemId: string;
+        status?: string | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+        startTime?: string | null | undefined;
+        title?: string | undefined;
+        priority?: "low" | "medium" | "high" | null | undefined;
+        startDate?: string | null | undefined;
+        notes?: string | undefined;
+    }, {
+        kind: "update";
+        itemId: string;
+        status?: string | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+        startTime?: string | null | undefined;
+        title?: string | undefined;
+        priority?: "low" | "medium" | "high" | null | undefined;
+        startDate?: string | null | undefined;
+        notes?: string | undefined;
+    }>]>, "many">;
+    createdAt: z.ZodString;
+}, "id" | "createdAt">, "strip", z.ZodTypeAny, {
+    summary: string;
+    operations: ({
+        title: string;
+        kind: "create";
+        itemType: string;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        priority?: "low" | "medium" | "high" | undefined;
+        project?: string | undefined;
+        startDate?: string | undefined;
+        notes?: string | undefined;
+        parentItemId?: string | undefined;
+    } | {
+        kind: "update";
+        itemId: string;
+        status?: string | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+        startTime?: string | null | undefined;
+        title?: string | undefined;
+        priority?: "low" | "medium" | "high" | null | undefined;
+        startDate?: string | null | undefined;
+        notes?: string | undefined;
+    })[];
+    rationale?: string | undefined;
+}, {
+    summary: string;
+    operations: ({
+        title: string;
+        kind: "create";
+        itemType: string;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
+        startTime?: string | undefined;
+        priority?: "low" | "medium" | "high" | undefined;
+        project?: string | undefined;
+        startDate?: string | undefined;
+        notes?: string | undefined;
+        parentItemId?: string | undefined;
+    } | {
+        kind: "update";
+        itemId: string;
+        status?: string | undefined;
+        timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
+        startTime?: string | null | undefined;
+        title?: string | undefined;
+        priority?: "low" | "medium" | "high" | null | undefined;
+        startDate?: string | null | undefined;
+        notes?: string | undefined;
+    })[];
+    rationale?: string | undefined;
 }>;
 export declare const AnchorChangeEventSchema: z.ZodObject<{
     event: z.ZodEnum<["tasks.updated", "habits.updated", "projects.updated", "habitGroups.updated"]>;

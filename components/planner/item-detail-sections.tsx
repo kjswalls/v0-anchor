@@ -2,20 +2,26 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { addDays, format, isAfter, startOfDay, startOfWeek, subWeeks } from 'date-fns';
-import { ArrowUp, Check, ChevronDown, Plus, Sparkles, X } from 'lucide-react';
+import { ArrowUp, Check, ChevronDown, Plus, Sparkles, Split, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
 import {
   fetchItemEvents,
   getItemEventsAvailable,
+  recordAgentReply,
   type ItemEvent,
 } from '@/lib/db';
 import { itemChatStore } from '@/lib/chat-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { useProposalStore } from '@/lib/proposal-store';
+import { resolveAICapabilities } from '@/lib/ai-registry';
+import { ProposalCard } from '@/components/ai/proposal-card';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { EXT_HABIT_HEATMAP, resolveEnabled } from '@/lib/extension-registry';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
+import { agentStatusView } from '@/lib/agent-status';
 import { BandLabel } from '@/components/planner/item-bands';
 import { isBulkPaste, MAX_BULK_ITEMS, splitBulkLinesWithMeta } from '@/lib/bulk-add';
 import { toast } from 'sonner';
@@ -46,6 +52,15 @@ function SubtasksSection({ item }: { item: Item }) {
   const { items, addTask, addTasksBulk, deleteTask, toggleTaskStatus } = usePlannerStore();
   const [title, setTitle] = useState('');
 
+  const provider = useAISettingsStore((s) => s.provider);
+  const requestProposal = useProposalStore((s) => s.request);
+  // Scoped to THIS item — see the note in chat-conversation.tsx. A breakdown
+  // loading for another item must not grey out this one's button with no
+  // spinner in sight.
+  const proposalBusy = useProposalStore(
+    (s) => s.status === 'loading' && s.lastRequest?.surface === `item:${item.id}`
+  );
+
   // Live children — the edit dialog holds a SNAPSHOT of the parent, but the
   // subtask list must reflect toggles immediately.
   const children = items.filter(
@@ -61,11 +76,40 @@ function SubtasksSection({ item }: { item: Item }) {
 
   const done = children.filter((c) => c.status === 'completed').length;
 
+  /**
+   * "This is too big" is the moment the assistant is most useful and the moment
+   * the user is least able to phrase a request — so it is a button, not a
+   * prompt. The card answers HERE rather than in the sidebar: this section
+   * often renders inside a dialog, and a suggestion delivered behind it would
+   * be invisible.
+   *
+   * Nesting is excluded because one level is all this panel renders; the
+   * validator and lib/db.ts both refuse a grandchild anyway, so a button here
+   * would only produce a rejected operation.
+   */
+  const canBreakDown =
+    resolveAICapabilities(provider).canPropose && !('parentItemId' in item && item.parentItemId);
+
   return (
     <div className="flex flex-col gap-1.5">
-      <SectionLabel>
-        Subtasks{children.length > 0 ? ` · ${done} of ${children.length}` : ''}
-      </SectionLabel>
+      <div className="flex items-center justify-between gap-2">
+        <SectionLabel>
+          Subtasks{children.length > 0 ? ` · ${done} of ${children.length}` : ''}
+        </SectionLabel>
+        {canBreakDown && (
+          <button
+            onClick={() => requestProposal('breakdown', undefined, item.id)}
+            disabled={proposalBusy}
+            data-testid="break-it-down"
+            className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:border-ai/40 hover:text-foreground disabled:opacity-50"
+          >
+            <Split className="h-2.5 w-2.5 text-ai" />
+            Break it down
+          </button>
+        )}
+      </div>
+
+      <ProposalCard surface={`item:${item.id}`} className="mb-0.5" />
       {children.map((child) => (
         <div key={child.id} className="group flex items-center gap-2" data-testid="subtask-row">
           <button
@@ -168,9 +212,42 @@ function AgentSection({ item }: { item: Item }) {
   const live = (items.find((i) => i.id === item.id) ?? item) as TaskItem;
   const agentName = provider === 'openclaw' ? 'OpenClaw' : 'Beacon';
 
-  if (item.type === 'habit') return null;
+  /**
+   * A ticking clock, because "has this run gone quiet" is a question about
+   * elapsed time and `Date.now()` may not be read during render.
+   *
+   * Coarser than the row's minute tick: nothing here changes until the quiet
+   * threshold is crossed, so checking a few times an hour is plenty, and only
+   * one detail panel is ever open. Hooks run before the unassigned early
+   * return below — they cannot be conditional — which costs an idle interval
+   * on a panel with no agent on it. One timer, while a panel is open.
+   */
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    // A minute, matching the row's pill. A ten-minute tick meant the row could
+    // flip to "Gone quiet" while the panel two inches away still showed a plain
+    // "working" and no recovery — the same item, disagreeing with itself.
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  const view = agentStatusView(live, now);
+
+  // No type test here on purpose: the call site gates on the registry's
+  // `agentAssignable`, which is the single answer to "may this be delegated"
+  // (habit: no, custom: no while the agent write API cannot address it). A
+  // second, hardcoded check in here is how the two drift apart.
 
   if (!live.assignee) {
+    // Can this tier actually DO background work? `ai-registry.ts` says the
+    // assistant tier cannot — it is a request/response completions API with no
+    // worker behind it — and nothing in the app, the agent API or any cron
+    // consumes a `beacon` assignment. Offering the button anyway queues work
+    // that sits untouched forever, and the registry's own header names this
+    // exact failure: "a delegate button that silently does nothing on the
+    // assistant tier is worse than no button".
+    if (!resolveAICapabilities(provider).canDelegate) return null;
+
     return (
       <button
         type="button"
@@ -226,7 +303,7 @@ function AgentSection({ item }: { item: Item }) {
         <div className="flex items-center gap-2">
           <Sparkles className="text-warning-text size-3.5 shrink-0" />
           <span className="text-warning-text text-xs font-semibold capitalize">{live.assignee}</span>
-          {live.aiStatus && (
+          {view && (
             <span
               className={cn(
                 'rounded-full px-2 py-0.5 font-mono text-[9px] font-semibold tracking-wider uppercase',
@@ -237,33 +314,251 @@ function AgentSection({ item }: { item: Item }) {
                   ? 'bg-destructive text-destructive-foreground'
                   : 'bg-warning text-warning-foreground'
               )}
+              title={view.detail}
             >
-              {live.aiStatus}
+              {/* The VIEW's label, not the raw status. This panel used to print
+                  "WORKING" beside a Try again button that appeared from nowhere —
+                  so the evidence the button's safety depends on was the one thing
+                  the surface offering it never showed. On /item/[id] there is no
+                  row pill either, so this was the only place it could come from. */}
+              {view.label}
             </span>
+          )}
+          {/* The LIGHT recovery, offered only once a run has actually gone quiet
+              or failed.
+
+              Unassign was the only way out, and it throws the delegation away —
+              "this run died, have another go" is the far commoner want, and it
+              keeps the assignee. Deliberately manual and deliberately gated:
+              nothing claims work atomically, so a button that re-queued a run
+              which was merely slow would put two workers on one task and let the
+              second overwrite the first's report. The user seeing "Gone quiet" is
+              the evidence that makes it safe. */}
+          {view?.recoverable && (
+            <button
+              type="button"
+              onClick={() => updateTask(item.id, { aiStatus: 'queued', aiResult: undefined })}
+              data-testid="agent-requeue"
+              className="text-warning-text hover:text-foreground ml-auto text-[10px] font-medium"
+            >
+              Try again
+            </button>
           )}
           <button
             type="button"
             onClick={() =>
               updateTask(item.id, { assignee: undefined, aiStatus: undefined, aiResult: undefined })
             }
-            className="text-muted-foreground hover:text-foreground ml-auto text-[10px]"
+            className={cn(
+              'text-muted-foreground hover:text-foreground text-[10px]',
+              // Keeps its right-hand anchor when it is the only control.
+              !view?.recoverable && 'ml-auto'
+            )}
           >
             Unassign
           </button>
         </div>
+        {/* Why the button is there, in words. */}
+        {view?.stalled && (
+          <p className="text-warning-text text-xs leading-relaxed">{view.detail}</p>
+        )}
         {live.aiResult && (
           <p className="text-warning-text/85 text-xs leading-relaxed">{live.aiResult}</p>
         )}
+        {live.aiStatus === 'blocked' && <AgentReply item={live} />}
       </div>
     </div>
   );
 }
+
+/** Shared empty list, so a render with no options allocates nothing. */
+const NO_OPTIONS: string[] = [];
+
+/**
+ * The answer half of `blocked`.
+ *
+ * Without this the agent can ask a question and nobody can answer it — the loop
+ * is open at exactly the point where a human is needed. Sending does two
+ * things: it writes the reply to the item's activity trail, which is where the
+ * agent reads it back from, and it flips the status to `queued` so the next
+ * scheduled run picks the work up again. The flip is the load-bearing half; a
+ * reply that did not re-queue would look answered and never move.
+ */
+function AgentReply({ item }: { item: TaskItem }) {
+  const updateTask = usePlannerStore((s) => s.updateTask);
+  const [text, setText] = useState('');
+  /**
+   * The fetched options, TAGGED with the item and question they belong to.
+   *
+   * Derived during render rather than reset by an effect, for the reason the
+   * proposal card learned the same way: an effect resets a render late, so the
+   * panel paints the previous item's buttons once before clearing them — and
+   * this panel is REUSED across items (the dialog re-seeds on id change without
+   * unmounting), so that frame has the new item's id already bound to the old
+   * item's answers.
+   */
+  const optionsKey = `${item.id}\u0000${(item.aiResult ?? '').trim()}`;
+  const [fetched, setFetched] = useState<{ key: string; options: string[] }>(() => ({
+    key: '',
+    options: NO_OPTIONS,
+  }));
+  const options = fetched.key === optionsKey ? fetched.options : NO_OPTIONS;
+
+  /**
+   * The tappable answers, if the agent offered any FOR THE QUESTION ON SCREEN.
+   *
+   * Fetched here rather than lifted from the Activity section below: this only
+   * renders while `aiStatus` is `blocked`, so the query is rare, and the two
+   * sections are independent by design (Activity is collapsible and may never
+   * be opened).
+   *
+   * Two things this has to get right, both of which it got wrong first:
+   *
+   * 1. CLEAR BEFORE FETCHING. The detail panel is REUSED across items — the
+   *    dialog re-seeds on id change without unmounting — so leaving the old
+   *    options up during the round-trip meant opening blocked item B while A
+   *    was on screen showed A's buttons with B's id already bound. A tap in
+   *    that window filed A's answer against B and re-queued B unanswered.
+   *
+   * 2. MATCH THE QUESTION, not just "the newest event". The question the user
+   *    reads comes from `aiResult`, which `anchor_report_progress` can also
+   *    set — and that path writes no `agent_question` event. So an agent that
+   *    asked with options, then asked again through the old tool, left the new
+   *    question on screen above the OLD question's buttons. Comparing the
+   *    payload against `aiResult` ties the two together, and incidentally
+   *    handles a lost event (no match, no buttons) and a truncated feed the
+   *    same safe way.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    if (!getItemEventsAvailable()) return;
+
+    fetchItemEvents(item.id)
+      .then((events) => {
+        if (cancelled) return;
+        const question = events.find((e) => e.action === 'agent_question');
+        if (!question) return;
+
+        // Is this the question currently being asked?
+        const asked = typeof question.payload?.question === 'string' ? question.payload.question : '';
+        if (asked.trim() !== (item.aiResult ?? '').trim()) return;
+
+        // Still open? A reply recorded AFTER it means the user already answered,
+        // and re-offering the choices would invite a duplicate answer.
+        const answeredSince = events.find((e) => e.action === 'agent_reply');
+        if (answeredSince && answeredSince.createdAt > question.createdAt) return;
+
+        const raw = Array.isArray(question.payload?.options)
+          ? (question.payload.options as unknown[])
+          : [];
+        setFetched({
+          key: optionsKey,
+          options: raw.filter((o): o is string => typeof o === 'string' && o.trim().length > 0),
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [item.id, item.aiResult, optionsKey]);
+
+  const answer = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    recordAgentReply(item.id, itemTypeName(item), trimmed);
+    updateTask(item.id, { aiStatus: 'queued' });
+    setText('');
+    // The question is answered; the buttons would otherwise sit there inviting
+    // a second reply to a queued item. (In the app the status flip unmounts
+    // this whole section — but that is the CALLER's behaviour, not this
+    // component's, and it should not be load-bearing here.)
+    setFetched({ key: '', options: NO_OPTIONS });
+  };
+
+  const send = () => answer(text);
+
+  return (
+    <div className="mt-1 flex flex-col gap-1.5">
+      {options.length > 0 && (
+        <div className="flex flex-wrap gap-1" data-testid="agent-options">
+          {options.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => answer(option)}
+              className="rounded-full border border-border bg-surface-2 px-2 py-0.5 text-[10px] font-medium text-foreground transition-colors hover:border-ai/40 hover:bg-muted"
+            >
+              {option}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* data-sub-input so the dialog's Enter-to-submit guard leaves this alone
+          — Enter here answers the agent, it does not save the item. The box
+          stays even with options: an exhaustive-looking list often isn't. */}
+      <div className="flex items-center gap-1.5" data-sub-input>
+      <Input
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            send();
+          }
+        }}
+        placeholder="Answer…"
+        data-testid="agent-reply-input"
+        className="h-7 flex-1 text-xs"
+      />
+        <button
+          type="button"
+          onClick={send}
+          disabled={!text.trim()}
+          data-testid="agent-reply-send"
+          className="text-warning-text hover:text-foreground disabled:opacity-40 text-[10px] font-medium"
+        >
+          Send
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Exported for tests only.
+ *
+ * The reply box is reachable from the UI only through a `blocked` item inside a
+ * dialog, which would mean standing up the whole panel to test three lines of
+ * option logic — and that logic is where the cross-item bug lived.
+ */
+export { AgentReply as AgentReplyForTest };
 
 // ── Activity ─────────────────────────────────────────────────────────────────
 
 function eventLabel(e: ItemEvent): string {
   if (e.action === 'create') return 'Created';
   if (e.action === 'delete') return 'Deleted';
+  // The user's answer to a blocked agent — like a check-in note, the payload is
+  // the only part worth reading.
+  // The agent's question. Reads before the user's answer in the feed, and the
+  // options are worth showing — they say what the agent thought the shape of
+  // the answer was.
+  if (e.action === 'agent_question') {
+    const question = typeof e.payload?.question === 'string' ? e.payload.question.trim() : '';
+    const options = Array.isArray(e.payload?.options)
+      ? (e.payload.options as unknown[]).filter((o): o is string => typeof o === 'string')
+      : [];
+    if (!question) return 'Agent asked a question';
+    return options.length > 0
+      ? `Agent asked — ${question} (${options.join(' / ')})`
+      : `Agent asked — ${question}`;
+  }
+  if (e.action === 'agent_reply') {
+    const text = typeof e.payload?.text === 'string' ? e.payload.text.trim() : '';
+    return text ? `You answered — ${text}` : 'You answered';
+  }
   // A check-in note reads here as well as on the goal page. It is the one event
   // whose payload is something the user WROTE, so showing the action alone
   // would hide the only part worth reading — and an item whose notes live

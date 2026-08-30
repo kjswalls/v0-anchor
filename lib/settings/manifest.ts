@@ -27,6 +27,7 @@ import {
   extensionManifest,
 } from '@/lib/extension-registry';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
+import { useGatewayStore } from '../gateway-store';
 import { EXTENSION_SETTINGS } from '@/lib/extension-settings';
 import { STAKE_SETTINGS } from '@/lib/stakes/stake-config';
 import { usePaletteStore } from '@/lib/palette-store';
@@ -354,6 +355,7 @@ const reminders = () => useReminderStore.getState();
 const ai = () => useAISettingsStore.getState();
 const ext = () => useExtensionsStore.getState();
 const channelSecrets = () => useChannelSecretsStore.getState();
+const gateway = () => useGatewayStore.getState();
 const palette = () => usePaletteStore.getState();
 
 /** Shared by every extension toggle: rows stay visible, with the reason inline. */
@@ -1104,6 +1106,50 @@ export const SETTINGS: SettingRecord[] = [
     keywords: ['system prompt', 'personality', 'context', 'about me', 'profile', 'memory'],
     read: () => ai().systemPrompt,
     write: (v) => ai().setSystemPrompt(String(v)),
+    defaultValue: '',
+  },
+  {
+    id: 'beacon.gatewayUrl',
+    pane: 'beacon',
+    label: 'Gateway URL',
+    description:
+      'Talk to your gateway directly instead of through the plugin. Conversations keep their memory between sessions.',
+    control: 'text',
+    textVariant: 'line',
+    placeholder: 'https://gateway.example.ts.net:8787',
+    advanced: true,
+    keywords: ['gateway', 'openclaw', 'url', 'host', 'tailscale', 'endpoint', 'transport'],
+    unavailable: () =>
+      !gateway().available
+        ? 'Needs a database update that has not landed here yet.'
+        : ai().provider === 'openclaw'
+          ? null
+          : 'only used by OpenClaw',
+    read: () => gateway().gatewayUrl,
+    write: (v) => gateway().setGatewayUrl(String(v)),
+    defaultValue: '',
+  },
+  {
+    id: 'beacon.gatewayToken',
+    pane: 'beacon',
+    label: 'Gateway token',
+    description: 'Full operator access to your gateway — kept server-side and never sent back.',
+    control: 'text',
+    // Write-only: there is nothing to read back, by design.
+    textVariant: 'secret',
+    placeholder: () => (gateway().hasToken ? 'Saved — type to replace' : 'Not set'),
+    advanced: true,
+    // Not dependsOn: both gateway rows are advanced, so the disclosure already
+    // groups them and a second level of hiding is what the redesign removed.
+    keywords: ['gateway', 'openclaw', 'token', 'secret', 'credential', 'auth', 'bearer'],
+    unavailable: () =>
+      !gateway().available
+        ? 'Needs a database update that has not landed here yet.'
+        : ai().provider === 'openclaw'
+          ? null
+          : 'only used by OpenClaw',
+    read: () => '',
+    write: (v) => gateway().setToken(String(v)),
     defaultValue: '',
   },
   {

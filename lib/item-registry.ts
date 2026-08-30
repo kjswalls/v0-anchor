@@ -508,7 +508,19 @@ export function buildCustomTypeConfig(
     counters: { streak: false, dailyCounts: false },
     // Custom types are task-shaped (v1 template) — they grow the same way.
     subtasks: true,
-    agentAssignable: true,
+    /**
+     * FALSE, unlike every other task-shaped capability here, and not by
+     * oversight: the agent write API does not expose custom types at all (a
+     * locked v1 decision in unified-items.md), and /api/agent/tasks/:id filters
+     * on `.eq('type','task')` in BOTH its ownership check and its update. So a
+     * delegated custom item is a dead loop — it shows up in the agent's queue
+     * and every progress report on it 404s, forever, with the badge stuck on
+     * `queued`. An Assign button that leads nowhere is worse than no button.
+     *
+     * Flip this back the moment the agent API grows a type-agnostic item write
+     * path; nothing else here needs to change.
+     */
+    agentAssignable: false,
     // 30 to match the built-in types — see the note on task.schedule.
     schedule: { resizable: true, defaultBlockMinutes: 30 },
     remindable: true,

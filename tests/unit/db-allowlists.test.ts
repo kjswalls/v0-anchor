@@ -23,7 +23,15 @@ import { TASK_FIELDS, HABIT_FIELDS } from '@anchor-app/types';
 // allowlists — the assertion below is the inverse of the one this suite makes
 // for every other field.
 const INTENT_ROUTED = ['completedDates', 'skippedDates'];
-const EXEMPT = new Set(['id', ...INTENT_ROUTED]);
+// `aiStatusAt` never travels alone (migration 041): `updatesToRow` has no
+// branch for it, only a companion write inside the `aiStatus` branch, which is
+// what stops the clock drifting from the state it describes. It appears below
+// as a declared COMPANION_COLUMN instead — and `tests/unit/agent-status-write.test.ts`
+// covers the half this suite structurally cannot: that an EXPLICIT stamp
+// travelling WITH a status is preserved rather than overwritten, which is what
+// makes undo restore the original time instead of dating it to the undo.
+const READ_ONLY = ['aiStatusAt'];
+const EXEMPT = new Set(['id', ...INTENT_ROUTED, ...READ_ONLY]);
 
 // A value that survives every allowlist guard (non-null, non-undefined).
 const PROBE: Record<string, unknown> = {
@@ -45,9 +53,11 @@ const probeFor = (field: string) => PROBE[field] ?? 'probe';
  * (a field that diffs but silently never persists).
  */
 const COMPANION_COLUMNS: Record<string, string[]> = {
-  // Currently none. Kept because the mechanism is the interesting part: an
-  // exception has to be DECLARED rather than absorbed by loosening the
-  // assertion, or this suite stops catching the bug it exists for.
+  // A status change stamps when it happened. Together or not at all — a
+  // timestamp written separately can drift from the state it describes, and a
+  // row saying "working for 3 hours" that is actually four minutes old is
+  // worse than a row saying nothing.
+  aiStatus: ['ai_status_at'],
 };
 
 function expectPersisted(row: Record<string, unknown>, field: string, which: string) {
