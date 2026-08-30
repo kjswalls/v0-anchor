@@ -45,7 +45,7 @@ that Map dies with the instance and is absent on every other one, so a plugin re
 against instance A never heard about a mutation served by instance B. The plugin
 re-registering on startup did not save it — the next cold start lost it again.
 
-**Resolved 2026-08-26.** Migration 039 adds `plugin_registrations`, modelled on
+**Resolved 2026-08-26.** Migration 042 adds `plugin_registrations`, modelled on
 `021_item_types` and **service-role only** like `user_secrets`, because the row carries the
 HMAC signing secret: a browser-readable copy would let any script forge a change event.
 
@@ -89,29 +89,39 @@ permanently ambiguous about which 037 the database has.
 ### A live footgun on `main`, not from this branch
 
 The ledger records `one_classify_kind` as version **`20260827043953`**, while the repo file
-is **`039_one_classify_kind.sql`**. That is exactly the drift CLAUDE.md warns about, so the
-next `pnpm db:push` is likely to treat 039 as unapplied and replay a migration that MOVES
-DATA (habit_groups → projects) and writes `*_pre039_backup` tables. It is guarded and reads
-as idempotent, so it probably no-ops — "probably" is doing real work in that sentence, which
-is why this is written down rather than acted on. The fix is one row: record it under `039`,
-or drop the timestamped entry. Kirby's call, since it is main's migration.
+is **`039_one_classify_kind.sql`**. That is exactly the drift CLAUDE.md warns about: the next
+`pnpm db:push` sees no ledger row for `039` and replays it.
+
+**Re-read of 039 (2026-08-30): the replay is safe.** The file contains no DDL at all — no
+`create table`, no `alter table`, and no `*_pre039_backup` tables (an earlier note here said
+it wrote those; it does not). It is entirely `do $$` blocks over already-folded data, and
+every write is guarded: the group→project insert is `where not exists … on conflict (id) do
+nothing`, and the `items` updates match only rows still carrying a `group_id`. On a database
+where 039 has already run there is nothing left for it to move, so a replay is a true no-op
+rather than a probable one.
+
+So this is untidiness, not a hazard: the ledger is ambiguous about which migration the
+database has, which costs the next person time. The fix is one row — record it under `039`,
+or drop the timestamped entry. Still Kirby's call, since it is main's migration, but it no
+longer needs to happen before the next push.
 
 ## Not decisions — things to verify
 
 Full detail in [ai-vision.md](ai-vision.md#unverified-assumptions-test-these-first-with-a-real-gateway).
 
-1. **Apply migration 040** (`pnpm db:push`). Until then the gateway transport is inert, the
-   settings rows say "needs a database update", and chat keeps using the plugin path.
+1. ~~**Apply migration 040**~~ — done 2026-08-27, along with 041 and 042. See above.
 2. **Enable `gateway.http.endpoints.chatCompletions.enabled: true`** on the gateway, then put
    its URL and token into Settings → Beacon (both rows are behind Advanced).
+   → tracked as **issue #260**.
 3. **Test session memory**, not duplication: say "my favourite colour is green", then ask
    what it is. Remembering means the gateway is session-stateful and the default is right;
    forgetting means it is stateless per request — flip `SEND_FULL_TRANSCRIPT_TO_GATEWAY` in
-   `lib/openclaw-gateway.ts`.
+   `lib/openclaw-gateway.ts`. → part of **issue #260**.
 4. **Reachability from Vercel.** Anchor calls the gateway server-side, so browser CORS is
    irrelevant — but a tailnet-only gateway is not reachable from Vercel. Local dev works;
    production likely needs Funnel or equivalent. Still the most likely thing to be wrong.
-5. **Point a real MCP client at `/api/mcp`.** Nothing has spoken to it yet — the protocol is
+5. **Point a real MCP client at `/api/mcp`** (**issue #261**; the scheduled pull loop that
+   consumes it is **issue #262**). Nothing has spoken to it yet — the protocol is
    pinned by tests, not by a handshake. OpenClaw takes remote Streamable HTTP servers with
    custom headers, which is exactly the shape this server needs:
 
@@ -126,6 +136,6 @@ Full detail in [ai-vision.md](ai-vision.md#unverified-assumptions-test-these-fir
    ```
 
    `doctor --probe` is the real proof: the docs are explicit that saving a definition proves
-   nothing about reachability. A successful probe listing eleven `anchor_*` tools is the
-   first time this code has spoken to a client. `--include` can narrow the tool set if you
+   nothing about reachability. A successful probe listing **fifteen** `anchor_*` tools is the
+   first time this code has spoken to a client (eleven predates the delegation tools). `--include` can narrow the tool set if you
    want the agent to see only reads at first.
