@@ -92,6 +92,8 @@ test.describe('organize — projects, types and groups', () => {
     kind: 'project' | 'type',
     name: string
   ) {
+    // Creation starts from the list head and opens a form in the detail pane.
+    await page.getByTestId(`${kind}-new`).click();
     await page.getByTestId(`${kind}-new-name`).fill(name);
     await page.getByTestId(`${kind}-add`).click();
     // Creating selects the new row, so the detail pane names it — which is also
@@ -192,6 +194,8 @@ test.describe('organize — projects, types and groups', () => {
     // The dialog this replaced disabled the add button and explained nothing, so
     // the only way to learn the rule was to fail at it.
     await openConsole(page, 'Item types');
+    // The form lives in the detail pane now; the list head opens it.
+    await page.getByTestId('type-new').click();
     await page.getByTestId('type-new-name').fill('Task');
     await expect(page.getByTestId('type-new-problem')).toContainText('built-in name');
     await expect(page.getByTestId('type-add')).toBeDisabled();
@@ -423,6 +427,7 @@ test.describe('organize — projects, types and groups', () => {
       await reloadApp(page);
       await runCommand(page, 'app.collections', { query: '/routines' });
       await page.getByRole('tab', { name: 'Routines' }).click();
+      await page.getByTestId('routine-new').click();
       await page.getByTestId('routine-new-name').fill(name);
       await page.getByTestId('routine-add').click();
       await expect(page.getByTestId('routine-detail')).toBeVisible();
@@ -480,6 +485,7 @@ test.describe('organize — projects, types and groups', () => {
       // Reopened, so the trashed-name lookup runs fresh rather than off a list
       // fetched before the delete.
       await openConsole(page, 'Projects');
+      await page.getByTestId('project-new').click();
       await page.getByTestId('project-new-name').fill(name);
       await expect(page.getByTestId('project-new-problem')).toContainText('Trash');
       await expect(page.getByTestId('project-add')).toBeDisabled();

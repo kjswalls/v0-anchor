@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { addDays, format, isAfter, startOfDay, startOfWeek, subWeeks } from 'date-fns';
-import { ArrowUp, Check, Plus, Sparkles, Split, X } from 'lucide-react';
+import { ArrowUp, Check, ChevronDown, Plus, Sparkles, Split, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
 import {
   fetchItemEvents,
@@ -187,6 +188,23 @@ function SubtasksSection({ item }: { item: Item }) {
 
 // ── Agent assignment ─────────────────────────────────────────────────────────
 
+/**
+ * Beacon's honey-keyed relay palette, for the ambient field behind its working
+ * block. Beacon's hue is honey (--ai/--warning), not the app's lime `--primary`
+ * — so this is passed as `darkPalette` to override the lime tokens the field
+ * reads by default. Module constant on purpose: RelayField treats it as an
+ * effect dependency, so a fresh array each render would re-init the canvas.
+ * (Honey-dominant, with a lime and a teal for a little spectral life.)
+ */
+const BEACON_RELAY_DARK = [
+  'oklch(0.80 0.11 85)',
+  'oklch(0.85 0.13 88)',
+  'oklch(0.80 0.11 85)',
+  'oklch(0.87 0.19 125)',
+  'oklch(0.74 0.13 62)',
+  'oklch(0.72 0.09 190)',
+] as const;
+
 /** Honey is the agent's hue everywhere in Anchor (--ai tokens). */
 function AgentSection({ item }: { item: Item }) {
   const { items, updateTask } = usePlannerStore();
@@ -249,74 +267,106 @@ function AgentSection({ item }: { item: Item }) {
     );
   }
 
+  // Only the actively-streaming state gets the ambient field; queued/blocked/
+  // done/failed are static.
+  const working = live.aiStatus === 'working';
+
   return (
-    <div className="bg-warning/10 flex flex-col gap-1 rounded-md px-2.5 py-2" data-testid="agent-block">
-      <div className="flex items-center gap-2">
-        <Sparkles className="text-warning-text size-3.5 shrink-0" />
-        <span className="text-warning-text text-xs font-semibold capitalize">{live.assignee}</span>
-        {view && (
-          <span
-            className={cn(
-              'rounded-full px-2 py-0.5 font-mono text-[9px] font-semibold tracking-wider uppercase',
-              // 'blocked' is the only state that wants something FROM you, so
-              // it's the only one that gets to raise its voice. The rest are
-              // progress you're free to ignore.
-              live.aiStatus === 'blocked'
-                ? 'bg-destructive text-destructive-foreground'
-                : 'bg-warning text-warning-foreground'
-            )}
-            title={view.detail}
-          >
-            {/* The VIEW's label, not the raw status. This panel used to print
-                "WORKING" beside a Try again button that appeared from nowhere —
-                so the evidence the button's safety depends on was the one thing
-                the surface offering it never showed. On /item/[id] there is no
-                row pill either, so this was the only place it could come from. */}
-            {view.label}
-          </span>
-        )}
-        {/* The LIGHT recovery, offered only once a run has actually gone quiet
-            or failed.
-            
-            Unassign was the only way out, and it throws the delegation away —
-            "this run died, have another go" is the far commoner want, and it
-            keeps the assignee. Deliberately manual and deliberately gated:
-            nothing claims work atomically, so a button that re-queued a run
-            which was merely slow would put two workers on one task and let the
-            second overwrite the first's report. The user seeing "Gone quiet" is
-            the evidence that makes it safe. */}
-        {view?.recoverable && (
+    <div
+      className="bg-warning/10 relative overflow-hidden rounded-md px-2.5 py-2"
+      data-testid="agent-block"
+      data-working={working || undefined}
+    >
+      {/* While Beacon works, a RelayField blooms behind the block — honey-keyed
+          (Beacon's hue), not the app's lime primary. Pure decoration:
+          pointer-events-none + aria-hidden, paused offscreen and frozen under
+          reduced motion (all inherited from RelayField). */}
+      {working && (
+        <RelayField
+          active
+          className="absolute inset-0 z-0"
+          darkPalette={BEACON_RELAY_DARK}
+          // Warm 'harvest' (amber→terracotta→lime) in light mode so Beacon keeps
+          // its honey identity there too, harmonising with the warm block rather
+          // than laying a cool-gray sonar over it.
+          lightPalette="harvest"
+          pitch={30}
+          focalY={0.5}
+          // Kept modest so the assignee/result/Unassign text stays legible over
+          // the bloom (the field peaks under the content baseline at focalY 0.5).
+          activeIntensity={0.6}
+          activeIntensityLight={0.4}
+          mask="radial-gradient(135% 135% at 50% 45%, #000 40%, transparent 92%)"
+        />
+      )}
+      <div className="relative z-10 flex flex-col gap-1">
+        <div className="flex items-center gap-2">
+          <Sparkles className="text-warning-text size-3.5 shrink-0" />
+          <span className="text-warning-text text-xs font-semibold capitalize">{live.assignee}</span>
+          {view && (
+            <span
+              className={cn(
+                'rounded-full px-2 py-0.5 font-mono text-[9px] font-semibold tracking-wider uppercase',
+                // 'blocked' is the only state that wants something FROM you, so
+                // it's the only one that gets to raise its voice. The rest are
+                // progress you're free to ignore.
+                live.aiStatus === 'blocked'
+                  ? 'bg-destructive text-destructive-foreground'
+                  : 'bg-warning text-warning-foreground'
+              )}
+              title={view.detail}
+            >
+              {/* The VIEW's label, not the raw status. This panel used to print
+                  "WORKING" beside a Try again button that appeared from nowhere —
+                  so the evidence the button's safety depends on was the one thing
+                  the surface offering it never showed. On /item/[id] there is no
+                  row pill either, so this was the only place it could come from. */}
+              {view.label}
+            </span>
+          )}
+          {/* The LIGHT recovery, offered only once a run has actually gone quiet
+              or failed.
+
+              Unassign was the only way out, and it throws the delegation away —
+              "this run died, have another go" is the far commoner want, and it
+              keeps the assignee. Deliberately manual and deliberately gated:
+              nothing claims work atomically, so a button that re-queued a run
+              which was merely slow would put two workers on one task and let the
+              second overwrite the first's report. The user seeing "Gone quiet" is
+              the evidence that makes it safe. */}
+          {view?.recoverable && (
+            <button
+              type="button"
+              onClick={() => updateTask(item.id, { aiStatus: 'queued', aiResult: undefined })}
+              data-testid="agent-requeue"
+              className="text-warning-text hover:text-foreground ml-auto text-[10px] font-medium"
+            >
+              Try again
+            </button>
+          )}
           <button
             type="button"
-            onClick={() => updateTask(item.id, { aiStatus: 'queued', aiResult: undefined })}
-            data-testid="agent-requeue"
-            className="text-warning-text hover:text-foreground ml-auto text-[10px] font-medium"
+            onClick={() =>
+              updateTask(item.id, { assignee: undefined, aiStatus: undefined, aiResult: undefined })
+            }
+            className={cn(
+              'text-muted-foreground hover:text-foreground text-[10px]',
+              // Keeps its right-hand anchor when it is the only control.
+              !view?.recoverable && 'ml-auto'
+            )}
           >
-            Try again
+            Unassign
           </button>
+        </div>
+        {/* Why the button is there, in words. */}
+        {view?.stalled && (
+          <p className="text-warning-text text-xs leading-relaxed">{view.detail}</p>
         )}
-        <button
-          type="button"
-          onClick={() =>
-            updateTask(item.id, { assignee: undefined, aiStatus: undefined, aiResult: undefined })
-          }
-          className={cn(
-            'text-muted-foreground hover:text-foreground text-[10px]',
-            // Keeps its right-hand anchor when it is the only control.
-            !view?.recoverable && 'ml-auto'
-          )}
-        >
-          Unassign
-        </button>
+        {live.aiResult && (
+          <p className="text-warning-text/85 text-xs leading-relaxed">{live.aiResult}</p>
+        )}
+        {live.aiStatus === 'blocked' && <AgentReply item={live} />}
       </div>
-      {/* Why the button is there, in words. */}
-      {view?.stalled && (
-        <p className="text-warning-text text-xs leading-relaxed">{view.detail}</p>
-      )}
-      {live.aiResult && (
-        <p className="text-warning-text/85 text-xs leading-relaxed">{live.aiResult}</p>
-      )}
-      {live.aiStatus === 'blocked' && <AgentReply item={live} />}
     </div>
   );
 }
@@ -568,6 +618,105 @@ function ActivitySection({ itemId }: { itemId: string }) {
   );
 }
 
+/**
+ * The activity log as a footer disclosure — Clearing's home for it.
+ *
+ * The body stack shows Activity as its own labelled section; Clearing instead
+ * folds the whole edit history into one quiet line in the pane's bottom-right,
+ * across from "Saves as you go": the most recent change and its date, click to
+ * expand the rest. The expanded list is height-capped and scrolls in a PLAIN
+ * overflow container (a ScrollArea silently drops max-h — see CLAUDE.md). Same
+ * quiet-null rule as ActivitySection: nothing to show ⇒ just the save note.
+ *
+ * It owns its own fetch (the panel above autosaves off a snapshot; this reads
+ * the live event feed) and its own open state, reset when the panel retargets.
+ */
+export function ClearingFooter({
+  itemId,
+  saving,
+  // On /item/[id] the page body already renders Activity, and the editor panel
+  // is mounted withDetailSections=false so it must not double the feed. There the
+  // save note (the sole autosave signal) still shows; the history disclosure and
+  // its fetch are suppressed.
+  showHistory = true,
+}: {
+  itemId: string;
+  saving: boolean;
+  showHistory?: boolean;
+}) {
+  const [events, setEvents] = useState<ItemEvent[] | null>(null);
+  const [open, setOpen] = useState(false);
+
+  // Mounted fresh per item (the caller keys on itemId), so events and the open
+  // flag reset on retarget with no reset effect — a new item starts collapsed.
+  useEffect(() => {
+    if (!showHistory) return;
+    let cancelled = false;
+    fetchItemEvents(itemId).then((rows) => {
+      if (!cancelled) setEvents(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [itemId, showHistory]);
+
+  const has = showHistory && getItemEventsAvailable() && !!events && events.length > 0;
+  const latest = has ? events![0] : null;
+
+  return (
+    <div>
+      {has && open && (
+        <div
+          id={`item-history-${itemId}`}
+          data-testid="item-history-list"
+          className="bg-secondary/50 mb-2 max-h-[132px] overflow-y-auto rounded-md px-3 py-1"
+        >
+          {events!.slice(0, 20).map((e) => (
+            <div key={e.id} className="text-muted-foreground flex items-baseline gap-2 py-1 text-xs">
+              <span className="bg-muted-foreground/60 size-1 shrink-0 translate-y-[-2px] rounded-full" />
+              <span className="min-w-0 flex-1 truncate">{eventLabel(e)}</span>
+              <time className="text-muted-foreground/70 shrink-0 font-mono text-[10px]">
+                {format(new Date(e.createdAt), 'MMM d · HH:mm')}
+              </time>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-3 border-t pt-3">
+        <span
+          role="status"
+          aria-live="polite"
+          className="text-muted-foreground inline-flex items-center gap-1.5 text-xs"
+        >
+          {/* The lime tick is its own element so no parent opacity ever dims it. */}
+          <span className="bg-primary size-1.5 shrink-0 rounded-full" aria-hidden />
+          {saving ? 'Saving…' : 'Saves as you go'}
+        </span>
+        {has && latest && (
+          <button
+            type="button"
+            data-testid="item-history-toggle"
+            aria-expanded={open}
+            aria-controls={`item-history-${itemId}`}
+            aria-label="Edit history"
+            onClick={() => setOpen((o) => !o)}
+            className="text-muted-foreground hover-wash inline-flex min-w-0 max-w-[62%] items-center gap-1.5 rounded-sm px-1.5 py-1 text-[11px] transition-colors focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none"
+          >
+            <span className="min-w-0 truncate">{eventLabel(latest)}</span>
+            <time className="text-muted-foreground/70 shrink-0 font-mono">
+              {format(new Date(latest.createdAt), 'MMM d')}
+            </time>
+            <ChevronDown
+              className={cn('size-3 shrink-0 opacity-60 transition-transform', open && 'rotate-180')}
+              aria-hidden
+            />
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Habit heatmap (extension: habit-heatmap) ────────────────────────────────
 
 const HEATMAP_WEEKS = 26;
@@ -728,7 +877,17 @@ export function ItemThread({ item, className }: { item: Item; className?: string
 
 /** Subtasks + agent + activity, gated by the type's capability config.
  *  The thread is exported separately so the page can column it. */
-export function ItemDetailSections({ item, withThread }: { item: Item; withThread?: boolean }) {
+export function ItemDetailSections({
+  item,
+  withThread,
+  // Clearing folds Activity into a footer disclosure (ClearingFooter), so the
+  // body stack omits it to avoid rendering the same feed twice.
+  withActivity = true,
+}: {
+  item: Item;
+  withThread?: boolean;
+  withActivity?: boolean;
+}) {
   const config = getItemTypeConfig(itemTypeName(item));
   // Extension gate + capability gate: the heatmap is opt-in (Settings →
   // Extensions) and only meaningful where the registry says a streak exists.
@@ -742,7 +901,7 @@ export function ItemDetailSections({ item, withThread }: { item: Item; withThrea
       {config.subtasks && <SubtasksSection item={item} />}
       {config.agentAssignable && <AgentSection item={item} />}
       {heatmapOn && config.counters.streak && <HeatmapSection item={item} />}
-      <ActivitySection itemId={item.id} />
+      {withActivity && <ActivitySection itemId={item.id} />}
       {withThread && <ItemThread item={item} />}
     </div>
   );

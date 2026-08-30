@@ -1,7 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode } from 'react';
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from 'react';
 import { usePathname, useRouter } from 'next/navigation';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { addDays, format, parseISO, startOfDay, subDays } from 'date-fns';
 import {
   CalendarIcon,
@@ -21,6 +31,7 @@ import {
   RotateCcw,
   Trash2,
   X,
+  type LucideIcon,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
@@ -51,18 +62,19 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { IconPicker } from '@/components/primitives/icon-picker';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
-import { ItemDetailSections } from '@/components/planner/item-detail-sections';
+import { ClearingFooter, ItemDetailSections } from '@/components/planner/item-detail-sections';
 import {
   ChipOption,
   ChipSectionLabel,
   PropertyChip,
 } from '@/components/primitives/property-chip';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useGoalsEnabled, useOrganizeEnabled } from '@/lib/extension-gates';
+import { useGoalsEnabled, useOrganizeEnabled, useStreaksEnabled } from '@/lib/extension-gates';
 import { accentColorForName } from '@/lib/accent-colors';
 import { goalItemIds, nextMilestone } from '@/lib/goals';
 import { formatShort } from '@/lib/collections';
 import { useUIStore, openBulkAdd } from '@/lib/ui-store';
+import { useOpenConsole } from '@/lib/console-door';
 import { isBulkPaste } from '@/lib/bulk-add';
 import type {
   HabitItem,
@@ -150,6 +162,79 @@ function ColorSquare({ color }: { color: string }) {
   );
 }
 
+/**
+ * The "create one from here" affordance inside a membership chip's popover (C2).
+ *
+ * A "New routine…" row that opens into a name + icon field, mirroring the
+ * project container chip's inline create. It owns its OWN open/name/icon state
+ * rather than parking a draft on ItemDraft the way the single-select container
+ * chip does — the membership chips are multi-select and this create is transient
+ * UI, not part of the item being built, so a local hook keeps it self-contained
+ * and off the draft's carry-across-type-switch path.
+ *
+ * On submit it calls `onCreate(name, icon)` — which creates the container and
+ * ticks it on — then collapses back to the row. The popover stays open (unlike
+ * the single-select container chip, which closes on create): you have just
+ * added one member and may well add another, and the new one is now in the list
+ * above, checked.
+ */
+export function InlineCreate({
+  label,
+  defaultIcon,
+  testId,
+  onCreate,
+}: {
+  label: string;
+  defaultIcon: string;
+  testId: string;
+  onCreate: (name: string, icon: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  const [icon, setIcon] = useState(defaultIcon);
+
+  const submit = () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    onCreate(trimmed, icon);
+    setName('');
+    setIcon(defaultIcon);
+    setOpen(false);
+  };
+
+  if (!open) {
+    return (
+      <ChipOption tone="primary" onSelect={() => setOpen(true)} testId={`${testId}-open`}>
+        <Plus className="size-3.5" />
+        {label}
+      </ChipOption>
+    );
+  }
+
+  return (
+    <div className="flex gap-1 p-1">
+      <IconPicker value={icon} name={name} onSelect={setIcon} />
+      <Input
+        autoFocus
+        placeholder="Name"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        className="h-9 flex-1 text-sm"
+        // Enter creates here, never submitting the whole dialog — same guard the
+        // container chip's field carries.
+        data-sub-input
+        data-testid={`${testId}-name`}
+        onKeyDown={(e) => {
+          if (e.key !== 'Enter') return;
+          e.preventDefault();
+          submit();
+        }}
+      />
+      <AddIconButton size="input" onClick={submit} aria-label={label} data-testid={`${testId}-add`} />
+    </div>
+  );
+}
+
 /** Last 14 days of a habit's completion history, oldest first. */
 function recentStreakDays(habit: HabitItem): boolean[] {
   const today = startOfDay(new Date());
@@ -169,16 +254,19 @@ function SurfaceRoot({
   panel,
   open,
   onOpenChange,
+  isMobile,
   children,
 }: {
   panel: boolean;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Settled in the permanent wrapper — this tree mounts fresh per open. */
+  isMobile: boolean;
   children: ReactNode;
 }) {
   if (panel) return <>{children}</>;
   return (
-    <ResponsiveModal open={open} onOpenChange={onOpenChange}>
+    <ResponsiveModal open={open} onOpenChange={onOpenChange} isMobile={isMobile}>
       {children}
     </ResponsiveModal>
   );
@@ -508,13 +596,91 @@ function draftFromItem(item: Item): ItemDraft {
   };
 }
 
-export function ItemDialog({
+/**
+ * How long a CLOSED body keeps rendering, so the exit animation has content.
+ *
+ * The wrapper below unmounts the body after close, but not ON close: the modal
+ * plays a 200ms exit and the mobile drawer ~500ms, and both paint the latched
+ * payload (`last`) through those frames. Unmounting at the moment `state` goes
+ * null would blank the surface mid-animation. The panel presentation unmounts
+ * its content instantly (SurfaceContent returns null when closed), so the only
+ * cost of the grace is a few idle renders of a null aside.
+ */
+const CLOSE_ANIMATION_GRACE_MS = 600;
+
+/**
+ * Thin permanent shell around the real surface.
+ *
+ * Both shell instances of this dialog (app-shell's modal, desktop-shell's
+ * docked panel) are mounted for the whole session, and the body below is
+ * ~2,300 lines that subscribe to the whole planner store and build every chip's
+ * element tree on each pass. Mounting the body only while the surface is open
+ * (plus the exit grace above) is what makes a closed dialog actually free —
+ * no store subscription, no hooks, no element building.
+ *
+ * Two contracts survive the unmount on purpose:
+ *  · "A cancelled dialog deliberately keeps its other draft fields" — the add
+ *    drafts are stashed in a ref up here (per instance, so the /item page's
+ *    copy can't bleed into the shell's) and re-seed the body's state on the
+ *    next open.
+ *  · A queued panel autosave flushes on unmount — the body's own
+ *    `return () => flush.current()` cleanup already runs when it unmounts.
+ */
+export function ItemDialog(props: ItemDialogProps) {
+  const { state } = props;
+  const [present, setPresent] = useState(!!state);
+  // Render-phase, not an effect: the body must mount in the SAME commit that
+  // opens the dialog, or the open gains a frame of empty portal.
+  if (state && !present) setPresent(true);
+
+  // Resolved HERE, where a whole-session mount has let it settle, because the
+  // body below mounts fresh per open: useIsMobile starts undefined and settles
+  // in an effect, so a fresh ResponsiveModal deciding for itself would
+  // first-commit the desktop Dialog on a phone and then swap Root to the
+  // Drawer — remounting the entire open surface and double-firing autoFocus.
+  const isMobile = useIsMobile();
+
+  useEffect(() => {
+    if (state || !present) return;
+    const t = setTimeout(() => setPresent(false), CLOSE_ANIMATION_GRACE_MS);
+    return () => clearTimeout(t);
+  }, [state, present]);
+
+  // Survives the body's unmount so cancelled add drafts keep their fields.
+  // Handed down as a read/write pair rather than the ref itself: the compiler
+  // lint can't see that a ref-typed PROP is safe to mutate, and it's right to
+  // be suspicious — this keeps the mutation in the ref's own component.
+  const draftStash = useRef<Record<string, ItemDraft> | null>(null);
+  const readDraftStash = useCallback(() => draftStash.current, []);
+  const writeDraftStash = useCallback((drafts: Record<string, ItemDraft>) => {
+    draftStash.current = drafts;
+  }, []);
+
+  if (!present) return null;
+  return (
+    <ItemDialogInner
+      {...props}
+      isMobile={isMobile}
+      readDraftStash={readDraftStash}
+      writeDraftStash={writeDraftStash}
+    />
+  );
+}
+
+function ItemDialogInner({
   state,
   onOpenChange,
   withDetailSections = true,
   presentation = 'modal',
   flat = false,
-}: ItemDialogProps) {
+  isMobile,
+  readDraftStash,
+  writeDraftStash,
+}: ItemDialogProps & {
+  isMobile: boolean;
+  readDraftStash: () => Record<string, ItemDraft> | null;
+  writeDraftStash: (drafts: Record<string, ItemDraft>) => void;
+}) {
   const {
     items,
     addItem,
@@ -544,6 +710,12 @@ export function ItemDialog({
     goals,
     goalsAvailable,
     updateGoal,
+    // Inline container creation from the membership chips (C2): each returns the
+    // new id, which toggleRoutine/Program/Goal then ticks on in whichever mode
+    // the dialog is in.
+    addRoutine,
+    addProgram,
+    addGoal,
   } = usePlannerStore();
   /**
    * The two extension gates this dialog answers to.
@@ -557,6 +729,9 @@ export function ItemDialog({
    */
   const goalsOn = useGoalsEnabled();
   const organizeOn = useOrganizeEnabled();
+  // Streaks off hides the whole streak strip AND the reset controls below: a
+  // reset for a number you cannot see is a control with nothing to act on.
+  const streaksOn = useStreaksEnabled();
 
   // Hoisted out of renderChips, which runs on every render of a component that
   // subscribes to the whole store — so this rebuilt an N-item Map on every
@@ -566,12 +741,13 @@ export function ItemDialog({
   /**
    * The names a trashed container is still holding.
    *
-   * Gated on `state`, and that is not only about cost. BOTH instances of this
-   * component — app-shell's modal and desktop-shell's docked panel — are mounted
-   * for the entire session, so an ungated fetch here is four SELECTs during
-   * first paint for a create row nobody has opened. Asking on open instead also
-   * makes the answer FRESHER than a mount-time read could be, which is what the
-   * previous note here was apologising for.
+   * Gated on `state`, and that is not only about cost. This body now mounts on
+   * open (see the wrapper above), which already spares the closed instances the
+   * fetch — but the gate stays: the body lingers mounted through the close
+   * grace, and without the gate those closing frames would re-ask for a
+   * surface that is on its way out. Asking on open also makes the answer
+   * FRESHER than a mount-time read could be, which is what the previous note
+   * here was apologising for.
    *
    * Still not a guarantee: a container binned while this is open is invisible to
    * the fetched list. The union in the hook covers same-session deletes, and the
@@ -583,6 +759,11 @@ export function ItemDialog({
   const router = useRouter();
   const pathname = usePathname();
 
+  /* Every "Organize …" door below goes through this rather than arming the
+     dialog slot directly. This component renders in three shells and only two
+     of them mount the console — see lib/console-door.ts. */
+  const openConsole = useOpenConsole();
+
   // Tab order: built-ins first (pinned), then user-defined types.
   const typeNames = useMemo(
     () => [...ALL_ITEM_TYPES, ...itemTypes.map((t) => t.name)],
@@ -592,6 +773,14 @@ export function ItemDialog({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showPauseUntil, setShowPauseUntil] = useState(false);
+  // Clearing layout only: the unset properties the user has summoned back from
+  // the "+ Add property" seed. A property leaves this set the moment it holds a
+  // value (it is then set, and shows for that reason); until then it stays a
+  // dashed chip in the field rather than folding back into the seed mid-edit.
+  // Keyed by property id ('date', 'repeat', 'routine', …). Reset per item below.
+  const [revealed, setRevealed] = useState<ReadonlySet<string>>(() => new Set());
+  const revealProp = (key: string) =>
+    setRevealed((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
 
   // Latch the last payload so content doesn't flicker to defaults while the
   // close animation plays (same render-phase pattern app-shell used for add).
@@ -605,12 +794,23 @@ export function ItemDialog({
     // Disarmed with its siblings for the same reason: a picker left open across
     // a payload change would pause the wrong item.
     setShowPauseUntil(false);
+    // A revealed property is about THIS item; a fresh payload starts calm again.
+    setRevealed(new Set());
   }
   const open = !!state;
   const mode = last?.mode ?? 'add';
   const isPanel = presentation === 'panel';
   /** Only the docked panel saves itself; the modal still commits on submit. */
   const autosaves = isPanel && mode === 'edit';
+  /**
+   * The "Clearing" layout: a label-less field of only the properties that are
+   * SET, plus one "+ Add property" seed, with the title in serif and Done in the
+   * top rail. It rides exactly the autosaving surfaces — the docked edit panel
+   * and the /item editor — while the add-capture modal and the mobile drawer
+   * keep the labelled-band layout. Same coincidence as `autosaves`, named apart
+   * because it is a layout decision, not a persistence one.
+   */
+  const clearing = isPanel && mode === 'edit';
   const addPayload = last?.mode === 'add' ? last : null;
 
   // The payload carries a SNAPSHOT (ui-store stamps it at open time). Re-resolve
@@ -646,9 +846,14 @@ export function ItemDialog({
   const canPause = !!editItem && isPausable(editItem);
 
   const [activeType, setActiveType] = useState<string>('task');
-  const [addDrafts, setAddDrafts] = useState<Record<string, ItemDraft>>(() =>
-    buildAddDrafts({ defaultTimeBucket, containers: projects })
+  // Re-seeded from the wrapper's stash: this component unmounts after close,
+  // and the drafts a cancelled dialog keeps must outlive it.
+  const [addDrafts, setAddDrafts] = useState<Record<string, ItemDraft>>(
+    () => readDraftStash() ?? buildAddDrafts({ defaultTimeBucket, containers: projects })
   );
+  useEffect(() => {
+    writeDraftStash(addDrafts);
+  }, [addDrafts, writeDraftStash]);
   const [editDraft, setEditDraft] = useState<ItemDraft | null>(null);
 
   // ── Autosave bookkeeping (panel only; the modal still commits on submit) ────
@@ -1118,7 +1323,11 @@ export function ItemDialog({
         });
         return;
       }
-      const routine = routines.find((r) => r.id === routineId);
+      // LIVE state, not the render-closure `routines`: inline create (C2) makes
+      // a routine and toggles it on in the SAME handler, so the just-created row
+      // is in the store but not yet in this render's array — the closure lookup
+      // would miss it and silently skip the attach.
+      const routine = usePlannerStore.getState().routines.find((r) => r.id === routineId);
       if (!routine) return;
       updateRoutine(routineId, {
         itemIds: on
@@ -1151,7 +1360,9 @@ export function ItemDialog({
         });
         return;
       }
-      const goal = goals.find((g) => g.id === goalId);
+      // LIVE state, not the render-closure `goals`: inline create (C2) makes a
+      // goal and toggles it on in the same handler — see toggleRoutine.
+      const goal = usePlannerStore.getState().goals.find((g) => g.id === goalId);
       if (!goal) return;
       // All three arrays travel, always. Removing has to clear whichever role
       // the item actually held — untick a milestone through this chip and it
@@ -1185,7 +1396,9 @@ export function ItemDialog({
         });
         return;
       }
-      const program = programs.find((p) => p.id === programId);
+      // LIVE state, not the render-closure `programs`: inline create (C2) makes
+      // a program and toggles it on in the same handler — see toggleRoutine.
+      const program = usePlannerStore.getState().programs.find((p) => p.id === programId);
       if (!program) return;
       updateProgram(programId, {
         itemIds: on
@@ -1270,7 +1483,10 @@ export function ItemDialog({
         // verb: "+ Add" when nothing is chosen, the value itself once something
         // is. The accessible name keeps the noun either way — a control read out
         // of its row has to say which band it belongs to.
-        label="Add"
+        // Band layout: "Add" (the band label two inches left IS the noun).
+        // Clearing has no band label, so an unset (revealed or required)
+        // container must carry its own kind noun or it reads as a nameless "Add".
+        label={clearing ? config.form.containerLabel : 'Add'}
         ariaLabel={
           d.container === 'none'
             ? config.form.containerLabel
@@ -1378,7 +1594,7 @@ export function ItemDialog({
         // verb: "+ Add" when nothing is chosen, the value itself once something
         // is. The accessible name keeps the noun either way — a control read out
         // of its row has to say which band it belongs to.
-        label="Add"
+        label={clearing ? CONTAINER_KINDS.routine.label : 'Add'}
         ariaLabel={
           routineChipValue
             ? `${CONTAINER_KINDS.routine.label}: ${routineChipValue}`
@@ -1415,6 +1631,19 @@ export function ItemDialog({
                 </ChipOption>
               );
             })}
+            {/* Make one without leaving the dialog (C2). No trashed-name guard
+                like the project chip's: routines carry no unique name, so there
+                is no bin slot to collide with. */}
+            {CONTAINER_KINDS.routine.newLabel && (
+              <InlineCreate
+                label={CONTAINER_KINDS.routine.newLabel}
+                defaultIcon={makeIconToken('Repeat')}
+                testId="item-dialog-routine-new"
+                onCreate={(name, icon) =>
+                  toggleRoutine(addRoutine({ name, icon, itemIds: [] }), true)
+                }
+              />
+            )}
             {/* The manager's home. It is NOT in the braindump header —
                 that row is width-critical at the 280px minimum — so the
                 routes in are here, the palette, and mobile's sheet.
@@ -1431,8 +1660,10 @@ export function ItemDialog({
                   close();
                   // Replaces this dialog rather than stacking on it —
                   // openDialog swaps the single active slot. Same escape the
-                  // type chip's "Organize types…" row makes.
-                  useUIStore.getState().openDialog({ type: 'organize', section: 'routines' });
+                  // type chip's "Organize types…" row makes. And on a route
+                  // with no console mounted it goes where the console is,
+                  // instead of arming a slot nothing reads (console-door.ts).
+                  openConsole({ section: 'routines' });
                 }}
                 testId="item-dialog-routine-manage"
               >
@@ -1474,7 +1705,7 @@ export function ItemDialog({
         // verb: "+ Add" when nothing is chosen, the value itself once something
         // is. The accessible name keeps the noun either way — a control read out
         // of its row has to say which band it belongs to.
-        label="Add"
+        label={clearing ? CONTAINER_KINDS.program.label : 'Add'}
         ariaLabel={
           programChipValue
             ? `${CONTAINER_KINDS.program.label}: ${programChipValue}`
@@ -1508,6 +1739,22 @@ export function ItemDialog({
                 </ChipOption>
               );
             })}
+            {/* Make one without leaving the dialog (C2). New programs are
+                'auto' with no dates, exactly as the console's create row makes
+                them — a program you just made must not hide anything. */}
+            {CONTAINER_KINDS.program.newLabel && (
+              <InlineCreate
+                label={CONTAINER_KINDS.program.newLabel}
+                defaultIcon={makeIconToken('CalendarRange')}
+                testId="item-dialog-program-new"
+                onCreate={(name, icon) =>
+                  toggleProgram(
+                    addProgram({ name, icon, state: 'auto', itemIds: [], routineIds: [] }),
+                    true
+                  )
+                }
+              />
+            )}
             {/* A door, gone while the console is off — see the routine
                 chip's row above for the whole argument. */}
             {organizeOn && (
@@ -1515,10 +1762,7 @@ export function ItemDialog({
                 tone="muted"
                 onSelect={() => {
                   close();
-                  useUIStore.getState().openDialog({
-                    type: 'organize',
-                    section: 'programs',
-                  });
+                  openConsole({ section: 'programs' });
                 }}
                 testId="item-dialog-program-manage"
               >
@@ -1550,7 +1794,7 @@ export function ItemDialog({
         // verb: "+ Add" when nothing is chosen, the value itself once something
         // is. The accessible name keeps the noun either way — a control read out
         // of its row has to say which band it belongs to.
-        label="Add"
+        label={clearing ? CONTAINER_KINDS.goal.label : 'Add'}
         ariaLabel={
           goalChipValue
             ? `${CONTAINER_KINDS.goal.label}: ${goalChipValue}`
@@ -1622,6 +1866,31 @@ export function ItemDialog({
               </>
             )}
 
+            {/* Make one without leaving the dialog (C2). This is the "new habit,
+                new goal" gesture: the goal is created active and empty and the
+                item joins it as a plain MEMBER — milestone and check-in roles
+                are the goal's own decision, made where its timeline shows, and
+                the door below is the way to that. */}
+            {CONTAINER_KINDS.goal.newLabel && (
+              <InlineCreate
+                label={CONTAINER_KINDS.goal.newLabel}
+                defaultIcon={makeIconToken('Target')}
+                testId="item-dialog-goal-new"
+                onCreate={(name, icon) =>
+                  toggleGoal(
+                    addGoal({
+                      name,
+                      icon,
+                      state: 'active',
+                      memberIds: [],
+                      milestoneIds: [],
+                      checkinIds: [],
+                    }),
+                    true
+                  )
+                }
+              />
+            )}
             {/* The Goals section of the console rides EXT_GOALS, not
                 EXT_ORGANIZE (lib/extension-gates.ts), so this door stays
                 open with the console switched off — otherwise Goals would
@@ -1630,7 +1899,7 @@ export function ItemDialog({
               tone="muted"
               onSelect={() => {
                 close();
-                useUIStore.getState().openDialog({ type: 'organize', section: 'goals' });
+                openConsole({ section: 'goals' });
               }}
               testId="item-dialog-goal-manage"
             >
@@ -2027,6 +2296,134 @@ export function ItemDialog({
     };
     const hasWhen = !!(dateChip || timeChip || timesPerDayChip || repeatChip || remindChip);
 
+    // ── Clearing: one label-less field of the SET properties, plus a seed ─────
+    //
+    // Same chips, same pickers — only the arrangement changes. The labelled
+    // bands are replaced by a single wrapping row that shows ONLY what the item
+    // actually carries: a set property renders its value chip, an unset one is
+    // absent, folded into the "+ Add property" seed at the tail. So the surface's
+    // height tracks what the item IS, not what its type COULD be, and there is no
+    // column of nouns to read before the two values you came to change.
+    //
+    // The exceptions to "hidden while unset": a property the user just summoned
+    // from the seed (`revealed`), and a mandatory container (`required`, a habit's
+    // project) — a required-but-empty field that vanished would be a bug, not calm.
+    if (clearing) {
+      const containerSet: Record<ContainerKind, boolean> = {
+        project: d.container !== 'none',
+        routine: memberRoutines.length > 0,
+        program: memberPrograms.length > 0,
+        goal: memberGoals.length > 0,
+      };
+
+      interface ClearingProp {
+        key: string;
+        /** Scan order: priority leads, the When cluster follows, containers last. */
+        group: 'lead' | 'when' | 'container';
+        /** The noun, for the seed menu — the bands supplied it before. */
+        label: string;
+        /** Does the type expose this property at all? */
+        can: boolean;
+        /** Is it set? Set properties show at rest. */
+        set: boolean;
+        node: ReactNode;
+        icon: LucideIcon;
+        /** A mandatory container stays visible even while empty. */
+        required?: boolean;
+      }
+
+      const props: ClearingProp[] = [
+        {
+          key: 'priority',
+          group: 'lead',
+          label: 'Priority',
+          can: config.fields.includes('priority'),
+          set: d.priority !== 'none',
+          node: renderPriorityChip(type, d),
+          icon: Flag,
+        },
+        { key: 'date', group: 'when', label: 'Date', can: !!dateChip, set: !!d.startDate, node: dateChip, icon: CalendarIcon },
+        { key: 'time', group: 'when', label: 'Time', can: !!timeChip, set: timeParts.length > 0, node: timeChip, icon: Clock },
+        {
+          key: 'timesPerDay',
+          group: 'when',
+          label: 'Times per day',
+          can: !!timesPerDayChip,
+          // Always carries a value (defaults to 1×), so it is never in the seed.
+          set: true,
+          node: timesPerDayChip,
+          icon: Repeat2,
+        },
+        { key: 'repeat', group: 'when', label: 'Repeat', can: !!repeatChip, set: d.repeatFrequency !== 'none', node: repeatChip, icon: Repeat },
+        { key: 'remind', group: 'when', label: 'Remind', can: !!remindChip, set: !!d.reminderTime, node: remindChip, icon: Bell },
+        ...bands.map(
+          (band): ClearingProp => ({
+            key: band.kind,
+            group: 'container',
+            label: band.label,
+            can: true,
+            set: containerSet[band.kind],
+            node: bandControls[band.kind],
+            icon: Plus,
+            required: band.kind === 'project' && config.containerRequired,
+          })
+        ),
+      ];
+
+      const shows = (p: ClearingProp) => p.can && (p.set || p.required || revealed.has(p.key));
+      const visible = props.filter(shows);
+      const leadWhen = visible.filter((p) => p.group !== 'container');
+      const containerVisible = visible.filter((p) => p.group === 'container');
+      const seedItems = props.filter((p) => p.can && !p.set && !p.required && !revealed.has(p.key));
+
+      return (
+        <div className="flex flex-wrap items-center gap-1.5" data-testid="item-clearing-field">
+          {leadWhen.map((p) => (
+            <Fragment key={p.key}>{p.node}</Fragment>
+          ))}
+          {/* One hairline groups the When cluster off from the containers, so
+              the two families stay legible even when the wrap scatters them. */}
+          {leadWhen.length > 0 && containerVisible.length > 0 && (
+            <span aria-hidden className="bg-border mx-0.5 inline-block h-3.5 w-px shrink-0" />
+          )}
+          {containerVisible.map((p) => (
+            <Fragment key={p.key}>{p.node}</Fragment>
+          ))}
+          {seedItems.length > 0 && (
+            <PropertyChip
+              icon={Plus}
+              // The noun-carrying "Add property" when the field is empty; a bare
+              // "+" once anything is set, because the chips beside it are the
+              // context the words would only repeat.
+              label={visible.length > 0 ? '' : 'Add property'}
+              ariaLabel="Add property"
+              testId="item-clearing-seed"
+              contentClassName="w-60"
+            >
+              {(close) => (
+                <div className="max-h-72 overflow-y-auto" data-chip-scroll>
+                  {seedItems.map((p) => (
+                    <ChipOption
+                      key={p.key}
+                      testId="item-clearing-seed-option"
+                      value={p.key}
+                      onSelect={() => {
+                        revealProp(p.key);
+                        close();
+                      }}
+                    >
+                      <p.icon className="size-3.5 shrink-0" />
+                      {p.label}
+                    </ChipOption>
+                  ))}
+                </div>
+              )}
+            </PropertyChip>
+          )}
+        </div>
+      );
+    }
+
     return (
       <ItemBandGroup>
         {hasWhen && (
@@ -2263,6 +2660,29 @@ export function ItemDialog({
   // in the same top band the canvas and braindump headers occupy — while the
   // modal (and mobile drawer) keep the type-first layout unchanged.
 
+  // The autosaving panel's explicit exit — flush pending writes, then close,
+  // exactly what the footer's "Done" did. In the Clearing layout it rides the
+  // top rail (and stands in for the close-X, which Clearing drops) so the
+  // footer's bottom-right corner is free for the history line.
+  const doneButton = (
+    <Button
+      // Autosave means there is nothing to "submit" — Done just flushes what's
+      // queued and closes, exactly as the old close-X did. Never disabled: a
+      // titleless draft (which autosave won't persist anyway) must still be
+      // dismissable, since Clearing drops the X.
+      onClick={() => {
+        flushNow();
+        onOpenChange(false);
+      }}
+      data-testid="item-dialog-submit"
+      variant="outline"
+      size="sm"
+      className="h-7 px-3 text-xs"
+    >
+      Done
+    </Button>
+  );
+
   const headerActions = (
     <div className="ml-auto flex items-center gap-0.5">
       {mode === 'edit' && editItem && pathname !== `/item/${editItem.id}` && (
@@ -2324,7 +2744,7 @@ export function ItemDialog({
                   </DropdownMenuItem>
                 </>
               ))}
-            {editConfig?.counters.streak && (
+            {streaksOn && editConfig?.counters.streak && (
               <DropdownMenuItem
                 data-testid="item-dialog-reset-streak"
                 onSelect={() => setShowResetConfirm(true)}
@@ -2346,8 +2766,10 @@ export function ItemDialog({
       )}
 
       {/* The modal gets Radix's own close button; the panel has to bring one —
-          and it must flush before it goes. */}
-      {isPanel && (
+          and it must flush before it goes. Clearing drops this: its top-rail
+          "Done" already flushes + closes, so a second dismiss control (which did
+          the identical thing) is just noise beside it. */}
+      {!clearing && isPanel && (
         <Button
           variant="ghost"
           size="icon"
@@ -2406,9 +2828,7 @@ export function ItemDialog({
                         close();
                         // Replaces this dialog rather than stacking on it: openDialog
                         // swaps the single active slot.
-                        useUIStore
-                          .getState()
-                          .openDialog({ type: 'organize', section: 'types' });
+                        openConsole({ section: 'types' });
                       }}
                     >
                       <Plus className="size-3.5" />
@@ -2433,6 +2853,21 @@ export function ItemDialog({
   const modeLabel = (
     <span className="text-muted-foreground text-xs">
       {mode === 'add' ? 'New item' : 'Edit'}
+    </span>
+  );
+
+  // Clearing's Zone 0 identity mark: a colour square + the type name, whispered
+  // (11px, muted) rather than worn as a filled chip. Non-interactive on purpose —
+  // edit mode shows the type but never offers to convert it (streaks, completion
+  // history are a data decision, not a control), the same rule `typeControl`'s
+  // edit branch already keeps.
+  const typeWhisper = (
+    <span
+      data-testid="item-dialog-type-whisper"
+      className="text-muted-foreground inline-flex items-center gap-1.5 text-[11px]"
+    >
+      <ColorSquare color={activeConfig.accent} />
+      {activeConfig.label}
     </span>
   );
 
@@ -2479,13 +2914,20 @@ export function ItemDialog({
       // dark:bg-transparent is load-bearing: Input carries dark:bg-input/30,
       // which tailwind-merge keeps (different modifier) and which outranks
       // bg-transparent on specificity.
-      className="h-auto border-0 bg-transparent px-0 py-0 text-base font-medium shadow-none placeholder:font-normal focus-visible:ring-0 md:text-base dark:bg-transparent"
+      className={cn(
+        'h-auto border-0 bg-transparent px-0 py-0 shadow-none placeholder:font-normal focus-visible:ring-0 dark:bg-transparent',
+        // Clearing sets the title in serif at a heading size — prose against the
+        // sans + mono metadata below it. The modal/mobile keep the sans base.
+        clearing
+          ? 'font-serif text-lg leading-snug font-medium md:text-lg'
+          : 'text-base font-medium md:text-base'
+      )}
     />
   ) : null;
 
   return (
     <>
-      <SurfaceRoot panel={isPanel} open={open} onOpenChange={onOpenChange}>
+      <SurfaceRoot panel={isPanel} open={open} onOpenChange={onOpenChange} isMobile={isMobile}>
         <SurfaceContent
           panel={isPanel}
           open={open}
@@ -2566,21 +3008,21 @@ export function ItemDialog({
                   drawer — keep the original type-first row with the title under
                   it. Both share the same pieces (headerActions / typeControl /
                   modeLabel / titleInput), only reordered. */}
-              {isPanel && mode === 'edit' ? (
-                <div className="flex flex-col gap-1.5">
-                  {/* The breathing dot that used to lead here (mirroring the
-                      selected row) is retired for now — the persistent row
-                      highlight is the current-row indicator, and the pulse dot
-                      is being reserved for an OpenClaw "working on it" signal. */}
+              {clearing ? (
+                <div className="flex flex-col gap-3">
+                  {/* Zone 0 — the type whisper on the left, the actions and the
+                      exit on the right. "Done" flushes and closes, standing in
+                      for the close-X (which Clearing drops). */}
                   <div className="flex items-center gap-2">
-                    <div className="min-w-0 flex-1">{titleInput}</div>
+                    {typeWhisper}
                     {headerActions}
+                    {doneButton}
                   </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {typeControl}
-                    {renderPriorityChip(activeTypeName, activeDraft)}
-                    {modeLabel}
-                  </div>
+                  {/* Zone 1 — the title, set in serif: the one element that makes
+                      the surface read as a document, not a form. Priority and the
+                      mode label leave the header — priority rides the chip field
+                      below; the mode label is deleted (you can see you're editing). */}
+                  {titleInput}
                 </div>
               ) : (
                 <>
@@ -2622,7 +3064,7 @@ export function ItemDialog({
                 </div>
               )}
 
-              {editConfig?.counters.streak && editItem && (
+              {streaksOn && editConfig?.counters.streak && editItem && (
                 <div className="bg-warning/10 flex items-center gap-2.5 rounded-md px-2.5 py-2">
                   <Flame className="text-warning size-4 shrink-0" />
                   <span className="text-warning-text text-xs font-semibold">
@@ -2674,7 +3116,12 @@ export function ItemDialog({
                   // min-h-0 unpins the primitive's min-h-16; the rest is the
                   // title Input's borderless recipe, dark:bg-transparent
                   // included (dark:bg-input/30 survives tailwind-merge).
-                  className="min-h-0 resize-none overflow-y-auto border-0 bg-transparent px-0 py-0 text-sm leading-relaxed shadow-none focus-visible:ring-0 md:text-sm dark:bg-transparent"
+                  className={cn(
+                    'min-h-0 resize-none overflow-y-auto border-0 bg-transparent px-0 py-0 leading-relaxed shadow-none focus-visible:ring-0 dark:bg-transparent',
+                    // Clearing pairs notes with the serif title as "what you
+                    // wrote", set against the sans + mono metadata around it.
+                    clearing ? 'font-serif text-sm placeholder:italic md:text-sm' : 'text-sm md:text-sm'
+                  )}
                 />
               )}
 
@@ -2682,47 +3129,61 @@ export function ItemDialog({
                   growth plan. Live data (subtasks/agent state read the store),
                   while the property draft above stays snapshot-based. */}
               {withDetailSections && mode === 'edit' && editItem && (
-                <ItemDetailSections item={editItem} withThread />
+                <ItemDetailSections item={editItem} withThread withActivity={!clearing} />
               )}
 
-              <div className="flex items-center justify-between gap-3 border-t pt-3">
-                {autosaves ? (
-                  // No Save button means no moment of commitment, so the panel
-                  // has to be legible about it: it says it keeps up, and says
-                  // when it hasn't yet.
-                  <span
-                    // The only signal that anything is being persisted, so it
-                    // has to reach a screen reader too.
-                    role="status"
-                    aria-live="polite"
-                    className="text-muted-foreground hidden items-center gap-1.5 text-xs sm:flex"
+              {/* Clearing's footer folds the edit history into one line in the
+                  bottom-right, across from "Saves as you go", and lifts Done to
+                  the top rail. Every other surface keeps the status + submit row. */}
+              {clearing ? (
+                editItem && (
+                  <ClearingFooter
+                    key={editItem.id}
+                    itemId={editItem.id}
+                    saving={saving}
+                    showHistory={withDetailSections}
+                  />
+                )
+              ) : (
+                <div className="flex items-center justify-between gap-3 border-t pt-3">
+                  {autosaves ? (
+                    // No Save button means no moment of commitment, so the panel
+                    // has to be legible about it: it says it keeps up, and says
+                    // when it hasn't yet.
+                    <span
+                      // The only signal that anything is being persisted, so it
+                      // has to reach a screen reader too.
+                      role="status"
+                      aria-live="polite"
+                      className="text-muted-foreground hidden items-center gap-1.5 text-xs sm:flex"
+                    >
+                      {saving ? 'Saving…' : 'Saves as you go'}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground hidden items-center gap-1.5 text-xs sm:flex">
+                      <kbd className="border-border text-muted-foreground rounded-xs border px-1 font-mono text-[10px]">
+                        ↵
+                      </kbd>
+                      to {mode === 'add' ? 'add' : 'save'}
+                    </span>
+                  )}
+                  <Button
+                    onClick={handleSubmit}
+                    data-testid="item-dialog-submit"
+                    variant={autosaves ? 'outline' : 'default'}
+                    disabled={invalidCustomDays(activeDraft) || !activeDraft.title.trim()}
+                    className="h-9 max-sm:w-full"
                   >
-                    {saving ? 'Saving…' : 'Saves as you go'}
-                  </span>
-                ) : (
-                  <span className="text-muted-foreground hidden items-center gap-1.5 text-xs sm:flex">
-                    <kbd className="border-border text-muted-foreground rounded-xs border px-1 font-mono text-[10px]">
-                      ↵
-                    </kbd>
-                    to {mode === 'add' ? 'add' : 'save'}
-                  </span>
-                )}
-                <Button
-                  onClick={handleSubmit}
-                  data-testid="item-dialog-submit"
-                  variant={autosaves ? 'outline' : 'default'}
-                  disabled={invalidCustomDays(activeDraft) || !activeDraft.title.trim()}
-                  className="h-9 max-sm:w-full"
-                >
-                  {mode === 'add' ? `Add ${activeConfig.label}` : autosaves ? 'Done' : 'Save Changes'}
-                </Button>
-              </div>
+                    {mode === 'add' ? `Add ${activeConfig.label}` : autosaves ? 'Done' : 'Save Changes'}
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </SurfaceContent>
       </SurfaceRoot>
 
-      {editConfig?.counters.streak && (
+      {streaksOn && editConfig?.counters.streak && (
         <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
           <AlertDialogContent data-testid="reset-streak-confirm">
             <AlertDialogHeader>

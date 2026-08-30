@@ -163,11 +163,15 @@ export interface ContainerKindConfig {
    * `NO_CONTAINER`, undecorated — but a heading has room to say which side it is.
    */
   unsetLabel: string | null;
-  /**
+   /**
    * The label of the "create one from here" row inside a container picker.
    *
-   * `null` wherever nothing offers inline creation (the gates and goals are
-   * created in the Organize console, never from an item dialog).
+   * Set on every kind that offers inline creation from the item dialog. It used
+   * to be projects-only — gates and goals were created solely in the Organize
+   * console — but "attach this to a NEW goal (or routine, or program)" is a real
+   * gesture the add dialog now answers, so each kind names its create row here
+   * and the console stays the place to rename and delete. `null` only if a kind
+   * should never be inline-creatable.
    */
   newLabel: string | null;
   /**
@@ -253,7 +257,7 @@ export const CONTAINER_KINDS: Record<ContainerKind, ContainerKindConfig> = {
     label: 'Routine',
     labelPlural: 'Routines',
     unsetLabel: null,
-    newLabel: null,
+    newLabel: 'New routine',
     itemField: null,
     itemTypeKey: null,
     caseFold: false,
@@ -264,7 +268,7 @@ export const CONTAINER_KINDS: Record<ContainerKind, ContainerKindConfig> = {
     label: 'Program',
     labelPlural: 'Programs',
     unsetLabel: null,
-    newLabel: null,
+    newLabel: 'New program',
     itemField: null,
     itemTypeKey: null,
     caseFold: false,
@@ -276,7 +280,7 @@ export const CONTAINER_KINDS: Record<ContainerKind, ContainerKindConfig> = {
     labelPlural: 'Goals',
     // No unset state, like the gates: an item serves a goal or it does not.
     unsetLabel: null,
-    newLabel: null,
+    newLabel: 'New goal',
     // Membership lives in goal_items, never on the item — which is what lets it
     // carry a role, and what keeps `items` (and therefore the pinned legacy
     // projections) untouched by this whole feature.

@@ -1,5 +1,6 @@
 import {
   CalendarRange,
+  Flame,
   FolderCog,
   HandCoins,
   LineChart,
@@ -59,14 +60,34 @@ export interface ExtensionManifest {
  * all three. Only the BEHAVIOUR stops. What that means per surface is stated at
  * each gate and gathered in lib/extension-gates.ts.
  *
- * These two default OFF for a different reason than the channels do. A channel
- * defaults off because it can ring a phone or spend money. These default off
- * because a concept you have not met is weight you carry for nothing — see the
- * note on `defaultEnabled` in each entry, and the migration question in the
- * PR that landed them, which is about the accounts that ALREADY hold this data.
+ * They split on the default now. GOALS still defaults off, for the reason the
+ * channels do not share: a concept you have not met is weight you carry for
+ * nothing. ORGANIZE defaults ON as of 2026-08-28 — the console was reworked to
+ * be approachable rather than a wall of sections, so it stopped being weight and
+ * started being the obvious home for the structure a user already has. Each
+ * entry's `defaultEnabled` note carries the specifics, and — because the
+ * fallback is evaluated per read — flipping Organize on reaches every account
+ * with no saved row for it, existing and new, no migration.
  */
 export const EXT_GOALS = 'goals';
 export const EXT_ORGANIZE = 'organize';
+
+/**
+ * Streaks (default ON) — the one entry that ships enabled, and the reason the
+ * `safeEnabled` fallback in lib/extension-gates.ts bothers to tell the manifest
+ * default apart from a hard `false`.
+ *
+ * It defaults ON because it is not a new idea a fresh account has to grow into;
+ * it is a core habit mechanic that has always been visible, and defaulting it
+ * off would silently strip the flame from every account that already reads one.
+ * So this toggle ADDS an off switch rather than gating a feature in: turn it off
+ * and every flame, streak count and reset control disappears, while the counter
+ * itself keeps moving — reminders and stakes read `counters.streak`, not this,
+ * so a streak-at-risk call still rings and a Beeminder datapoint still posts.
+ * What stops is only what Anchor SHOWS you — the same browser-only asymmetry the
+ * goals gates make (see lib/extension-gates.ts).
+ */
+export const EXT_STREAKS = 'streaks';
 
 export const EXT_HABIT_HEATMAP = 'habit-heatmap';
 export const EXT_COMPLETION_CONFETTI = 'completion-confetti';
@@ -120,7 +141,26 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
       'One console for bulk container management — routines, programs, projects, item types, habit groups and the trash.',
     icon: FolderCog,
     category: 'planning',
-    defaultEnabled: false,
+    // Defaults ON since the console was made approachable (2026-08-28): a warm
+    // welcome per section, a silhouette per rail row, inline creation, and an
+    // Overview that greets a first open. The "Weight of Anchor" verdict was that
+    // it arrived as twelve sections of weight; once it stopped being that, the
+    // reason to hide it went too. The fallback is per-read, so this reaches every
+    // account with no saved toggle — existing and new alike. Goals below stays
+    // OFF: it is the larger concept, and the audit named it safest to keep opt-in.
+    defaultEnabled: true,
+  },
+  {
+    slug: EXT_STREAKS,
+    name: 'Streaks',
+    // Says what stays behind. The whole point of an off switch here is to quiet
+    // the guilt of a broken chain, so the row has to promise that quieting the
+    // display does not quietly stop the reminders or stakes that count on it.
+    description:
+      'Flame badges and streak counts across the app. Turn it off to hide them — your streaks keep counting for reminders and stakes.',
+    icon: Flame,
+    category: 'habits',
+    defaultEnabled: true,
   },
   {
     slug: EXT_HABIT_HEATMAP,

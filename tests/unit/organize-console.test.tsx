@@ -48,7 +48,7 @@ beforeEach(enableGoalsAndOrganize);
 describe('the Organize console frame', () => {
   afterEach(cleanup);
 
-  it('exposes all six sections as tabs, in the decided order', () => {
+  it('exposes every section as a tab, in the decided order', () => {
     render(<OrganizeConsole open onOpenChange={() => {}} />);
     // 'Habit groups' sat below 'Item types' until migration 039 (decision 7 put
     // it there to make a later fold cheap). The fold happened, and it went to
@@ -58,7 +58,10 @@ describe('the Organize console frame', () => {
     // Goals sit LAST in CONTAINERS: routines and programs answer "is this on
     // today", goals answer "why is any of it here", and the daily questions
     // belong above the long one.
+    // OVERVIEW leads: the console's front door and the map a first arrival
+    // meets, above the two groups rather than inside either.
     expect(screen.getAllByRole('tab').map((el) => el.textContent)).toEqual([
+      'Overview',
       'Routines',
       'Programs',
       'Goals',
@@ -79,17 +82,20 @@ describe('the Organize console frame', () => {
     expect(screen.queryByRole('tab', { name: /CONTAINERS|LABELS/ })).toBeNull();
   });
 
-  it('defaults to routines when no section is given', () => {
+  it('defaults to the Overview when no section is given', () => {
+    // Opening on Routines met a first-time arrival with one kind of thing and
+    // no word about the other five. The map greets instead.
     render(<OrganizeConsole open onOpenChange={() => {}} />);
-    expect(tab('Routines')).toHaveAttribute('aria-selected', 'true');
+    expect(tab('Overview')).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('organize-overview')).toBeTruthy();
   });
 
-  it('falls back to routines for a section slug it does not know', () => {
+  it('falls back to the first available section for a slug it does not know', () => {
     // `tab` arrives as a bare string from ActiveDialog and from the palette, so
     // a stale or hand-typed value must land somewhere real rather than render an
     // empty plate.
     render(<OrganizeConsole open onOpenChange={() => {}} section="nonsense" />);
-    expect(tab('Routines')).toHaveAttribute('aria-selected', 'true');
+    expect(tab('Overview')).toHaveAttribute('aria-selected', 'true');
   });
 
   it('lands on the section it is opened with', () => {
@@ -196,5 +202,36 @@ describe('console section slugs', () => {
     // 'groups' would silently open Routines. `isConsoleSection` rejecting it is
     // what lets a caller find out.
     expect(isConsoleSection('groups')).toBe(false);
+  });
+});
+
+describe('the footer bar only teaches keys that work', () => {
+  /**
+   * The footer is the console's teaching surface, and this repo has already
+   * paid for it once: "the footer bar teaches `/`, so leaving it unbuilt
+   * shipped a promise the plate did not keep."
+   *
+   * The Overview is the first section that is a MAP rather than a list — six
+   * cards, all on screen, no filter field — so the hint that every other
+   * section earns would point at nothing here. `/` is also swallowed rather
+   * than passed on (the plate sets `data-keys-local`), so an unkept promise is
+   * the whole of the failure: a key that is taught, pressed, and inert.
+   */
+  it('offers no Filter hint on the Overview, which has no filter field', () => {
+    render(<OrganizeConsole open onOpenChange={() => {}} section="overview" />);
+    expect(screen.queryByTestId('organize-footer-filter')).toBeNull();
+  });
+
+  it('offers it on a list section', () => {
+    render(<OrganizeConsole open onOpenChange={() => {}} section="routines" />);
+    expect(screen.getByTestId('organize-footer-filter')).toBeTruthy();
+  });
+
+  it('claims a filter for every section that is not the Overview', () => {
+    // Guards the pair: a new section added to the rail without a filter field
+    // would otherwise inherit the hint by default.
+    for (const s of CONSOLE_SECTIONS) {
+      expect(s.filterable).toBe(s.id !== 'overview');
+    }
   });
 });

@@ -87,6 +87,8 @@ test.describe('goals', () => {
 
   async function createGoal(page: Page, name: string) {
     await openGoals(page);
+    // Creation starts from the list head and opens a form in the detail pane.
+    await page.getByTestId('goal-new').click();
     await page.getByTestId('goal-new-name').fill(name);
     await page.getByTestId('goal-add').click();
     // The store write is fire-and-forget, so wait for the ROW rather than

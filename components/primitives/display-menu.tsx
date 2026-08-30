@@ -70,6 +70,8 @@ import {
   SORT_BY_OPTIONS,
 } from '@/lib/view-options';
 import type { Goal, GroupBy, Priority } from '@/lib/planner-types';
+import { TIME_BUCKET_RANGES } from '@/lib/planner-types';
+import { BUCKET_ORDER } from '@/lib/day-items';
 import type { BraindumpGroupBy, ViewScope } from '@/lib/view-store';
 import { cn } from '@/lib/utils';
 
@@ -133,6 +135,8 @@ export type DisplaySurface = 'canvas' | 'braindump';
  * types. shadcn's own item is `py-1.5 text-sm`, hence the overrides.
  */
 const ROW = 'h-8 gap-2 rounded-[5px] px-2 text-xs';
+/** Same row, grown to hold a label plus its muted example line (`hint`). */
+const ROW_TALL = 'min-h-11 py-1.5 gap-2 rounded-[5px] px-2 text-xs';
 const CAP = 'px-2 pb-1 pt-2 text-[10px] font-medium uppercase tracking-[0.1em] text-muted-foreground';
 /** 240px. Today's popover is 208px, the narrowest menu in the app. */
 const PANEL = 'w-60 rounded-[10px] p-1 shadow-[var(--shadow-elev-md)]';
@@ -219,6 +223,13 @@ type RowSpec = {
   leading?: React.ReactNode;
   icon?: LucideIcon;
   rail?: string;
+  /**
+   * A muted second line under the label — a couple of live examples of what this
+   * option would produce ("Work, Personal…" beneath Project). Illustrative, not
+   * exhaustive: it caps at two names so the row stays one glance, and it sits
+   * BELOW the label rather than on the rail, which the canvas reach-notes own.
+   */
+  hint?: string;
   disabled?: boolean;
   /**
    * Marks a row that DOES something rather than holding a value — "Switch to
@@ -269,7 +280,7 @@ function ValueRow({ spec }: { spec: RowSpec }) {
   const role = roleOf(spec);
   return (
     <DropdownMenuItem
-      className={cn(ROW, spec.checked && 'font-semibold')}
+      className={cn(spec.hint ? ROW_TALL : ROW, spec.checked && 'font-semibold')}
       role={role}
       aria-checked={role === 'menuitem' ? undefined : spec.checked}
       disabled={spec.disabled}
@@ -281,8 +292,15 @@ function ValueRow({ spec }: { spec: RowSpec }) {
       }}
     >
       {spec.leading}
-      {Icon && <Icon className="size-4" />}
-      <span className="flex-1 truncate">{spec.label}</span>
+      {Icon && <Icon className="size-4 shrink-0" />}
+      <span className="flex-1 min-w-0">
+        <span className="block truncate">{spec.label}</span>
+        {spec.hint && (
+          <span className="block truncate text-[10px] font-normal leading-tight text-muted-foreground">
+            {spec.hint}
+          </span>
+        )}
+      </span>
       {spec.rail && <span className="shrink-0 text-[11px] text-muted-foreground">{spec.rail}</span>}
       <Tick on={spec.checked} />
     </DropdownMenuItem>
@@ -363,7 +381,14 @@ function SheetRow({ spec, onDismiss }: { spec: RowSpec; onDismiss: () => void })
     >
       {spec.leading}
       {Icon && <Icon className="size-4 shrink-0" />}
-      <span className="flex-1 truncate">{spec.label}</span>
+      <span className="flex-1 min-w-0">
+        <span className="block truncate">{spec.label}</span>
+        {spec.hint && (
+          <span className="block truncate text-xs font-normal leading-tight text-muted-foreground">
+            {spec.hint}
+          </span>
+        )}
+      </span>
       {spec.rail && <span className="shrink-0 text-xs text-muted-foreground">{spec.rail}</span>}
       {/* The sheet's rows are flex children that must not squeeze the check; the
           dropdown's own item already carries `[&_svg]:shrink-0`, so asking for it
@@ -440,6 +465,10 @@ export function DisplayMenu({
   scope?: ViewScope;
 }) {
   const projects = usePlannerStore((s) => s.projects);
+  // Read purely to seed the grouping options' example lines — the Routine and
+  // Program group-by values name these, the way Project names `projects`.
+  const routines = usePlannerStore((s) => s.routines);
+  const programs = usePlannerStore((s) => s.programs);
   const getProjectColor = usePlannerStore((s) => s.getProjectColor);
   const showPausedOnGrid = usePlannerStore((s) => s.showPausedOnGrid);
   const setShowPausedOnGrid = usePlannerStore((s) => s.setShowPausedOnGrid);
@@ -616,6 +645,35 @@ export function DisplayMenu({
     (o) => o.value !== 'goal' || goalsOn
   );
   const groupLabel = groupOptions.find((o) => o.value === groupBy)?.label ?? 'None';
+
+  /**
+   * A couple of live examples per group-by value, so "Project" reads with the
+   * user's own "Work, Personal…" beneath it and a stranger to the menu can tell
+   * what a dimension would carve their day into before they pick it.
+   *
+   * The names come from the SAME sources the grouping itself reads, so the
+   * examples match the sections that appear: container lists off the store,
+   * Goals filtered to active by `displayGoals`, and the two static axes from
+   * their canonical constants. `type` mirrors the braindump's fixed two sections
+   * (braindump.tsx). Capped at two — illustrative, not a legend — and absent
+   * (no second line) when a dimension has nothing to name yet, e.g. no routines.
+   */
+  const previewNames = (names: string[]): string | undefined => {
+    const clean = names.map((n) => n.trim()).filter(Boolean);
+    if (clean.length === 0) return undefined;
+    const shown = clean.slice(0, 2).join(', ');
+    return clean.length > 2 ? `${shown}…` : shown;
+  };
+  const groupExamples: Partial<Record<string, string | undefined>> = {
+    project: previewNames(projects.map((p) => p.name)),
+    priority: previewNames(['High', 'Medium', 'Low']),
+    bucket: previewNames(BUCKET_ORDER.map((b) => TIME_BUCKET_RANGES[b].label)),
+    routine: previewNames(routines.map((r) => r.name)),
+    program: previewNames(programs.map((p) => p.name)),
+    goal: previewNames(displayGoals(goals).map((g) => g.name)),
+    // The braindump splits its corpus into exactly these two — see braindump.tsx.
+    type: 'Tasks, Habits',
+  };
   /** How far the CURRENT value reaches on this surface — see groupBySupport. */
   const groupReach = isCanvas
     ? groupBySupport(scope, view.layout, groupBy as GroupBy)
@@ -662,6 +720,7 @@ export function DisplayMenu({
             key: o.value,
             icon: o.icon,
             label: o.label,
+            hint: groupExamples[o.value],
             rail: reach.note ?? undefined,
             disabled: !reach.honoured,
             checked: groupBy === o.value,

@@ -13,6 +13,7 @@ import { PALETTE_STORAGE_KEY, isThemePalette, paletteDef } from '@/lib/theme-pal
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { useGatewayStore } from '@/lib/gateway-store';
+import { useNudgeStore } from '@/lib/nudge-store';
 import { adoptLocalState, clearUserScopedLocalState } from '@/lib/local-state';
 import { fetchContainersSeeded, fetchTrashedNames, markContainersSeeded } from '@/lib/db';
 import { runFirstRunSeed } from '@/lib/seed-containers';
@@ -329,6 +330,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       useChannelSecretsStore.getState().hydrate(userId);
       // Same posture again: which gateway is configured, never its token.
       useGatewayStore.getState().hydrate(userId);
+      // One-time nudges' dismissed-forever set. Same fire-and-forget posture:
+      // a nudge that fails to load stays inert, never a failed data load.
+      useNudgeStore.getState().hydrate(userId);
     };
 
     // Check current session on mount
@@ -349,6 +353,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         useExtensionsStore.getState().reset();
         useChannelSecretsStore.getState().reset();
         useGatewayStore.getState().reset();
+        useNudgeStore.getState().reset();
         // clearStore only resets the planner's DATA. Everything this browser
         // has persisted ABOUT the account — the Beacon API key and its
         // transcripts, the canvas filters, the morning decay policy, the

@@ -13,7 +13,7 @@ import {
   DragOverlay,
   MeasuringStrategy,
 } from '@dnd-kit/core';
-import { GripVertical, Circle, Keyboard as KeyboardIcon } from 'lucide-react';
+import { GripVertical, Circle } from 'lucide-react';
 import { DesktopShell } from '@/components/shell/desktop-shell';
 import { ConfirmDialog } from '@/components/shell/confirm-dialog';
 import { BulkActionBar } from '@/components/shell/bulk-action-bar';
@@ -32,12 +32,13 @@ import { OrganizeConsole } from '@/components/planner/organize/organize-console'
 import { KeyboardShortcutsModal } from '@/components/planner/keyboard-shortcuts-modal';
 import { EODReview } from '@/components/ai/eod-review';
 import { MobileShell } from '@/components/shell/mobile-shell';
+import { ZenRoom } from '@/components/zen/zen-room';
 import { OnboardingTour } from '@/components/onboarding/onboarding-tour';
 import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
+import { OneTimeNudge } from '@/components/primitives/one-time-nudge';
+import { HelpMenu } from '@/components/shell/help-menu';
 
 import { usePlannerStore } from '@/lib/planner-store';
-import { formatKeys } from '@/lib/commands/keys';
-import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { milestoneItemIds } from '@/lib/goals';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
@@ -46,6 +47,9 @@ import { useChatStore } from '@/lib/chat-store';
 import { flushSettings } from '@/lib/settings-service';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { ITEM_TYPES } from '@/lib/item-registry';
+import { useStreaksEnabled } from '@/lib/extension-gates';
+import { useExtensionsStore } from '@/lib/extensions-store';
+import { NUDGE_STREAKS_ON } from '@/lib/nudges/registry';
 import { adoptLegacyViewPrefs, useViewStore } from '@/lib/view-store';
 import { useDragStore } from '@/lib/drag-store';
 import { useSelectionStore } from '@/lib/selection-store';
@@ -61,23 +65,6 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { isOnboardingComplete } from '@/lib/user-profile';
 import { createClient } from '@/lib/supabase';
 import type { MobileTab } from '@/lib/mobile-nav-store';
-
-/**
- * The resting hint on the shortcuts button.
- *
- * Reads the LIVE binding rather than printing '⌘ + /': `system_shortcuts` is
- * rebindable like every other shortcut, and a hardcoded hint quietly starts
- * lying the moment someone moves it — on the one button whose entire job is to
- * tell you what the key is.
- */
-function KbdHint() {
-  const [isMac, setIsMac] = useState(false);
-  const keys = useShortcutKeys('system_shortcuts');
-  useEffect(() => {
-    setIsMac(/Mac|iPhone|iPad|iPod/.test(navigator.platform));
-  }, []);
-  return <span>{formatKeys(keys, isMac).join(' + ')}</span>;
-}
 
 function DraggableTaskOverlay({ title, count = 0 }: { title: string; count?: number }) {
   return (
@@ -173,21 +160,23 @@ export function beginDrag(event: DragStartEvent) {
  * Extracted from app/page.tsx (P2 of the redesign plan).
  */
 export function AppShell() {
-  const {
-    tasks,
-    habits,
-    scheduleTask,
-    assignHabitToBucket,
-    unscheduleTask,
-    scheduleHabit,
-    deleteTask,
-    deleteHabit,
-    moveTaskToProjectBlock,
-    selectedDate,
-    userTimezone,
-  } = usePlannerStore();
-  const { setChatExpanded } = useSidebarStore();
-  const { activeDialog, openDialog, closeDialog, confirm } = useUIStore();
+  // No planner-store subscription here. Every planner value this shell touches
+  // is consumed inside event handlers (drag end, hovered-item shortcuts), so
+  // they read usePlannerStore.getState() at event time instead — a reactive
+  // subscription made every item write re-render the whole app tree, the same
+  // failure mode the DragGhost and hovered-item comments below record.
+  const setChatExpanded = useSidebarStore((s) => s.setChatExpanded);
+  // The launcher slot is masked out: AppShell never renders it (OmniLauncher
+  // subscribes to it itself), so ⌘K must not re-render the shell tree. The
+  // mask maps launcher → null, and Object.is(null, null) skips the render
+  // when the launcher opens over an empty slot.
+  const activeDialog = useUIStore((s) =>
+    s.activeDialog?.type === 'launcher' ? null : s.activeDialog
+  );
+  // Actions are stable references on the store; selecting them never
+  // re-renders. `confirm` is read via getState() at event time below.
+  const openDialog = useUIStore((s) => s.openDialog);
+  const closeDialog = useUIStore((s) => s.closeDialog);
   const isMobile = useIsMobile();
   const commandContext = useCommandContext();
 
@@ -203,6 +192,13 @@ export function AppShell() {
   const [mounted, setMounted] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [tourUserId, setTourUserId] = useState<string | null>(null);
+  // The streak nudge fires only when streaks are provably ON: `configsLoaded`
+  // means the extensions store has answered, so we never nudge "turn streaks
+  // off" at someone who already did (streaksOn reads its default-true before
+  // hydration), and never at all when the extensions table is undeployed
+  // (configsLoaded stays false — the toggle would be a no-op there anyway).
+  const streaksOn = useStreaksEnabled();
+  const extReady = useExtensionsStore((s) => s.configsLoaded);
 
   useEffect(() => {
     setMounted(true);
@@ -226,6 +222,11 @@ export function AppShell() {
   // Content typeface toggle — stamp <html data-type-mode> so the CSS token
   // pair in globals.css flips item-title family/weight/size app-wide.
   const typeMode = useViewStore((s) => s.typeMode);
+  // Zen REPLACES the desktop shell rather than covering it: an overlay would
+  // leave a full second tree mounted and measuring underneath (the schedule
+  // grid derives its hour height from live layout), and every TaskRow under it
+  // would still be writing lib/hovered-item.ts on mouseenter.
+  const zenOpen = useViewStore((s) => s.zenOpen);
   useEffect(() => {
     document.documentElement.dataset.typeMode = typeMode;
   }, [typeMode]);
@@ -300,6 +301,12 @@ export function AppShell() {
     useDragStore.getState().endDrag();
     if (!over) return;
 
+    // Event-time snapshot — the drop resolves against whatever the store holds
+    // at release, and reading it here is what lets AppShell go without a
+    // planner subscription at all.
+    const planner = usePlannerStore.getState();
+    const { tasks, habits, selectedDate, userTimezone } = planner;
+
     const itemId = active.id as string;
     const draggedTask = tasks.find((t) => t.id === itemId);
     const draggedHabit = habits.find((h) => h.id === itemId);
@@ -337,7 +344,6 @@ export function AppShell() {
       // unschedule and date-move no-op on habits, so gate `acted` on this so a
       // fully-ineligible group falls through instead of silently clearing.
       const taskLikeIds = groupIds.filter((id) => tasks.some((t) => t.id === id));
-      const planner = usePlannerStore.getState();
       // DELIBERATELY NOT GATED on the Goals extension, unlike every other
       // goal read in the app. This set is what stops a bulk date verb from
       // overwriting a milestone's target date, and that write is not
@@ -416,19 +422,19 @@ export function AppShell() {
 
     switch (command.kind) {
       case 'schedule-task':
-        scheduleTask(command.taskId, command.bucket, command.time, command.dateStr);
+        planner.scheduleTask(command.taskId, command.bucket, command.time, command.dateStr);
         break;
       case 'schedule-habit':
-        scheduleHabit(command.habitId, command.bucket, command.time);
+        planner.scheduleHabit(command.habitId, command.bucket, command.time);
         break;
       case 'assign-habit-bucket':
-        assignHabitToBucket(command.habitId, command.bucket);
+        planner.assignHabitToBucket(command.habitId, command.bucket);
         break;
       case 'unschedule':
-        unscheduleTask(command.itemId);
+        planner.unscheduleTask(command.itemId);
         break;
       case 'move-task-to-project-block':
-        moveTaskToProjectBlock(command.taskId);
+        planner.moveTaskToProjectBlock(command.taskId);
         break;
     }
   };
@@ -440,6 +446,7 @@ export function AppShell() {
   const handleShortcutEdit = useCallback(() => {
     const { id, type } = hoveredItem;
     if (!id || !type) return;
+    const { tasks, habits } = usePlannerStore.getState();
     if (type === 'task') {
       const task = tasks.find((t) => t.id === id);
       if (task) openEditFor(task, 'task');
@@ -447,13 +454,15 @@ export function AppShell() {
       const habit = habits.find((h) => h.id === id);
       if (habit) openEditFor(habit, 'habit');
     }
-  }, [tasks, habits]);
+  }, []);
 
   const handleShortcutDelete = useCallback(() => {
     // A genuine multi-selection (>=2) wins over the hovered item: Backspace
     // deletes the whole selection (one confirm, one undo). A single selected row
     // is just the "current / open row" (every plain click selects one), so at
     // size 1 we fall through to the hovered-item path as before.
+    const { confirm } = useUIStore.getState();
+    const { tasks, habits, deleteTask, deleteHabit } = usePlannerStore.getState();
     const selection = useSelectionStore.getState();
     if (selection.selectedIds.size >= 2) {
       const ids = [...selection.selectedIds];
@@ -486,7 +495,7 @@ export function AppShell() {
       destructive: true,
       onConfirm: () => (type === 'task' ? deleteTask(item.id) : deleteHabit(item.id)),
     });
-  }, [tasks, habits, confirm, deleteTask, deleteHabit]);
+  }, []);
 
   // Every other binding is owned by its command in lib/commands/registry.ts.
   // These two stay here because they act on the item under the mouse, which
@@ -568,15 +577,19 @@ export function AppShell() {
       {/* One shell mounts at a time (post-hydration) so the shared view
           components don't register duplicate dnd-kit droppable ids across the
           two trees — and mobile no longer pays for the desktop tree, or v.v. */}
-      {isMobile ? <MobileShell /> : <DesktopShell />}
+      {isMobile ? <MobileShell /> : zenOpen ? <ZenRoom /> : <DesktopShell />}
 
       <DragGhost />
 
       {/* Add is always the modal. Desktop EDIT is the docked panel, which
           DesktopShell mounts as a layout sibling of the canvas; mobile edit
           stays the bottom sheet, where there is no room to dock anything. */}
+      {/* …and EDIT is the modal in Zen too, for the same reason it is on
+          mobile: the docked panel belongs to DesktopShell, which Zen replaces.
+          Without this arm, editing an item from the ⌘K palette inside Zen would
+          fill the dialog slot and render nothing at all. */}
       <ItemDialog
-        state={itemDialogState?.mode === 'add' || isMobile ? itemDialogState : null}
+        state={itemDialogState?.mode === 'add' || isMobile || zenOpen ? itemDialogState : null}
         onOpenChange={(open) => !open && closeDialog()}
       />
 
@@ -619,6 +632,10 @@ export function AppShell() {
         />
       )}
 
+      {/* First-run orientation, shown once: streaks are on, and how to quiet
+          them. Persistent toast, dismissed forever server-side. */}
+      <OneTimeNudge id={NUDGE_STREAKS_ON} enabled={extReady && streaksOn} />
+
       <EODReview />
 
       <BugReportDialog
@@ -628,18 +645,18 @@ export function AppShell() {
 
       <ConfirmDialog />
 
-      <BulkActionBar />
+      {/* Both are AppShell-level siblings rather than DesktopShell children, so
+          without this they float over the Zen room — the help bubble is pinned
+          bottom-right on exactly the platform Zen runs on, and the bulk bar
+          appears over it whenever a selection made before entering is still
+          held. Unmounting the bar also settles Escape: its own window listener
+          would otherwise clear the selection on the SAME keypress that leaves
+          the room, so one press did two things. The selection itself is left
+          alone, and is still there when you come back. */}
+      {!zenOpen && <BulkActionBar />}
 
-      {/* Persistent keyboard shortcuts hint — desktop only */}
-      <div className="fixed bottom-4 right-4 z-30 hidden md:flex">
-        <button
-          onClick={() => openDialog({ type: 'keyboard-shortcuts' })}
-          className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-1.5 text-xs text-muted-foreground shadow-soft-sm transition-colors hover:border-primary/50 hover:text-foreground"
-        >
-          <KeyboardIcon className="h-3.5 w-3.5" />
-          <KbdHint />
-        </button>
-      </div>
+      {/* Floating "?" help hub — desktop only, bottom-right corner */}
+      {!zenOpen && <HelpMenu />}
     </DndContext>
   );
 }

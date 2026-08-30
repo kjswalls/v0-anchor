@@ -17,6 +17,7 @@ import {
   Inbox,
   Keyboard,
   Layers,
+  Leaf,
   ListPlus,
   MessageSquare,
   Moon,
@@ -62,6 +63,7 @@ import {
   groupByOptionsFor,
   organizeEnabled,
   resolvedCanvasGroupBy,
+  streaksEnabled,
 } from '../extension-gates';
 import { useSidebarStore } from '../sidebar-store';
 import { useSelectionStore, selectableIdsInDom } from '../selection-store';
@@ -348,8 +350,8 @@ export const STATIC_COMMANDS: Command[] = [
     aliases: ['streak'],
     placeholder: 'Which habit?',
     emptyLabel: 'No habit has a streak to reset',
-    eligible: (item) => isHabit(item) && item.streak > 0,
-    detail: (item) => (isHabit(item) ? `🔥 ${item.streak}` : undefined),
+    eligible: (item) => isHabit(item) && item.streak > 0 && streaksEnabled(),
+    detail: (item) => (isHabit(item) && streaksEnabled() ? `🔥 ${item.streak}` : undefined),
     run: (item) => planner().resetHabitStreak(item.id),
   }),
   itemCommand({
@@ -678,6 +680,44 @@ export const STATIC_COMMANDS: Command[] = [
     // visible effect.
     hidden: (ctx) => ctx.isMobile,
     run: () => view().setScope(view().scope === 'week' ? 'day' : 'week'),
+  },
+  {
+    id: 'view.zen',
+    // Neutral, like every other toggle in here, and NOT 'Enter Zen': the
+    // shortcuts table renders the STATIC label — DEFAULT_SHORTCUTS is built at
+    // module scope and has no ctx to run `dynamicLabel` against — so a
+    // state-named label would have the ⌘/ overlay offering to "Enter Zen" while
+    // you are sitting in it. The palette still says the state-accurate thing.
+    label: 'Toggle Zen',
+    dynamicLabel: () => (view().zenOpen ? 'Leave Zen' : 'Enter Zen'),
+    description: 'The day, one thing at a time, on a quiet screen',
+    group: 'view',
+    icon: Leaf,
+    keywords: 'zen focus distraction free quiet calm room now one thing full screen',
+    aliases: ['zen'],
+    /*
+     * Bare `z`, in the house style of `n` for new and `v` for view — and NOT
+     * ⌘⇧Z, which reads as the obvious choice and is unavailable: normalizeBinding
+     * folds `ctrl` and `meta` into one MOD token, so ⌘⇧Z and the redo binding
+     * ⌃⇧Z are the same combination to every lookup, and the collision test in
+     * tests/unit/commands.test.ts fails on it.
+     */
+    shortcut: {
+      id: 'toggle_zen',
+      keys: ['z'],
+      context: 'Desktop only — the phone opens on its own Today tab.',
+    },
+    /*
+     * availableWhen, not just `hidden`. The two are independent: `hidden` keeps
+     * a row out of the palette, while the keyboard dispatcher gates on
+     * `isAvailable` alone (hooks/use-command-shortcuts.ts) — so without this a
+     * hardware keyboard paired to a phone could still fire `z` and set a flag
+     * nothing in the mobile tree renders, stranding the user in a shell that
+     * looks unchanged but is one reload from a room they cannot leave.
+     */
+    availableWhen: (ctx) => !ctx.isMobile,
+    hidden: (ctx) => ctx.isMobile,
+    run: () => view().toggleZen(),
   },
   /*
    * Week column scale. ⌘+ / ⌘− / ⌘0 are the browser's page-zoom keys, and the
@@ -1110,8 +1150,10 @@ export const STATIC_COMMANDS: Command[] = [
     run: (ctx) => {
       // navigate is optional on CommandContext (see types.ts), so this falls
       // back to a full load rather than doing nothing when it's absent.
-      if (ctx.navigate) ctx.navigate('/settings');
-      else if (typeof window !== 'undefined') window.location.assign('/settings');
+      // The canonical pane URL, not bare /settings: the bare path costs a
+      // second navigation (the page replace()s itself to /settings/day).
+      if (ctx.navigate) ctx.navigate('/settings/day');
+      else if (typeof window !== 'undefined') window.location.assign('/settings/day');
     },
   },
   {

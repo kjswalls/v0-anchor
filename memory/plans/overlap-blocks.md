@@ -25,9 +25,15 @@ and three of them were **completely invisible**.
 
 1. **Three topologies, three silhouettes, each an existing mark transformed.** Nested →
    the rail moves *inward* (pocket + branch tick). Crossing → the rail *duplicates*
-   (columns + 4px of visible grid). Double-booked → the rail *thickens* (one shared lane,
-   tiled panes, compound bead). No badge, no warning colour, no dotted border — Anchor is
-   guilt-free by design and an overlap is not an error.
+   (columns + 4px of visible grid). Double-booked → the panes *tile*, and each keeps its
+   own lane, so every rail sits beside its own pane rather than bunching at the shared
+   edge; a single faint **start-tie** (`startTie`, drawn once by the first member) runs
+   along the shared start line to mark them as one slot. No badge, no warning colour, no
+   dotted border — Anchor is guilt-free by design and an overlap is not an error.
+   *(This replaced the original "the rail thickens" — one shared lane, bunched swells at
+   `5 + pitch·k`, a compound two-pins-in-one-hole bead. On screen the tiled panes spread
+   across the width while their rails stayed jammed left, so a member's rail read as
+   detached from its own pane; the per-tile lane fixes that and the tie carries the cue.)*
 2. **Two extents, and never mixed up.** Cluster, pack columns and subtract free bands on
    the **painted** extent (a pane floored at `PANE_MIN_H` covers more grid than it owns —
    57 minutes at `hourPx 40`); classify and draw every mark on the **true** extent. Get

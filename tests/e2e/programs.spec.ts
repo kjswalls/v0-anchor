@@ -106,6 +106,8 @@ test.describe('programs', () => {
     kind: 'routine' | 'program',
     name: string
   ): Promise<string> {
+    // Creation starts from the list head and opens a form in the detail pane.
+    await page.getByTestId(`${kind}-new`).click();
     await page.getByTestId(`${kind}-new-name`).fill(name);
     await page.getByTestId(`${kind}-add`).click();
     // Adding selects the new row, so the detail pane names it — which is also

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import { Sidebar } from '@/components/sidebar/sidebar';
 import { ViewRouter } from '@/components/views/view-router';
 import { ProgramNotice } from '@/components/views/program-notice';
@@ -19,11 +19,21 @@ const PANEL_OVERLAY_QUERY = '(max-width: 1180px)';
 /**
  * Desktop layout: sidebar v2 (braindump + chat + omnibar) + canvas panel on
  * the warm backdrop. The views live behind ViewRouter (P5).
+ *
+ * memo'd, and its one dialog read is narrowed to the edit-item payload: this
+ * shell owns the docked edit panel and nothing else dialog-shaped, so opening
+ * the launcher, the add modal or the shortcuts overlay must not re-render the
+ * sidebar and the schedule grid it lays out. Non-edit dialogs select a stable
+ * `null` (Object.is bails), and edit opens always re-render because
+ * openEditFor spreads a fresh item object into the slot per open — an
+ * invariant its own comment now pins.
  */
-export function DesktopShell() {
+export const DesktopShell = memo(function DesktopShell() {
   // No sidebar state here any more: collapse, expand, resize and hover-peek all
   // live on the column's own edge in <Sidebar/>. This shell just lays out.
-  const activeDialog = useUIStore((s) => s.activeDialog);
+  const editItem = useUIStore((s) =>
+    s.activeDialog?.type === 'edit-item' ? s.activeDialog.item : null
+  );
   const closeDialog = useUIStore((s) => s.closeDialog);
   const canvasWide = useCanvasWide();
 
@@ -32,8 +42,8 @@ export function DesktopShell() {
   // openEditFor, which replaces the slot, and the panel re-seeds off the new id.
   // Memoized because ItemDialog's anti-flicker latch keys on payload identity.
   const panelState = useMemo<ItemDialogState | null>(
-    () => (activeDialog?.type === 'edit-item' ? { mode: 'edit', item: activeDialog.item } : null),
-    [activeDialog]
+    () => (editItem ? { mode: 'edit', item: editItem } : null),
+    [editItem]
   );
 
   // When the panel overlays rather than compresses, the canvas underneath is
@@ -165,4 +175,4 @@ export function DesktopShell() {
       </div>
     </div>
   );
-}
+});

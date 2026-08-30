@@ -3,6 +3,7 @@ import { Inter, Source_Serif_4 } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { SupabaseProvider } from '@/components/providers/supabase-provider'
+import { ConsoleSlotGuard } from '@/components/providers/console-slot-guard'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
@@ -101,6 +102,9 @@ export default function RootLayout({
             rule in globals.css grant a short, colour-only transition instead. */}
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <SupabaseProvider>
+            {/* Route-level, not shell-level, because its whole job is to notice
+                that you have LEFT the shell. See the component. */}
+            <ConsoleSlotGuard />
             {children}
           </SupabaseProvider>
           {/* Bottom-left, above the sidebar history controls. Exact placement

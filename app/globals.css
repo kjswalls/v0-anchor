@@ -720,6 +720,11 @@
      than staying the same colour it had while floating. */
   --surface-2-pressed: color-mix(in oklab, var(--surface-2), var(--surface-3) 8%);
 
+  /* Launcher input's leading-glyph tile — a dark chip with a white mark, kept
+     dark in BOTH themes (the summoned card's one spot of deliberate chrome). */
+  --omni-tile: oklch(0.28 0.012 272);
+  --omni-tile-ink: oklch(0.98 0 0);
+
   /* Body panel. The elev family is all vertical offsets (0 x), so nothing ever
      falls on the sidebar sitting to the panel's left — the edge where the two
      meet read flat. This adds a leftward cast plus a left-edge light-catch, so
@@ -979,6 +984,10 @@
 
   --surface-2-pressed: color-mix(in oklab, var(--surface-2), var(--surface-3) 10%);
 
+  /* Launcher tile — slightly below the card so the white mark reads (see :root). */
+  --omni-tile: oklch(0.20 0.006 286);
+  --omni-tile-ink: oklch(0.96 0.002 286);
+
   /* Body panel, dark: same two-part trick the elev family uses here — a 1px
      inset light-catch simulating light hitting the raised lip (now on the LEFT
      edge as well as the top, since that lip faces the sidebar) plus a stronger
@@ -1113,6 +1122,16 @@
 .dark .mobile-ground {
   --bkt-tray: color-mix(in oklab, oklch(0 0 0) 13%, var(--surface-0));      /* 0.1505 */
   --bkt-tray-armed: color-mix(in oklab, var(--primary) 10%, var(--bkt-tray));
+}
+
+/* Launcher card: a straight, full-width hairline between adjacent result rows.
+   Scoped to the launcher variant so the dock's floating panel is untouched. The
+   `+ [cmdk-item]` combinator only matches items that are siblings — i.e. within
+   the same cmdk group — so it never draws a line across a group heading, and the
+   first row of each group (and of the panel) has none. It sits on the item's top
+   edge as a straight line, independent of the row's rounded hover highlight. */
+[data-omnibar-variant='launcher'] [cmdk-item] + [cmdk-item] {
+  border-top: 1px solid var(--border);
 }
 
 /* Content typeface toggle (settings → Appearance → Typeface). Flips the
@@ -1582,4 +1601,116 @@ body {
 [data-reduce-motion='true'] .notice-expiry {
   animation: none;
   width: 100%;
+}
+
+/* ── Zen room ────────────────────────────────────────────────────────────
+   components/zen/zen-room.tsx. Two pieces of motion, both deliberately
+   below the threshold of "something is happening".
+
+   The FROST FIELD is the room's whole ambience: two enormous, very dim,
+   very slow lime clouds drifting behind the type. It is calm rather than
+   busy because busyness lives in chroma and speed, not in blur — 12%/9%
+   lime at 80px blur on an 18–22s cycle reads as weather that has already
+   settled. Raising any one of those three is what would turn it into an
+   aurora, and dark mode is the place to check: --lime-solid is deliberately
+   MORE chromatic there (0.19 vs 0.17), so the same percentage carries more
+   colour.
+
+   Built from --lime-solid through color-mix rather than by fading the lime
+   with opacity, which is the standing rule for this accent: a composited
+   lime at low alpha goes olive. Mixing toward transparent keeps the hue. */
+.zen-frost {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.zen-frost > span {
+  position: absolute;
+  width: 56vmax;
+  height: 56vmax;
+  border-radius: 50%;
+  filter: blur(80px);
+}
+
+.zen-frost-a {
+  top: -18vmax;
+  left: -12vmax;
+  background: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--lime-solid) 12%, transparent),
+    transparent 65%
+  );
+  animation: zen-drift-a 18s ease-in-out infinite alternate;
+}
+
+.zen-frost-b {
+  right: -14vmax;
+  bottom: -20vmax;
+  background: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--lime-solid) 9%, transparent),
+    transparent 65%
+  );
+  animation: zen-drift-b 22s ease-in-out infinite alternate;
+}
+
+@keyframes zen-drift-a {
+  to {
+    transform: translate(6vmax, 4vmax);
+  }
+}
+
+@keyframes zen-drift-b {
+  to {
+    transform: translate(-5vmax, -3vmax);
+  }
+}
+
+/* The now-bead's breath. A soft halo behind the 7px diamond, and the ONLY
+   motion in the room that sits on content — which is why it is an opacity
+   whisper (0.2 → 0.55 over 4.5s) rather than the scaling ring an earlier
+   pass used. The diamond itself never moves and never dims. */
+.zen-breath {
+  background: radial-gradient(
+    circle,
+    color-mix(in oklab, var(--lime-solid) 30%, transparent),
+    transparent 70%
+  );
+  animation: zen-breathe 4.5s ease-in-out infinite alternate;
+}
+
+@keyframes zen-breathe {
+  from {
+    opacity: 0.2;
+  }
+  to {
+    opacity: 0.55;
+  }
+}
+
+/* Both vetoes, spelled out for the same reason the notice animations spell
+   theirs out. The clouds and the halo STAY — they are part of the room's
+   composition, not a reveal — they simply stop moving, and the halo settles
+   at its mid opacity rather than at whichever frame it was on. */
+@media (prefers-reduced-motion: reduce) {
+  .zen-frost-a,
+  .zen-frost-b {
+    animation: none;
+  }
+  .zen-breath {
+    animation: none;
+    opacity: 0.38;
+  }
+}
+
+[data-reduce-motion='true'] .zen-frost-a,
+[data-reduce-motion='true'] .zen-frost-b {
+  animation: none;
+}
+[data-reduce-motion='true'] .zen-breath {
+  animation: none;
+  opacity: 0.38;
 }

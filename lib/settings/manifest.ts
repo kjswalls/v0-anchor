@@ -22,6 +22,7 @@ import {
   EXT_GOALS,
   EXT_HABIT_HEATMAP,
   EXT_ORGANIZE,
+  EXT_STREAKS,
   OFFICIAL_EXTENSIONS,
   extensionManifest,
 } from '@/lib/extension-registry';
@@ -1274,7 +1275,29 @@ export const SETTINGS: SettingRecord[] = [
     write: (v, ctx) => {
       if (ctx.userId) ext().setEnabled(ctx.userId, EXT_ORGANIZE, Boolean(v));
     },
-    defaultValue: false,
+    // ON by default (see extension-registry). Must track the manifest default, or
+    // a fresh account draws the "modified" bar and a per-row reset would write
+    // OFF into the user's row — isModified is read() !== defaultValue.
+    defaultValue: true,
+  },
+  {
+    id: 'extensions.streaks',
+    pane: extensionPaneId(EXT_STREAKS),
+    label: 'Streaks',
+    description:
+      'Flame badges and streak counts across the app. Off hides them everywhere; nothing stops counting — reminders and stakes still read your streak.',
+    control: 'switch',
+    keywords: ['streak', 'flame', 'fire', 'chain', 'consecutive', 'momentum', 'habits'],
+    unavailable: extUnavailable,
+    // extPending matters MORE here than for the off-by-default rows: the switch
+    // defaults ON, so without it the pre-hydration window would draw it on and a
+    // stray click could write OFF over a server row that is actually on.
+    pending: extPending,
+    read: () => ext().isEnabled(EXT_STREAKS),
+    write: (v, ctx) => {
+      if (ctx.userId) ext().setEnabled(ctx.userId, EXT_STREAKS, Boolean(v));
+    },
+    defaultValue: true,
   },
   {
     id: 'extensions.habitHeatmap',

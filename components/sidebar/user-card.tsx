@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { User, Settings, LogOut, Undo2, Redo2, ChevronDown, Flame, Trash2 } from 'lucide-react';
 import {
@@ -20,6 +21,7 @@ import { useUIStore } from '@/lib/ui-store';
 import { RELAY } from '@/lib/relay-config';
 import { createClient } from '@/lib/supabase';
 import { flushSettings } from '@/lib/settings-service';
+import { useStreaksEnabled } from '@/lib/extension-gates';
 import { cn } from '@/lib/utils';
 
 function getInitials(email: string, name?: string | null): string {
@@ -45,6 +47,7 @@ export function UserCard() {
   const router = useRouter();
   const { habits, actionLog, historyIndex, undo, redo, canUndo, canRedo } = usePlannerStore();
   const openDialog = useUIStore((s) => s.openDialog);
+  const streaksOn = useStreaksEnabled();
 
   const [email, setEmail] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
@@ -117,7 +120,7 @@ export function UserCard() {
               </AvatarFallback>
             </Avatar>
             <span className="truncate text-sm font-medium text-foreground">{firstName}</span>
-            {bestStreak > 0 && (
+            {streaksOn && bestStreak > 0 && (
               <span className="relative isolate flex items-center gap-0.5 overflow-hidden rounded-full bg-warning/15 px-1.5 py-0.5 text-2xs font-medium text-warning-text">
                 {RELAY.streak && (
                   <RelayField
@@ -148,9 +151,16 @@ export function UserCard() {
             </div>
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
-          <DropdownMenuItem onClick={() => router.push('/settings')} className="cursor-pointer">
-            <Settings className="mr-2 h-4 w-4" />
-            <span>Settings</span>
+          {/* A Link, not a router.push: opening the menu mounts it, and a
+              mounted Link is what gets the route chunk prefetched in prod —
+              an imperative push always pays the fetch at click time. The
+              canonical pane URL (not bare /settings) also skips the
+              replace-to-/settings/day hop the page would otherwise do. */}
+          <DropdownMenuItem asChild className="cursor-pointer">
+            <Link href="/settings/day">
+              <Settings className="mr-2 h-4 w-4" />
+              <span>Settings</span>
+            </Link>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem

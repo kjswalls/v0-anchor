@@ -37,12 +37,14 @@ import {
  *     with COL_GAP of visible grid between plates; each column carries its own
  *     complete lane, so the accent still has real extent on the grid.
  *
- *   DOUBLE-BOOKED (two things at 09:00) — the rail THICKENS. All members share
- *     ONE band and ONE lane: only the panes tile. Member k's 2px swell sits at
- *     `5 + pitch·k` so n adjacent stripes read as one fat rail, and the beads
- *     overlap so member 0's canvas punch-ring cuts a crescent out of the one
- *     behind it — two pins in one hole. That is the whole conflict signal: no
- *     badge, no warning colour, no dotted border.
+ *   DOUBLE-BOOKED (two things at 09:00) — the members TILE and each keeps its
+ *     own lane. All members share ONE band, but every tile carries its own
+ *     LANE_PX gutter, so member k's rail and bead sit just left of member k's
+ *     OWN pane rather than bunching against member 0's at the shared left edge.
+ *     The residual "these begin together" signal is a single faint hairline —
+ *     `startTie`, drawn once by the unit's first member — running along the
+ *     shared start line from the first bead to the last. Still the whole conflict
+ *     signal: no badge, no warning colour, no dotted border.
  *
  * ── Two extents, and why ──────────────────────────────────────────────────
  * A pane is floored at PANE_MIN_H, so a short block COVERS MORE TIME THAN IT
@@ -95,9 +97,24 @@ export type BlockLayout = {
   /** Pane margins inside that band. Only a conflict member sets these apart. */
   paneLeft: string;
   paneRight: string;
-  /** x of this block's 2px swell and 6px bead within its own wrapper. */
-  railX: number;
-  beadX: number;
+  /**
+   * Where this block's 2px swell and 6px bead sit within its own wrapper, as CSS
+   * lengths. A solo/crossing/nested block is `'5px'`/`'3px'`, exactly as before;
+   * a tiled conflict member offsets both by its tile's left fraction so the rail
+   * lands beside its own pane (`calc(50% + 5px)`, …) instead of at the shared
+   * left edge.
+   */
+  railX: string;
+  beadX: string;
+  /**
+   * The "same-start" cue for a genuine double-booking: a faint hairline along the
+   * shared start line, from the first member's bead to the last. Set only on the
+   * FIRST member of a conflict unit of >1 (the one whose wrapper still spans the
+   * whole band); the CSS `right` inset that stops it under the last bead. null on
+   * every other block — a solo, a crossing column, a nested child, and every
+   * non-leader member of the unit.
+   */
+  startTie: string | null;
   z: number;
   /** Containers dim their wash so the plate reads as a field, not a lamp. */
   wash: 'full' | 'field';
@@ -333,6 +350,9 @@ export function bandOnly(layout: BlockLayout | undefined): BlockLayout | undefin
     // to be the wrong shape — but the LANE is not, so paneLeft/paneRight stay.
     pockets: [],
     branchTicks: [],
+    // The start-tie is a cross-member mark like the branch ticks: a member being
+    // resized may be leaving the unit, so drop it rather than draw it stale.
+    startTie: null,
     contentTop: null,
     contentHeight: null,
     handleTopLane: false,
@@ -349,8 +369,9 @@ function soloLayout(leftPct: number, rightPct: number): BlockLayout {
     right: band(rightPct, 4),
     paneLeft: `${LANE_PX}px`,
     paneRight: '0px',
-    railX: 5,
-    beadX: 3,
+    railX: '5px',
+    beadX: '3px',
+    startTie: null,
     z: 2,
     zHover: HOVER_Z,
     wash: 'full',
@@ -446,10 +467,9 @@ export function layoutOverlaps(
 
   const placed: Placed[] = [];
 
-  /** A conflict unit shares ONE band and ONE lane; only its panes tile. */
+  /** A conflict unit shares ONE band; its panes tile and each keeps its own lane. */
   function placeUnit(unit: Node[], b: Band, depth: number, cascade: number) {
     const n = unit.length;
-    const pitch = n <= 3 ? 2 : Math.max(1, 6 / n);
     const ordered = unit.slice().sort((x, y) => (x.e.id < y.e.id ? -1 : 1));
     // What each member's pane is worth as a fraction of the field: the band's
     // own share, split n ways by the tiling.
@@ -464,13 +484,17 @@ export function layoutOverlaps(
         hourPx
       );
 
-      // Pane margins tile the region [LANE_PX, W] in n equal parts, written as
-      // percentages so they resolve against the wrapper — which IS the band. No
-      // measurement anywhere.
+      // Pane margins tile the band in n equal parts, written as percentages so
+      // they resolve against the wrapper — which IS the band. No measurement
+      // anywhere. Each tile reserves its OWN LANE_PX gutter at its left, so the
+      // rail and bead (below) land beside that tile's pane rather than bunching
+      // at the shared left edge — the fat-rail signal is gone, the start-tie
+      // carries the clash instead. n === 1 (a crossing column, a nested child, a
+      // lone member) resolves to the byte-identical `12px`/`0px` it always had.
       const fL = k / n;
       const fR = (n - 1 - k) / n;
-      const paneLeft = n === 1 ? `${LANE_PX}px` : band(fL * 100, LANE_PX * (1 - fL));
-      const paneRight = n === 1 ? '0px' : band(fR * 100, (k < n - 1 ? 1 : 0) - LANE_PX * fR);
+      const paneLeft = band(fL * 100, LANE_PX);
+      const paneRight = band(fR * 100, 0);
 
       // Pockets + branch ticks for this node's own children, on PAINTED extents
       // (a floored pane covers more grid than it owns).
@@ -498,18 +522,26 @@ export function layoutOverlaps(
         right: band(b.rightPct, b.rightPx),
         paneLeft,
         paneRight,
-        railX: 5 + pitch * k,
-        beadX: 3 + pitch * k,
+        // Rail and bead sit in this tile's own lane, at the tile's left + the
+        // same 5px/3px a solo block uses. For n === 1 (fL === 0) that is the
+        // literal '5px'/'3px'; a tiled member offsets by its tile fraction, so
+        // its rail rides just left of its own pane.
+        railX: band(fL * 100, 5),
+        beadX: band(fL * 100, 3),
+        // The clash cue: the FIRST member of a real conflict unit (>1) draws a
+        // hairline from its bead across to the last member's bead. `100 / n`
+        // lands its right edge under the last bead centre (band(…, 6)); the −6px
+        // trims back to that centre. null for a lone member and every follower.
+        startTie: n > 1 && k === 0 ? band(100 / n, -6) : null,
         /*
          * Two per level, not one, so a container's hover lift (`z + 1`) still
          * lands BELOW its own children. With a step of one there is no room
          * between a parent and its child, and lifting the parent on hover makes
          * the child permanently unreachable.
          *
-         * Within a conflict unit the panes TILE rather than overlap, so member
-         * order needs no z of its own: only the beads meet, in the shared lane,
-         * and either one punching a crescent out of the other reads the same —
-         * two pins in one hole.
+         * Within a conflict unit the panes TILE rather than overlap, and each now
+         * keeps its own lane, so member order needs no z of its own — nothing of
+         * one member paints over another.
          */
         z: 2 + (depth + cascade) * 2,
         zHover: node.children.length ? 2 + (depth + cascade) * 2 + 1 : HOVER_Z,
@@ -727,6 +759,7 @@ export function layoutOverlaps(
       paneRight: p.paneRight,
       railX: p.railX,
       beadX: p.beadX,
+      startTie: p.startTie,
       z: p.z,
       zHover: p.zHover,
       wash: p.wash,

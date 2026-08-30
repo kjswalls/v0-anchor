@@ -48,7 +48,7 @@ vi.mock('@/lib/db', async (importOriginal) => {
 });
 
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
-import { whenGone } from '@/components/planner/organize/sections/trash';
+import { daysUntilPurge, whenGone } from '@/components/planner/organize/sections/trash';
 import { heldByTrash, useTrashedNames } from '@/components/planner/organize/use-trashed-names';
 import { usePlannerStore } from '@/lib/planner-store';
 import { enableGoalsAndOrganize } from './support/extensions';
@@ -216,6 +216,107 @@ describe('the Trash section', () => {
   });
 });
 
+describe('the Trash preview', () => {
+  it('opens a READ-ONLY preview when a row is selected', async () => {
+    listDeleted.mockResolvedValue([
+      entry({
+        kind: 'item', id: 'i1', name: 'Call dentist',
+        entity: {
+          type: 'task', id: 'i1', title: 'Call dentist', status: 'pending',
+          isScheduled: true, order: 0, startDate: '2026-08-25', timeBucket: 'afternoon',
+          project: 'Health', notes: 'ask about the crown',
+        },
+      }),
+    ]);
+    openTrash();
+
+    fireEvent.click(await screen.findByTestId('trash-select'));
+
+    const preview = await screen.findByTestId('trash-preview');
+    expect(preview.textContent).toContain('Call dentist');
+    expect(preview.textContent).toContain('Task'); // the item's TYPE, not the generic "Item"
+    expect(preview.textContent).toContain('Health'); // project fact
+    expect(preview.textContent).toContain('ask about the crown'); // notes
+    // The one guardrail: no editable control. ItemDialog's panel writes for a
+    // binned id vanish silently, so the preview must never present a field.
+    expect(preview.querySelector('input')).toBeNull();
+    expect(preview.querySelector('textarea')).toBeNull();
+  });
+
+  it('lists the subtasks that come back with a parent', async () => {
+    listDeleted.mockResolvedValue([
+      entry({
+        kind: 'item', id: 'i1', name: 'Plan trip',
+        children: [
+          { type: 'task', id: 'k1', title: 'Book flights', status: 'completed', isScheduled: false, order: 0 },
+          { type: 'task', id: 'k2', title: 'Pack bags', status: 'pending', isScheduled: false, order: 0 },
+        ] as never,
+      }),
+    ]);
+    openTrash();
+
+    fireEvent.click(await screen.findByTestId('trash-select'));
+
+    const preview = await screen.findByTestId('trash-preview');
+    expect(preview.textContent).toContain('2 subtasks come back');
+    expect(preview.textContent).toContain('Book flights');
+    expect(preview.textContent).toContain('Pack bags');
+  });
+
+  it('previews a container with what a restore reconnects', async () => {
+    listDeleted.mockResolvedValue([
+      entry({
+        kind: 'project', id: 'p1', name: 'Side quests', memberIds: ['a', 'b', 'c'],
+        entity: { id: 'p1', name: 'Side quests', emoji: 'icon:Folder' },
+      }),
+    ]);
+    openTrash();
+
+    fireEvent.click(await screen.findByTestId('trash-select'));
+
+    const preview = await screen.findByTestId('trash-preview');
+    expect(preview.textContent).toContain('re-files the 3 items');
+  });
+
+  it('restoring the selected row clears the preview and drops the row', async () => {
+    const row = entry({ name: 'A task' });
+    listDeleted.mockResolvedValue([row]);
+    openTrash();
+    fireEvent.click(await screen.findByTestId('trash-select'));
+    await screen.findByTestId('trash-preview');
+
+    // Restore from WITHIN the preview — the second copy of the verb.
+    fireEvent.click(screen.getByTestId('trash-preview-restore'));
+
+    expect(restoreFromTrash).toHaveBeenCalledWith(row);
+    // The row leaves the bin, so the preview it fed must clear rather than
+    // describe a ghost.
+    await waitFor(() => expect(screen.queryByTestId('trash-preview')).toBeNull());
+    await waitFor(() => expect(screen.queryByTestId('trash-row')).toBeNull());
+  });
+
+  it('offers nothing to select in a failed bin', async () => {
+    listDeleted.mockRejectedValue(new Error('network'));
+    openTrash();
+    await screen.findByTestId('trash-failed');
+
+    expect(screen.queryByTestId('trash-select')).toBeNull();
+    expect(screen.queryByTestId('trash-preview')).toBeNull();
+  });
+
+  it('keeps Enter on the row a RESTORE, not a select', async () => {
+    // The pinned keyboard contract survives the new select affordance: the
+    // filter's ArrowDown target — and therefore Enter — is still the Restore
+    // verb, never the row-body select button.
+    listDeleted.mockResolvedValue([entry({})]);
+    openTrash();
+    const restore = await screen.findByTestId('trash-restore');
+    const select = screen.getByTestId('trash-select');
+    expect(restore.hasAttribute('data-organize-row')).toBe(true);
+    expect(select.hasAttribute('data-organize-row')).toBe(false);
+  });
+});
+
 describe('whenGone', () => {
   const at = (iso: string) => new Date(iso).getTime();
 
@@ -244,6 +345,29 @@ describe('whenGone', () => {
 
   it('survives a malformed timestamp rather than printing NaN', () => {
     expect(whenGone('not-a-date', at('2026-08-12T10:00:00.000Z'))).toBe('just now');
+  });
+});
+
+describe('daysUntilPurge', () => {
+  const at = (iso: string) => new Date(iso).getTime();
+
+  it('gives the full 30-day window to something just deleted', () => {
+    expect(daysUntilPurge('2026-08-12T10:00:00.000Z', at('2026-08-12T10:20:00.000Z'))).toBe(30);
+  });
+
+  it('counts down whole elapsed days, matching whenGone', () => {
+    // 2 days and 20 hours in: 2 days elapsed, so 28 left — never running ahead
+    // of the purge the way rounding up would.
+    expect(daysUntilPurge('2026-08-12T10:00:00.000Z', at('2026-08-15T06:00:00.000Z'))).toBe(28);
+  });
+
+  it('clamps at 0 rather than going negative past the window', () => {
+    expect(daysUntilPurge('2026-07-01T10:00:00.000Z', at('2026-08-12T10:00:00.000Z'))).toBe(0);
+  });
+
+  it('gives a malformed or future stamp the benefit of the doubt', () => {
+    expect(daysUntilPurge('not-a-date', at('2026-08-12T10:00:00.000Z'))).toBe(30);
+    expect(daysUntilPurge('2026-08-20T10:00:00.000Z', at('2026-08-12T10:00:00.000Z'))).toBe(30);
   });
 });
 
@@ -317,6 +441,9 @@ describe('the trashed-name guard does not go stale mid-session', () => {
       } as never)
     );
 
+    // The list is populated again, so the create form is no longer standing in
+    // for an empty section — open it from the list head.
+    fireEvent.click(screen.getByTestId('project-new'));
     fireEvent.change(screen.getByTestId('project-new-name'), { target: { value: 'Work' } });
     expect(screen.queryByTestId('project-new-problem')).toBeNull();
   });
@@ -363,11 +490,12 @@ describe('the trashed-name guard does not go stale mid-session', () => {
 
 describe('what the bin lookup costs', () => {
   /**
-   * Both instances of ItemDialog — app-shell's modal and desktop-shell's docked
-   * panel — are mounted for the whole session, open or not, and each call of
-   * this hook is two SELECTs. Ungated that is four queries fired during first
-   * paint, competing with the fetches that actually put the app on screen, to
-   * answer a question about a create row nobody has opened.
+   * ItemDialog's body now mounts on open (its wrapper unmounts it after the
+   * close grace), so an ungated call here no longer fires during first paint —
+   * the stakes moved, not the mechanism. Each call of this hook is still two
+   * SELECTs, the body still lingers mounted through the ~600ms close grace
+   * where an ungated hook would re-ask for a closing surface, and the hook
+   * must still ask nothing at all while disabled.
    *
    * These pin the mechanism. The dialog's own half is `enabled: !!state` at its
    * call site, which is not observable from here without standing the whole

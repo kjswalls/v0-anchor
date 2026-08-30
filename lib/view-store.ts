@@ -138,6 +138,25 @@ interface ViewStore {
    * middleware's JSON without a serializer.
    */
   collapsedBuckets: TimeBucket[];
+  /**
+   * Zen — the distraction-free room. True means the whole shell is replaced by
+   * the Zen surface (components/zen/zen-room.tsx).
+   *
+   * It lives HERE, beside scope and layout, rather than in ui-store's
+   * `activeDialog`, and the difference is load-bearing: that slot holds one
+   * thing at a time, so summoning ⌘K or quick-add from inside Zen would evict
+   * the room. As its own flag, dialogs open ON TOP of Zen and closing one
+   * returns to it — capture never costs you the room.
+   *
+   * PERSISTED, unlike the schedule's lane focus (lib/schedule-focus-store.ts),
+   * which is deliberately transient. That store holds an inspection gesture; this
+   * one holds a place you work for an hour, and a reload mid-session should land
+   * you back in it rather than dumping you into the full app.
+   *
+   * Desktop only for now — see the `view.zen` command. Nothing in the mobile
+   * tree reads this.
+   */
+  zenOpen: boolean;
   /** One-time adoption of legacy planner-store view prefs (see adoptLegacyViewPrefs). */
   adoptedLegacy: boolean;
 
@@ -172,6 +191,8 @@ interface ViewStore {
   /** Move along the ladder by `delta` stops; +1 is one step wider. */
   stepWeekDaysVisible: (delta: number) => void;
   setBucketStyle: (style: BucketStyle) => void;
+  setZenOpen: (open: boolean) => void;
+  toggleZen: () => void;
   toggleBucketCollapsed: (bucket: TimeBucket) => void;
   /**
    * Force a bucket open. Called when a drop lands in one (see app-shell's
@@ -236,6 +257,7 @@ const INERT_DEFAULTS = {
   weekDaysVisible: null,
   bucketStyle: 'spine',
   collapsedBuckets: [],
+  zenOpen: false,
 } satisfies Partial<ViewStore>;
 
 const USER_SCOPED_DEFAULTS = { ...INERT_DEFAULTS, ...DISCLOSIVE_DEFAULTS };
@@ -306,6 +328,8 @@ export const useViewStore = create<ViewStore>()(
       stepWeekDaysVisible: (delta) =>
         set((s) => ({ weekDaysVisible: stepWeekDaysFromLastCanvas(s.weekDaysVisible, delta) })),
       setBucketStyle: (bucketStyle) => set({ bucketStyle }),
+      setZenOpen: (zenOpen) => set({ zenOpen }),
+      toggleZen: () => set((s) => ({ zenOpen: !s.zenOpen })),
       toggleBucketCollapsed: (bucket) =>
         set((s) => ({
           collapsedBuckets: s.collapsedBuckets.includes(bucket)
@@ -376,6 +400,13 @@ export const useViewStore = create<ViewStore>()(
           // is still legal, but a garbage one would fall through groupRows to the
           // container arm exactly as a stale canvasGroupBy would.
           braindumpGroupBy: isBraindumpGroupBy(p.braindumpGroupBy) ? p.braindumpGroupBy : 'none',
+          // Coerced for the same reason the enums above are, with a sharper
+          // failure: this one decides whether the app renders its shell AT ALL.
+          // A devtools-edited or hand-written `"false"` is a truthy string, and
+          // the whole planner would be replaced by the Zen room on load. `=== true`
+          // makes every non-boolean read as closed; a blob that predates the field
+          // is `undefined` and lands on the same answer.
+          zenOpen: p.zenOpen === true,
         };
       },
     }

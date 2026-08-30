@@ -13,11 +13,11 @@ import {
   BackRow,
   BufferedInput,
   DangerZone,
+  CreateForm,
   DetailColumn,
-  DraftRow,
   IdentityRow,
   ListColumn,
-  TeachingLine,
+  SectionWelcome,
 } from '../detail-parts';
 import type { Item, ItemTypeDef, Project } from '@/lib/planner-types';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
@@ -58,11 +58,15 @@ import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 export function ProjectsSection({
   selectedId,
   onSelect,
-  focusNew,
+  creating,
+  onNew,
+  onCreated,
 }: {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
-  focusNew: boolean;
+  creating: boolean;
+  onNew: () => void;
+  onCreated: (id: string | null) => void;
 }) {
   const projects = usePlannerStore((s) => s.projects);
   const items = usePlannerStore((s) => s.items);
@@ -73,36 +77,21 @@ export function ProjectsSection({
   const selected = projects.find((p) => p.id === selectedId) ?? null;
   const visible = matching(projects, query, byName);
   const usage = (name: string) => countProjectItems(items, name);
+  const showCreate = creating || projects.length === 0;
 
   return (
     <>
       <ListColumn
         eyebrow="PROJECTS"
         count={visible.length}
-        hasSelection={!!selected}
+        hasSelection={!!selected || showCreate}
         filter={{
           value: query,
           onChange: setQuery,
           placeholder: 'Filter projects…',
           testId: 'project-filter',
         }}
-        footer={
-          <DraftRow
-            placeholder="New project…"
-            addLabel="Add project"
-            testPrefix="project"
-            autoFocus={focusNew}
-            // The create path had NO validate at all, and the store's own
-            // de-dupe cannot see the bin — so typing the name of a project you
-            // deleted yesterday produced a row that opened, accepted edits, and
-            // never existed. See useTrashedNames.
-            validate={(name) => heldByTrash(trashed.projects, name, 'project')}
-            onAdd={(name, icon) => {
-              addProject(name, icon ?? makeIconToken('Briefcase'));
-              onSelect(created(usePlannerStore.getState().projects, name));
-            }}
-          />
-        }
+        onNew={{ onClick: onNew, label: 'New project', testId: 'project-new' }}
       >
         {projects.length === 0 ? (
           <p className="text-muted-foreground px-[7px] pt-2 text-xs">No projects yet.</p>
@@ -124,15 +113,35 @@ export function ProjectsSection({
         )}
       </ListColumn>
 
-      <DetailColumn hasSelection={!!selected}>
-        {selected ? (
+      <DetailColumn hasSelection={!!selected || showCreate}>
+        {showCreate ? (
+          <CreateForm
+            eyebrow="NEW PROJECT"
+            placeholder="Name your project…"
+            addLabel="Create project"
+            icon={makeIconToken('Briefcase')}
+            testPrefix="project"
+            autoFocus={creating}
+            hint="Projects file your tasks, and can carry a repeating block on the grid."
+            // The create path had NO validate at all, and the store's own
+            // de-dupe cannot see the bin — so typing the name of a project you
+            // deleted yesterday produced a row that opened, accepted edits, and
+            // never existed. See useTrashedNames.
+            validate={(name) => heldByTrash(trashed.projects, name, 'project')}
+            onCreate={(name, icon) => {
+              addProject(name, icon ?? makeIconToken('Briefcase'));
+              onCreated(created(usePlannerStore.getState().projects, name));
+            }}
+            onCancel={projects.length > 0 ? () => onCreated(null) : undefined}
+          />
+        ) : selected ? (
           // Threaded rather than re-hooked: the detail remounts on every
           // selection change, and a hook there would refetch the bin each time.
           <ProjectDetail project={selected} trashed={trashed.projects} onBack={() => onSelect(null)} />
         ) : (
-          <TeachingLine>
+          <SectionWelcome section="projects">
             Projects file your tasks, and can carry a repeating block on the grid.
-          </TeachingLine>
+          </SectionWelcome>
         )}
       </DetailColumn>
     </>
@@ -246,11 +255,15 @@ function ProjectDetail({
 export function TypesSection({
   selectedId,
   onSelect,
-  focusNew,
+  creating,
+  onNew,
+  onCreated,
 }: {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
-  focusNew: boolean;
+  creating: boolean;
+  onNew: () => void;
+  onCreated: (id: string | null) => void;
 }) {
   const itemTypes = usePlannerStore((s) => s.itemTypes);
   const itemTypesAvailable = usePlannerStore((s) => s.itemTypesAvailable);
@@ -263,43 +276,26 @@ export function TypesSection({
   // Label AND slug: the slug is on the row and is what a user hunting for the
   // type they created as "Side Quest" may well type.
   const visible = matching(itemTypes, query, (t) => `${t.label} ${t.name}`);
+  const showCreate = itemTypesAvailable && (creating || itemTypes.length === 0);
 
   return (
     <>
       <ListColumn
         eyebrow="ITEM TYPES"
         count={visible.length}
-        hasSelection={!!selected}
+        hasSelection={!!selected || showCreate}
         filter={{
           value: query,
           onChange: setQuery,
           placeholder: 'Filter item types…',
           testId: 'type-filter',
         }}
-        footer={
-          <DraftRow
-            placeholder="New type… (e.g. Errand)"
-            addLabel="Add item type"
-            testPrefix="type"
-            autoFocus={focusNew}
-            disabled={!itemTypesAvailable}
-            // The store silently no-ops on a bad slug, so the row has to know
-            // the same rules — and now say them out loud rather than greying a
-            // button and leaving the user to guess.
-            validate={(name) => slugProblem(name, itemTypes)}
-            onAdd={(name, icon) => {
-              const slug = slugForLabel(name);
-              addItemType({
-                name: slug,
-                label: name,
-                labelPlural: `${name}s`,
-                icon: icon ?? makeIconToken('Target'),
-              });
-              const made = usePlannerStore.getState().itemTypes.find((t) => t.name === slug);
-              onSelect(made?.id ?? null);
-            }}
-          />
-        }
+        onNew={{
+          onClick: onNew,
+          label: 'New item type',
+          testId: 'type-new',
+          disabled: !itemTypesAvailable,
+        }}
       >
         {!itemTypesAvailable ? (
           <p
@@ -331,14 +327,40 @@ export function TypesSection({
         )}
       </ListColumn>
 
-      <DetailColumn hasSelection={!!selected}>
-        {selected ? (
+      <DetailColumn hasSelection={!!selected || showCreate}>
+        {showCreate ? (
+          <CreateForm
+            eyebrow="NEW ITEM TYPE"
+            placeholder="Name your type… (e.g. Errand)"
+            addLabel="Create item type"
+            icon={makeIconToken('Target')}
+            testPrefix="type"
+            autoFocus={creating}
+            hint="Custom types work like tasks — they get their own tab in the add dialog and their own section in Beacon's context."
+            // The store silently no-ops on a bad slug, so the form has to know
+            // the same rules — and say them out loud rather than greying a
+            // button and leaving the user to guess.
+            validate={(name) => slugProblem(name, itemTypes)}
+            onCreate={(name, icon) => {
+              const slug = slugForLabel(name);
+              addItemType({
+                name: slug,
+                label: name,
+                labelPlural: `${name}s`,
+                icon: icon ?? makeIconToken('Target'),
+              });
+              const made = usePlannerStore.getState().itemTypes.find((t) => t.name === slug);
+              onCreated(made?.id ?? null);
+            }}
+            onCancel={itemTypes.length > 0 ? () => onCreated(null) : undefined}
+          />
+        ) : selected ? (
           <TypeDetail type={selected} onBack={() => onSelect(null)} />
         ) : (
-          <TeachingLine>
+          <SectionWelcome section="types">
             Custom types work like tasks — they get their own tab in the add dialog and their own
             section in Beacon&apos;s context.
-          </TeachingLine>
+          </SectionWelcome>
         )}
       </DetailColumn>
     </>
