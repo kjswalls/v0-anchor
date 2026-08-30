@@ -192,7 +192,12 @@ describe('assertAllowedGatewayUrl', () => {
 
   it('refuses credentials embedded in the URL', () => {
     // user_settings is browser-readable; a token in the URL would land there.
-    const result = assertAllowedGatewayUrl('https://anchor:sekrit@gw.example.ts.net:8787');
+    //
+    // The userinfo stays the generic `user:pass` placeholder that
+    // reminders-channels.test.ts already uses for this same assertion. A
+    // plausible-looking pair here reads as a real credential to a secret
+    // scanner and fails the security check on every PR that touches this file.
+    const result = assertAllowedGatewayUrl('https://user:pass@gw.example.ts.net:8787');
     expect(result.ok).toBe(false);
     expect((result as { reason: string }).reason).toMatch(/token field/);
   });
