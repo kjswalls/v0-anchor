@@ -6,6 +6,8 @@ import {
   makeContainerItemHandlers,
   makeGoalCreateHandler,
   makeGoalItemHandlers,
+  makeProjectCreateHandler,
+  makeProjectItemHandlers,
 } from '@/lib/agent-api'
 import { GET as getContext } from '@/app/api/agent/context/route'
 import { GET as getItemEvents } from '@/app/api/agent/items/[id]/events/route'
@@ -44,11 +46,13 @@ const habitItem = makeAgentItemHandlers('habit')
 const routineItem = makeContainerItemHandlers('routine')
 const programItem = makeContainerItemHandlers('program')
 const goalItem = makeGoalItemHandlers()
+const projectItem = makeProjectItemHandlers()
 
 type Handler = (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => Promise<Response>
 
 const COLLECTION: Record<string, { create: Handler; item: { PATCH: Handler; DELETE: Handler } }> = {
   tasks: { create: makeAgentCreateHandler('task') as Handler, item: taskItem as never },
+  projects: { create: makeProjectCreateHandler() as Handler, item: projectItem as never },
   habits: { create: makeAgentCreateHandler('habit') as Handler, item: habitItem as never },
   routines: { create: makeContainerCreateHandler('routine') as Handler, item: routineItem as never },
   programs: { create: makeContainerCreateHandler('program') as Handler, item: programItem as never },

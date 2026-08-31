@@ -11,6 +11,8 @@ import {
   ProgramUpdateSchema,
   GoalCreateSchema,
   GoalUpdateSchema,
+  ProjectCreateSchema,
+  ProjectUpdateSchema,
 } from '@anchor-app/types'
 import { createServiceClient, resolveUserIdFromApiKey } from './supabase-service'
 import {
@@ -29,6 +31,10 @@ import {
   createGoal,
   updateGoal,
   deleteGoal,
+  createProject,
+  updateProject,
+  deleteProject,
+  renameContainerMembers,
   verifyItemOwnership,
   validateParentItemId,
 } from './db'
@@ -50,6 +56,7 @@ import type {
   Item,
   KnownItemType,
   Program,
+  Project,
   Routine,
   Task,
 } from './planner-types'
@@ -1265,6 +1272,132 @@ export function makeGoalItemHandlers() {
       // inside the 30-day window brings the goal back with its progress
       // denominator intact rather than as a flat bag of members.
       await deleteGoal(auth.userId, id, auth.serviceClient)
+      return NextResponse.json({ success: true })
+    } catch (err) {
+      return errorResponse(err)
+    }
+  }
+
+  return { PATCH, DELETE }
+}
+
+// ── Projects ─────────────────────────────────────────────────────────────────
+// The CLASSIFY container. It gets the same factory treatment as the gated ones,
+// but it cannot ride makeContainerCreateHandler: projects have no join tables
+// (membership is the NAME each item carries), no pause verb, and a rename that
+// has to reach every member row.
+
+/** The keys the project schemas carry only in order to REFUSE them. */
+function withoutForeignProjectKeys(data: unknown): Record<string, unknown> {
+  const rest = { ...(data as Record<string, unknown>) }
+  delete rest.itemIds
+  delete rest.routineIds
+  delete rest.icon
+  return rest
+}
+
+/**
+ * PostgreSQL 23505, however the client happens to wrap it.
+ *
+ * Lifted out of the route file so the create path gets it too. It never had it:
+ * POST /api/agent/projects answered a duplicate name with a raw 500 and the
+ * constraint string, which tells an agent nothing it can act on.
+ */
+function isUniqueViolation(err: unknown): boolean {
+  const code = (err as { code?: string } | null)?.code
+  if (code === '23505') return true
+  return err instanceof Error && err.message.includes('duplicate key value')
+}
+
+/**
+ * A name collision is the caller's problem to solve, not a server fault — and
+ * the holder may be a SOFT-DELETED project, since the unique index spans the
+ * bin and the agent can see no endpoint that would reveal it.
+ */
+const nameTaken = () =>
+  NextResponse.json(
+    {
+      error:
+        'That name is already taken by another project — possibly one in the trash, ' +
+        'which keeps its name for 30 days.',
+    },
+    { status: 409 },
+  )
+
+/** POST /api/agent/projects */
+export function makeProjectCreateHandler() {
+  return async function POST(req: NextRequest) {
+    const auth = await authenticateAgent(req)
+    if (auth instanceof NextResponse) return auth
+    const body = await parseBody(req, ProjectCreateSchema)
+    if (body instanceof NextResponse) return body
+
+    const fields = withoutForeignProjectKeys(body.data)
+
+    try {
+      const entity = {
+        ...fields,
+        id: (fields as { id?: string }).id ?? crypto.randomUUID(),
+      } as Project
+
+      await createProject(auth.userId, entity, auth.serviceClient)
+      return NextResponse.json({ project: entity }, { status: 201 })
+    } catch (err) {
+      if (isUniqueViolation(err)) return nameTaken()
+      return errorResponse(err)
+    }
+  }
+}
+
+/** PATCH + DELETE /api/agent/projects/:id */
+export function makeProjectItemHandlers() {
+  const PATCH = async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
+    const auth = await authenticateAgent(req)
+    if (auth instanceof NextResponse) return auth
+
+    const { id } = await params
+    // Service role bypasses RLS, so ownership is checked here or nowhere.
+    const denied = await ownershipGate(auth.serviceClient, 'projects', id, auth.userId)
+    if (denied) return denied
+
+    const body = await parseBody(req, ProjectUpdateSchema)
+    if (body instanceof NextResponse) return body
+
+    const updates = withoutForeignProjectKeys(body.data) as Partial<Project>
+
+    try {
+      await updateProject(auth.userId, id, updates, auth.serviceClient)
+      // A rename has to reach the members' name column too (migration 027).
+      // Without this the endpoint renames the container and leaves every item
+      // holding the old string.
+      //
+      // AWAITED AFTER the container update, never in parallel: both writes touch
+      // a UNIQUE (user_id, name) space and do not fail together. A rejected
+      // rename that had already rewritten its members reads as the items having
+      // moved into a different project, and nothing downstream can detect it.
+      if (typeof updates.name === 'string' && updates.name) {
+        await renameContainerMembers(auth.userId, id, updates.name, auth.serviceClient)
+      }
+      return NextResponse.json({ success: true })
+    } catch (err) {
+      if (isUniqueViolation(err)) return nameTaken()
+      return errorResponse(err)
+    }
+  }
+
+  const DELETE = async (req: NextRequest, { params }: { params: Promise<{ id: string }> }) => {
+    const auth = await authenticateAgent(req)
+    if (auth instanceof NextResponse) return auth
+
+    const { id } = await params
+    const denied = await ownershipGate(auth.serviceClient, 'projects', id, auth.userId)
+    if (denied) return denied
+
+    try {
+      // Soft delete, recoverable from trash for 30 days. Member items keep their
+      // `project` name and project_id, which is what lets a restore reconnect
+      // them (see lookupContainerId, which does not filter on deleted_at).
+      await deleteProject(auth.userId, id, auth.serviceClient)
       return NextResponse.json({ success: true })
     } catch (err) {
       return errorResponse(err)

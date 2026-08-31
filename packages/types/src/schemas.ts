@@ -1045,6 +1045,94 @@ export const GoalUpdateSchema = z
   .superRefine(rejectGoalDerivedFields)
   .superRefine(rejectForeignContainerKeys)
 
+// ── Agent API: projects ───────────────────────────────────────────────────────
+// The CLASSIFY container, and the last one to get a write surface. Same posture
+// as routines, programs and goals: an agent acting for the user should reach
+// what the user reaches — and a project is the one container an agent cannot
+// work around, because every item names its container by NAME and an unresolved
+// name files the item nowhere (`lookupContainerId` returns null rather than
+// creating). Without this an agent could only file work into containers the
+// user had already made by hand.
+//
+// Projects differ from the gated containers in two ways that shape this schema:
+// membership is a NAME on each item rather than a join table, and a project
+// carries the block fields (repeat/time/duration) that put it on the grid.
+
+/**
+ * The keys a project does not have, because the OTHER containers do.
+ *
+ * Same argument as `rejectForeignContainerKeys` on goals, and the failure is
+ * worse here: `itemIds` is how membership works on both routines and programs,
+ * so a model asked to "put these three tasks in the Chinese project" reaches
+ * for it, Zod strips it, the project is created empty, and the caller is told
+ * 201 for a write that filed nothing. The fix it needs is not a different key
+ * on this call — it is a DIFFERENT CALL — so the message says so.
+ */
+const rejectProjectForeignKeys = (
+  data: { itemIds?: unknown; routineIds?: unknown; icon?: unknown },
+  ctx: z.RefinementCtx,
+) => {
+  if (data.itemIds !== undefined || data.routineIds !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        'projects do not take member arrays — an item names its project, not the ' +
+        "other way round. Create the project first, then set each item's `project` " +
+        'to this name (on the item create or update call).',
+      path: ['name'],
+    })
+  }
+  if (data.icon !== undefined) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message:
+        'projects wear an `emoji`, not an `icon:<LucideName>` token — that is the ' +
+        'routine/program/goal convention.',
+      path: ['emoji'],
+    })
+  }
+}
+
+/**
+ * Block fields: a project can put a recurring slot on the grid, exactly as the
+ * project dialog does. Optional throughout — a project with none is a plain
+ * label, which is what most of them are.
+ */
+const projectShape = {
+  emoji: z.string().min(1),
+  color: clearable(z.string()),
+  repeatFrequency: clearable(z.preprocess(normalizeWeekly, RepeatFrequencySchema)),
+  repeatDays: clearable(z.array(z.number().int())),
+  repeatMonthDay: clearable(z.number().int()),
+  timeBucket: clearable(TimeBucketSchema),
+  startTime: clearable(z.string()),
+  duration: clearable(z.number().int()),
+  // Carried only to be refused, with a pointer — see rejectProjectForeignKeys.
+  itemIds: z.unknown().optional(),
+  routineIds: z.unknown().optional(),
+  icon: z.unknown().optional(),
+}
+
+export const ProjectCreateSchema = z
+  .object({
+    ...projectShape,
+    id: OptionalIdSchema,
+    name: z.string().min(1),
+  })
+  .superRefine(requireCustomDays)
+  .superRefine(rejectProjectForeignKeys)
+
+export const ProjectUpdateSchema = z
+  .object({
+    ...projectShape,
+    // Optional on PATCH, but never null or empty: the name is the join to every
+    // member item, and clearing it would strand all of them.
+    name: z.string().min(1).optional(),
+    emoji: z.string().min(1).optional(),
+  })
+  .superRefine(requireCustomDays)
+  .superRefine(rejectProjectForeignKeys)
+
 // ── API response schemas ───────────────────────────────────────────────────────
 
 export const AnchorContextResponseSchema = z.object({

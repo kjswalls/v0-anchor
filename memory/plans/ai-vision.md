@@ -784,6 +784,45 @@ Known gaps, none of them blocking a first run:
   item, only its activity trail. item-surface-growth deferred server persistence on purpose
   — "the first stored chat data deserves its own review" — and that is still the right call.
 
+**Phase 2g — the container an agent could not create. SHIPPED.**
+
+MCP could file an item into a project by NAME and could not create the project. That is
+worse than a missing verb, because `lookupContainerId` resolves an unknown name to `null`
+rather than creating: the item kept the string, got no `project_id`, and was filed nowhere
+while the write reported 201. So an agent could only ever use containers the user had
+already made by hand — and "make me a plan for X" starts by needing a container for X.
+
+- **`ProjectCreateSchema` / `ProjectUpdateSchema`** (`packages/types`), and the routes are
+  factory-built now like every other container. They were the last hand-rolled pair: POST
+  validated nothing, so a nameless body reached Postgres and a duplicate name came back as
+  a 500 carrying the raw constraint string.
+- **`project` is a fourth `kind`** on the three collection tools rather than three new
+  tools — the tool COUNT is unchanged at 15, so the `mcp doctor --probe` line in
+  ai-vision-decisions.md still reads true.
+- **`itemIds` is refused, not stripped**, with a message pointing at the item call. Same
+  argument as `rejectForeignContainerKeys` on goals and the failure is worse here:
+  membership is an array on both other containers, so a model reaches for it, and a
+  silently-empty project reports 201 having filed nothing.
+- **A rename fans out to the members** on the agent path (it already did on `[id]`, which
+  is why that logic moved into the factory rather than being written twice), and a
+  duplicate name answers 409 naming the trash — the unique index spans the bin, so the
+  holder may be a row the agent can see through no endpoint.
+
+Also closed, in the same pass: fields the app has carried for migrations that no tool could
+reach — per-item **reminders** (`reminderTime` / `reminderAnchor`, migration 032), habit
+**duration**, **`repeatMonthDay`**, task **`skippedDates`**, and task recurrence on create.
+Each was a feature an agent could not use rather than a rule it could break; the reminder
+pair is the one that mattered, since an agent could otherwise build a whole plan and never
+arrange for the user to be told about any of it. A test asserts every key in
+`TASK_WRITE_KEYS` / `HABIT_WRITE_KEYS` is also advertised in the published input schema —
+the forgotten half of that pair is a field the plan would forward and no model would send.
+
+**What is still deliberately out.** Custom item types (the agent write API is built-ins
+only — a stated Phase-4 decision, not an oversight), `habit_groups` (frozen ballast),
+and the app-surface features that are not planner data: EOD review, morning brief,
+Beeminder/stakes, reminder-channel config and its secrets, settings and themes, trash
+restore.
+
 **Phase 3 — seams, not speculation.** Explicitly *not* building hosted-tier
 infrastructure: it would sit on an unvalidated Phase 1. Phase 3 is this document, the
 capability-registry seam that lets a hosted tier slot in as one config row, and an honest

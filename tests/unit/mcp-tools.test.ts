@@ -561,3 +561,145 @@ describe('resuming a run that died', () => {
     });
   });
 });
+
+/**
+ * Projects — the CLASSIFY container, and the last one to reach the tool
+ * surface. The interesting cases are all about the ONE way it differs from the
+ * other three: membership is a name on the item, not an array on the container.
+ */
+describe('projects', () => {
+  it('plans a create against the projects endpoint', () => {
+    expect(plan('anchor_create_collection', { kind: 'project', name: 'Chinese', emoji: '🇨🇳' })).toEqual({
+      method: 'POST',
+      path: '/api/agent/projects',
+      body: { name: 'Chinese', emoji: '🇨🇳' },
+    });
+  });
+
+  it('carries the block fields that put a project on the grid', () => {
+    const p = plan('anchor_create_collection', {
+      kind: 'project',
+      name: 'Chinese',
+      emoji: '🇨🇳',
+      repeatFrequency: 'daily',
+      timeBucket: 'morning',
+      startTime: '07:30',
+      duration: 30,
+      color: 'var(--accent-3)',
+    });
+    expect(p).toMatchObject({
+      body: {
+        repeatFrequency: 'daily',
+        timeBucket: 'morning',
+        startTime: '07:30',
+        duration: 30,
+        color: 'var(--accent-3)',
+      },
+    });
+  });
+
+  it('refuses itemIds with the call that actually files the work', () => {
+    const p = plan('anchor_create_collection', {
+      kind: 'project',
+      name: 'Chinese',
+      emoji: '🇨🇳',
+      itemIds: ['a', 'b'],
+    });
+    // Dropping it silently is the failure this exists to prevent: an empty
+    // project reported as 201, with the items still filed nowhere.
+    expect(p).toHaveProperty('error');
+    expect((p as { error: string }).error).toContain('itemIds');
+  });
+
+  it('refuses the goal and program keys a project has no meaning for', () => {
+    for (const stray of [{ routineIds: ['r'] }, { targetOn: '2027-01-01' }, { endsOn: '2027-01-01' }]) {
+      const p = plan('anchor_create_collection', { kind: 'project', name: 'X', emoji: '📁', ...stray });
+      expect(p, JSON.stringify(stray)).toHaveProperty('error');
+    }
+  });
+
+  it('asks for an emoji before spending a round trip on a 400', () => {
+    const p = plan('anchor_create_collection', { kind: 'project', name: 'Chinese' });
+    expect(p).toHaveProperty('error');
+    expect((p as { error: string }).error).toContain('emoji');
+  });
+
+  it('does not demand an emoji on update — a rename should not have to resend one', () => {
+    expect(plan('anchor_update_collection', { kind: 'project', id: 'p1', name: 'Mandarin' })).toEqual({
+      method: 'PATCH',
+      path: '/api/agent/projects/p1',
+      body: { name: 'Mandarin' },
+    });
+  });
+
+  it('plans a delete', () => {
+    expect(plan('anchor_delete_collection', { kind: 'project', id: 'p1' })).toEqual({
+      method: 'DELETE',
+      path: '/api/agent/projects/p1',
+    });
+  });
+
+  it('offers project in the kind enum of all three collection tools', () => {
+    for (const name of ['anchor_create_collection', 'anchor_update_collection', 'anchor_delete_collection']) {
+      const schema = toolByName(name)!.inputSchema as {
+        properties: { kind: { enum: string[] } };
+      };
+      expect(schema.properties.kind.enum, name).toContain('project');
+    }
+  });
+});
+
+/**
+ * Fields the app has carried for migrations and no tool could reach. Each one
+ * was a feature an agent could not use rather than a rule it could break, so
+ * these pin the plumbing, not a refusal.
+ */
+describe('fields the tools had been unable to reach', () => {
+  it('sets a reminder on a task', () => {
+    expect(
+      plan('anchor_create_task', {
+        title: 'Review flashcards',
+        reminderTime: '19:00',
+        reminderAnchor: 'after dinner',
+      }),
+    ).toMatchObject({ body: { reminderTime: '19:00', reminderAnchor: 'after dinner' } });
+  });
+
+  it('sets a reminder on a habit', () => {
+    expect(
+      plan('anchor_update_habit', { id: 'h1', reminderTime: '07:00', reminderAnchor: 'after coffee' }),
+    ).toMatchObject({ body: { reminderTime: '07:00', reminderAnchor: 'after coffee' } });
+  });
+
+  it('gives a habit a length, which is what sizes its block', () => {
+    expect(plan('anchor_create_habit', { title: 'Read Chinese', duration: 30 })).toMatchObject({
+      body: { duration: 30 },
+    });
+  });
+
+  it('makes a task monthly, and recurring at all', () => {
+    expect(
+      plan('anchor_create_task', { title: 'Pay tutor', repeatFrequency: 'monthly', repeatMonthDay: 1 }),
+    ).toMatchObject({ body: { repeatFrequency: 'monthly', repeatMonthDay: 1 } });
+  });
+
+  it('skips one occurrence of a recurring task', () => {
+    expect(plan('anchor_update_task', { id: 't1', skippedDates: ['2026-09-01'] })).toMatchObject({
+      body: { skippedDates: ['2026-09-01'] },
+    });
+  });
+
+  it('advertises every reachable write key in the schema it publishes', () => {
+    // The bug this catches: adding a key to *_WRITE_KEYS and forgetting the
+    // descriptor leaves a field the plan would forward and no model will ever
+    // send, which reads as the feature being missing.
+    const advertised = (name: string) =>
+      Object.keys((toolByName(name)!.inputSchema as { properties: Record<string, unknown> }).properties);
+    for (const key of ['reminderTime', 'reminderAnchor', 'repeatMonthDay']) {
+      expect(advertised('anchor_create_task'), key).toContain(key);
+      expect(advertised('anchor_update_task'), key).toContain(key);
+      expect(advertised('anchor_create_habit'), key).toContain(key);
+      expect(advertised('anchor_update_habit'), key).toContain(key);
+    }
+  });
+});

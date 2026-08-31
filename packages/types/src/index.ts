@@ -32,6 +32,8 @@ export {
   ProgramUpdateSchema,
   GoalCreateSchema,
   GoalUpdateSchema,
+  ProjectCreateSchema,
+  ProjectUpdateSchema,
   AnchorContextResponseSchema,
   AnchorChangeEventSchema,
   AiStatusSchema,

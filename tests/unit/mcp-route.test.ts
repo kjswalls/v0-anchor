@@ -40,6 +40,8 @@ vi.mock('@/lib/agent-api', () => ({
   makeContainerItemHandlers: (k: string) => ({ PATCH: fake(`patch:${k}`), DELETE: fake(`delete:${k}`) }),
   makeGoalCreateHandler: () => fake('create:goal'),
   makeGoalItemHandlers: () => ({ PATCH: fake('patch:goal'), DELETE: fake('delete:goal') }),
+  makeProjectCreateHandler: () => fake('create:project'),
+  makeProjectItemHandlers: () => ({ PATCH: fake('patch:project'), DELETE: fake('delete:project') }),
 }));
 vi.mock('@/app/api/agent/items/[id]/progress/route', () => ({
   POST: async (req: Request, ctx: { params: Promise<{ id: string }> }) => {
@@ -178,6 +180,19 @@ describe('dispatch to agent handlers', () => {
     await POST(call('anchor_update_collection', { kind: 'program', id: 'p1', state: 'active' }));
     await POST(call('anchor_delete_collection', { kind: 'routine', id: 'r1' }));
     expect(calls.map((c) => c.handler)).toEqual(['create:goal', 'patch:program', 'delete:routine']);
+  });
+
+  it('routes projects to the project handlers, the fourth container kind', async () => {
+    await POST(call('anchor_create_collection', { kind: 'project', name: 'Chinese', emoji: '🇨🇳' }));
+    await POST(call('anchor_update_collection', { kind: 'project', id: 'p1', name: 'Mandarin' }));
+    await POST(call('anchor_delete_collection', { kind: 'project', id: 'p1' }));
+    expect(calls.map((c) => c.handler)).toEqual(['create:project', 'patch:project', 'delete:project']);
+    expect(calls[0]).toMatchObject({
+      method: 'POST',
+      body: { name: 'Chinese', emoji: '🇨🇳' },
+      url: 'https://anchor.test/api/agent/projects',
+    });
+    expect(calls[1]).toMatchObject({ method: 'PATCH', id: 'p1' });
   });
 
   it('builds an absolute URL on the request origin', async () => {

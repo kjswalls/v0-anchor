@@ -83,7 +83,12 @@ const pick = (args: Record<string, unknown>, keys: string[]): Record<string, unk
 
 const TASK_WRITE_KEYS = [
   'title', 'status', 'startDate', 'startTime', 'timeBucket', 'priority', 'project',
-  'notes', 'duration', 'parentItemId', 'repeatFrequency', 'repeatDays', 'completedDates',
+  'notes', 'duration', 'parentItemId', 'repeatFrequency', 'repeatDays', 'repeatMonthDay',
+  'completedDates', 'skippedDates',
+  // Per-item reminders (migration 032). The schemas have accepted these since
+  // 032 and no tool could reach them, so an agent could build a whole plan and
+  // never arrange for the user to be told about any of it.
+  'reminderTime', 'reminderAnchor',
   // Delegation. These are how a background worker says what it is doing —
   // without them an agent can see its assignments and has no way to report on
   // them, which is the difference between delegation and a wish.
@@ -91,11 +96,13 @@ const TASK_WRITE_KEYS = [
 ]
 
 const HABIT_WRITE_KEYS = [
-  'title', 'group', 'repeatFrequency', 'repeatDays', 'timeBucket', 'startTime',
-  'notes', 'timesPerDay', 'completedDates', 'skippedDates',
+  'title', 'group', 'repeatFrequency', 'repeatDays', 'repeatMonthDay', 'timeBucket',
+  'startTime', 'duration', 'notes', 'timesPerDay', 'completedDates', 'skippedDates',
+  'reminderTime', 'reminderAnchor',
 ]
 
 const COLLECTION_PATHS: Record<string, string> = {
+  project: 'projects',
   routine: 'routines',
   program: 'programs',
   goal: 'goals',
@@ -107,6 +114,14 @@ const COLLECTION_PATHS: Record<string, string> = {
  * routine write is how a model concludes it created milestones it did not.
  */
 const COLLECTION_KEYS: Record<string, string[]> = {
+  // A project takes no member array on purpose — an item names its project, so
+  // membership is set on the ITEM. `itemIds` is refused rather than dropped
+  // (see rejectProjectForeignKeys) because a silently-empty project reports 201
+  // and files nothing.
+  project: [
+    'name', 'emoji', 'color',
+    'repeatFrequency', 'repeatDays', 'repeatMonthDay', 'timeBucket', 'startTime', 'duration',
+  ],
   routine: ['name', 'icon', 'color', 'itemIds', 'paused', 'pausedUntil'],
   program: ['name', 'icon', 'color', 'itemIds', 'routineIds', 'state', 'startsOn', 'endsOn'],
   goal: ['name', 'icon', 'color', 'why', 'state', 'startsOn', 'targetOn', 'memberIds', 'milestoneIds', 'checkinIds'],
@@ -139,6 +154,10 @@ function planCollection(
   if (method === 'POST') {
     const name = requireString(args, 'name')
     if (typeof name !== 'string') return name
+    if (kind === 'project') {
+      const emoji = requireString(args, 'emoji')
+      if (typeof emoji !== 'string') return emoji
+    }
     return { method, path: `/api/agent/${segment}`, body: pick(args, allowed) }
   }
 
@@ -475,6 +494,19 @@ export const MCP_TOOLS: McpTool[] = [
         notes: str('Longer detail that does not belong in the title.'),
         duration: { type: 'number', description: 'Minutes the task is expected to take.' },
         parentItemId: str('Make this a subtask of that item. Subtasks cannot nest.'),
+        repeatFrequency: {
+          type: 'string',
+          enum: ['none', 'daily', 'weekdays', 'weekends', 'monthly', 'custom'],
+          description: 'Makes the task recurring. Omit for a one-off.',
+        },
+        repeatDays: {
+          type: 'array',
+          items: { type: 'number' },
+          description: 'Required when repeatFrequency is custom. 0 = Sunday … 6 = Saturday.',
+        },
+        repeatMonthDay: { type: 'number', description: 'Day of month, when repeatFrequency is monthly.' },
+        reminderTime: { ...TIME, description: 'HH:mm to be reminded, in the user\'s own timezone. Omit for no reminder.' },
+        reminderAnchor: str('What the reminder rides on — "after I pour my coffee". Rehearsed in the notification, never parsed.'),
       },
       ['title']
     ),
@@ -507,6 +539,19 @@ export const MCP_TOOLS: McpTool[] = [
           items: { type: 'string' },
           description: 'For recurring tasks: the yyyy-MM-dd dates completed. Whole-set replacement.',
         },
+        skippedDates: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'For recurring tasks: yyyy-MM-dd dates deliberately skipped. Whole-set replacement.',
+        },
+        repeatFrequency: {
+          type: 'string',
+          enum: ['none', 'daily', 'weekdays', 'weekends', 'monthly', 'custom'],
+        },
+        repeatDays: { type: 'array', items: { type: 'number' } },
+        repeatMonthDay: { type: 'number' },
+        reminderTime: { ...TIME, description: 'HH:mm to be reminded, in the user\'s own timezone. Omit for no reminder.' },
+        reminderAnchor: str('What the reminder rides on — "after I pour my coffee". Rehearsed in the notification, never parsed.'),
       },
       ['id']
     ),
@@ -549,8 +594,12 @@ export const MCP_TOOLS: McpTool[] = [
         },
         timeBucket: TIME_BUCKET,
         startTime: TIME,
+        repeatMonthDay: { type: 'number', description: 'Day of month, when repeatFrequency is monthly.' },
         timesPerDay: { type: 'number', description: 'For counted habits, e.g. 3 glasses of water.' },
+        duration: { type: 'number', description: 'Minutes the habit takes — "30 minutes of reading" IS the habit, and it sizes the block on the grid.' },
         notes: str('Longer detail.'),
+        reminderTime: { ...TIME, description: 'HH:mm to be reminded, in the user\'s own timezone. Omit for no reminder.' },
+        reminderAnchor: str('What the reminder rides on — "after I pour my coffee". Rehearsed in the notification, never parsed.'),
       },
       ['title']
     ),
@@ -581,7 +630,11 @@ export const MCP_TOOLS: McpTool[] = [
         timesPerDay: { type: 'number' },
         completedDates: { type: 'array', items: { type: 'string' }, description: 'yyyy-MM-dd dates done.' },
         skippedDates: { type: 'array', items: { type: 'string' }, description: 'yyyy-MM-dd dates deliberately skipped.' },
+        repeatMonthDay: { type: 'number' },
+        duration: { type: 'number', description: 'Minutes.' },
         notes: str('Longer detail.'),
+        reminderTime: { ...TIME, description: 'HH:mm to be reminded, in the user\'s own timezone. Omit for no reminder.' },
+        reminderAnchor: str('What the reminder rides on — "after I pour my coffee". Rehearsed in the notification, never parsed.'),
       },
       ['id']
     ),
@@ -644,13 +697,17 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'anchor_create_collection',
     description:
-      'Create a routine (a set of items that switch on and off together), a program (a ' +
-      'dated season holding items and routines), or a goal (something being worked ' +
-      'towards, whose members can be milestones or check-ins). Membership arrays are ' +
-      'whole sets, not additions.',
+      'Create a project (the folder every item is filed under — needs an emoji), a ' +
+      'routine (a set of items that switch on and off together), a program (a dated ' +
+      'season holding items and routines), or a goal (something being worked towards, ' +
+      'whose members can be milestones or check-ins). Membership arrays are whole sets, ' +
+      'not additions — EXCEPT for a project, which takes none at all: an item names its ' +
+      "project, so create the project first and then set each item's `project` to this " +
+      'name. Filing work under a project name that does not exist yet leaves it filed ' +
+      'nowhere, so create the project BEFORE the items that belong to it.',
     inputSchema: obj(
       {
-        kind: { type: 'string', enum: ['routine', 'program', 'goal'] },
+        kind: { type: 'string', enum: ['project', 'routine', 'program', 'goal'] },
         name: str('What to call it.'),
         icon: str('An icon token like "icon:Sparkles".'),
         color: str('A colour token.'),
@@ -664,6 +721,17 @@ export const MCP_TOOLS: McpTool[] = [
         memberIds: { type: 'array', items: { type: 'string' }, description: 'Goals only: supporting work.' },
         milestoneIds: { type: 'array', items: { type: 'string' }, description: 'Goals only: dated one-off items that mark progress.' },
         checkinIds: { type: 'array', items: { type: 'string' }, description: 'Goals only: recurring items that keep it alive.' },
+        emoji: str('Projects only, and REQUIRED for one: a single emoji that stands for it, e.g. "🇨🇳".'),
+        repeatFrequency: {
+          type: 'string',
+          enum: ['none', 'daily', 'weekdays', 'weekends', 'monthly', 'custom'],
+          description: 'Projects only: puts a recurring block for this project on the grid.',
+        },
+        repeatDays: { type: 'array', items: { type: 'number' }, description: 'Projects only, with custom frequency. 0 = Sunday.' },
+        repeatMonthDay: { type: 'number', description: 'Projects only, with monthly frequency.' },
+        timeBucket: { ...TIME_BUCKET, description: 'Projects only: which part of the day the block sits in.' },
+        startTime: { ...TIME, description: 'Projects only: when the block starts.' },
+        duration: { type: 'number', description: 'Projects only: how many minutes the block runs.' },
       },
       ['kind', 'name']
     ),
@@ -672,12 +740,13 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'anchor_update_collection',
     description:
-      'Change a routine, program or goal. Membership arrays REPLACE the whole set, so ' +
-      'read the current members from get_context and send the full list, or you will ' +
-      'remove everything you left out.',
+      'Change a project, routine, program or goal. Membership arrays REPLACE the whole ' +
+      'set, so read the current members from get_context and send the full list, or you ' +
+      'will remove everything you left out. Renaming a PROJECT is safe: every item filed ' +
+      'under it follows the new name automatically.',
     inputSchema: obj(
       {
-        kind: { type: 'string', enum: ['routine', 'program', 'goal'] },
+        kind: { type: 'string', enum: ['project', 'routine', 'program', 'goal'] },
         id: ID,
         name: str('New name.'),
         icon: str('An icon token like "icon:Sparkles".'),
@@ -694,6 +763,17 @@ export const MCP_TOOLS: McpTool[] = [
         checkinIds: { type: 'array', items: { type: 'string' } },
         paused: { type: 'boolean', description: 'Routines only — programs use state.' },
         pausedUntil: DATE,
+        emoji: str('Projects only, and REQUIRED for one: a single emoji that stands for it, e.g. "🇨🇳".'),
+        repeatFrequency: {
+          type: 'string',
+          enum: ['none', 'daily', 'weekdays', 'weekends', 'monthly', 'custom'],
+          description: 'Projects only: puts a recurring block for this project on the grid.',
+        },
+        repeatDays: { type: 'array', items: { type: 'number' }, description: 'Projects only, with custom frequency. 0 = Sunday.' },
+        repeatMonthDay: { type: 'number', description: 'Projects only, with monthly frequency.' },
+        timeBucket: { ...TIME_BUCKET, description: 'Projects only: which part of the day the block sits in.' },
+        startTime: { ...TIME, description: 'Projects only: when the block starts.' },
+        duration: { type: 'number', description: 'Projects only: how many minutes the block runs.' },
       },
       ['kind', 'id']
     ),
@@ -702,11 +782,11 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'anchor_delete_collection',
     description:
-      'Delete a routine, program or goal. Its member items are NOT deleted — they simply ' +
-      'stop belonging to it.',
+      'Delete a project, routine, program or goal. Its member items are NOT deleted — ' +
+      'they simply stop belonging to it. Everything goes to trash for 30 days.',
     inputSchema: obj(
       {
-        kind: { type: 'string', enum: ['routine', 'program', 'goal'] },
+        kind: { type: 'string', enum: ['project', 'routine', 'program', 'goal'] },
         id: ID,
       },
       ['kind', 'id']
