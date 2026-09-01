@@ -79,7 +79,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} ${sourceSerif.variable} font-sans antialiased`}>
-        {/* One-time key migration — dsul-* → dsul-* (the "dsul" rename).
+        {/* One-time key migration — anchor-* → dsul-* (the Anchor→dsul rename).
             MUST stay above the palette script and ahead of all hydration: an
             unstamped browser is an ORPHANED browser to lib/local-state.ts, so
             if `dsul-local-state-owner` were absent on the first load after the
@@ -87,13 +87,13 @@ export default function RootLayout({
             Renaming the whole prefix in one pre-paint pass is what keeps the
             palette, the rebindings, the filters and every Beacon transcript.
             Prefix-wide (not a key list) so the per-item chat threads
-            (`dsul-item-chat-<id>`) travel with the fixed keys; an existing
+            (`anchor-item-chat-<id>`) travel with the fixed keys; an existing
             dsul-* value always wins, so a second run is a no-op. Safe to delete
             once every browser has loaded the app once after the rename. */}
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "try{var M=function(s){var k=[],i,n,v;for(i=0;i<s.length;i++){n=s.key(i);if(n&&n.lastIndexOf('dsul-',0)===0)k.push(n)}for(i=0;i<k.length;i++){v=s.getItem(k[i]);n='dsul-'+k[i].slice(7);if(v!==null&&s.getItem(n)===null)s.setItem(n,v);s.removeItem(k[i])}};M(localStorage);M(sessionStorage)}catch(e){}",
+              "try{var P='anchor-',Q='dsul-',M=function(s){var k=[],i,n,v;for(i=0;i<s.length;i++){n=s.key(i);if(n&&n.lastIndexOf(P,0)===0)k.push(n)}for(i=0;i<k.length;i++){v=s.getItem(k[i]);n=Q+k[i].slice(P.length);if(v!==null&&s.getItem(n)===null)s.setItem(n,v);s.removeItem(k[i])}};M(localStorage);M(sessionStorage)}catch(e){}",
           }}
         />
         {/* Palette pre-hydration: stamp <html data-theme> from the raw
