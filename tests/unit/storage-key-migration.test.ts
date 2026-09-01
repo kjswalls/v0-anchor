@@ -17,7 +17,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const layout = readFileSync(join(process.cwd(), 'app/layout.tsx'), 'utf8');
-const match = layout.match(/__html:\s*\n\s*"(try\{var P=.*?)",\n/s);
+const match = layout.match(/__html:\s*\n\s*"(try\{var P=[\s\S]*?)",\n/);
 
 /** A localStorage/sessionStorage stand-in with the bits the script uses. */
 class MemoryStorage {
@@ -114,29 +114,33 @@ describe('the anchor- → dsul- storage migration in app/layout.tsx', () => {
     expect(local.snapshot()).toEqual({ 'dsul-view': 'NEW' });
   });
 
-  it('moves the owner stamp first, so a quota failure cannot orphan the browser', () => {
+  it('moves the owner stamp first, and one failed write does not stop the rest', () => {
     // The failure this guards: a setItem that throws partway through used to
     // abandon the whole pass. If the stamp had not moved yet, the next render
     // read the browser as someone else's and cleared it.
-    class FailAfter extends MemoryStorage {
-      constructor(init: Record<string, string>, private budget: number) { super(init); }
+    class FailsOn extends MemoryStorage {
+      constructor(init: Record<string, string>, private poison: string) { super(init); }
       setItem(k: string, v: string) {
-        if (this.budget-- <= 0) throw new DOMException('quota', 'QuotaExceededError');
+        if (k === this.poison) throw new DOMException('quota', 'QuotaExceededError');
         super.setItem(k, v);
       }
     }
-    const local = new FailAfter({
+    const local = new FailsOn({
+      // Insertion order puts the stamp LAST; the sort has to pull it first.
       'anchor-item-chat-big': 'x'.repeat(64),
       'anchor-view': '{"scope":"day"}',
       'anchor-local-state-owner': 'user-123',
-    }, 1); // only ONE write succeeds
+    }, 'dsul-item-chat-big');
 
     migrate(local, new MemoryStorage());
 
-    // The stamp is the write that got the budget.
+    // Sorted first, so it lands however the rest of the pass goes.
     expect(local.getItem('dsul-local-state-owner')).toBe('user-123');
-    // And a key whose write failed keeps its old copy, so the next load retries.
-    expect(local.getItem('anchor-view')).toBe('{"scope":"day"}');
+    // Sorted AFTER the poisoned key: only reached because each key has its own
+    // try. Remove that try and this is undefined.
+    expect(local.getItem('dsul-view')).toBe('{"scope":"day"}');
+    // The write that failed leaves its old copy behind rather than dropping it.
+    expect(local.getItem('anchor-item-chat-big')).toBe('x'.repeat(64));
   });
 
   it('leaves a fresh browser and every unrelated key alone', () => {

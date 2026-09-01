@@ -91,9 +91,13 @@ export default function RootLayout({
             dsul-* value always wins, so a second run is a no-op. The owner
             stamp moves FIRST and every key is moved under its own try: a
             storage quota error partway through must not be the thing that
-            leaves the browser unstamped, and a key whose write failed keeps its
-            old copy so the next load retries it. Safe to delete once every
-            browser has loaded the app once after the rename. */}
+            leaves the browser unstamped, and one failed write must cost only
+            its own key rather than every key after it. (That key is not
+            reliably recoverable on the next load — its store will have written
+            a fresh dsul-* default by then, and an existing value wins — so the
+            stamp going first is what keeps the failure to one store.) Safe to
+            delete once every browser has loaded the app once after the
+            rename. */}
         <script
           dangerouslySetInnerHTML={{
             __html:
