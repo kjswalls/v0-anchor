@@ -35,7 +35,7 @@ vi.mock('@/lib/ai-settings-store', () => ({
   },
 }));
 
-vi.mock('@/lib/ai-context', () => ({ buildAnchorContext: () => '## Anchor Context' }));
+vi.mock('@/lib/ai-context', () => ({ buildDsulContext: () => '## dsul Context' }));
 
 import { createChatStore } from '@/lib/chat-store';
 

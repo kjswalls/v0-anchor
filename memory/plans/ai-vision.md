@@ -1,13 +1,13 @@
-# Anchor AI Vision — the item is the unit of collaboration
+# dsul AI Vision — the item is the unit of collaboration
 
-**Goal:** Anchor is "Linear for personal tasks", built for a neurodivergent audience:
+**Goal:** dsul is "Linear for personal tasks", built for a neurodivergent audience:
 scannable, low-overwhelm, guilt-free, but capability-rich. The AI is not a chatbot bolted
 to a planner — it is a **collaborator on the planner itself**. Some items are yours, some
 are Beacon's, and the grid tells you at a glance who is doing what and what needs you.
 
 **Status (2026-08-25):** **Phases 1, 2a and 2b SHIPPED.** Phase 1 — the proposal primitive
 and the gateway transport (`da56e9b`, `4df4ca7`, `046adb4`, `01d254a`, `2b7dbd7`).
-Phase 2a — Anchor as a remote MCP server (`142810c`, `1081f5c`, `eddc778`, `9385854`).
+Phase 2a — dsul as a remote MCP server (`142810c`, `1081f5c`, `eddc778`, `9385854`).
 Phase 2b — the delegation loop, built as a pull (`a376de5`, `00ec597`). This document
 governs the work the same way [unified-items.md](unified-items.md) governs the items refactor.
 
@@ -34,11 +34,11 @@ What made Linear work is not features — it is that **the issue is the unit of
 coordination**. Humans (and now agents) collaborate *on the issue*: status, assignee,
 activity trail, comments. Nobody coordinates work in Linear through a chat window.
 
-Applied to Anchor: the **item** is where the user and the agent meet. This matters twice
+Applied to dsul: the **item** is where the user and the agent meet. This matters twice
 over for the audience, because **chat is a hostile primary interface for neurodivergent
 users**. It demands initiation (blank-box paralysis), produces walls of text (scanning
 cost), holds no state you can glance at (out of sight, gone), and quietly manufactures
-guilt ("I asked it to plan Monday and then ignored it"). The best AI surfaces in Anchor
+guilt ("I asked it to plan Monday and then ignored it"). The best AI surfaces in dsul
 today are the ones that are *not* chat — morning triage and EOD review are app-initiated,
 bounded, and one-decision-at-a-time. That is the pattern to bet on.
 
@@ -94,10 +94,10 @@ pretend they are.
 |---|---|---|
 | **assistant** (BYOK OpenAI, or none/mock) | Next.js route → provider | 1 only |
 | **agent** (user's OpenClaw gateway) | Next.js route → gateway | 1 + 2 |
-| *hosted (future)* | Anchor-operated agent | 1 + 2, zero config |
+| *hosted (future)* | dsul-operated agent | 1 + 2, zero config |
 
 Two traps to avoid. **Do not make BYOK do delegation** — that means rebuilding OpenClaw
-inside Anchor (tool loop, task queue, background workers). **Do not branch on provider
+inside dsul (tool loop, task queue, background workers). **Do not branch on provider
 strings in the UI.** The house pattern is already established: do what
 [lib/item-registry.ts](../../lib/item-registry.ts) does and ask a capability question
 (`canDelegate()`, `canPropose()`, …). Adding the hosted tier must be config, not code paths.
@@ -144,36 +144,36 @@ Researched against docs.openclaw.ai (2026-07-31). These facts are load-bearing:
 Which yields three surfaces:
 
 **1. Conversation → OpenAI-compatible `/v1/chat/completions`, proxied server-side.**
-Anchor's Next.js route handler calls the gateway with `stream: true` and translates the
+dsul's Next.js route handler calls the gateway with `stream: true` and translates the
 OpenAI-shaped chunks into the `{content}` / `{error}` / `[DONE]` frames the client already
 parses, so both tiers share one client code path and the operator token never reaches the
 browser. A stable session key per thread gives every item thread durable gateway-side
 memory under the no-TTL default.
 
-*This also closes a live security gap:* today the browser holds an Anchor API key and POSTs
+*This also closes a live security gap:* today the browser holds an dsul API key and POSTs
 directly to the gateway ([lib/chat-store.ts](../../lib/chat-store.ts),
 [app/api/agent/chat-url/route.ts](../../app/api/agent/chat-url/route.ts)). After this, the
-browser talks only to Anchor.
+browser talks only to dsul.
 
 **2. Delegation → `POST /hooks/agent`,** with the agent reporting results back through the
-Anchor items tools the plugin already registers. Because announce is best-effort,
-**Anchor's DB is the source of truth** for threads and delegation state; gateway reports
+dsul items tools the plugin already registers. Because announce is best-effort,
+**dsul's DB is the source of truth** for threads and delegation state; gateway reports
 are notifications. Gateway sessions are disposable working memory, always re-primable from
 stored thread history.
 
 **3. The plugin stays — shrunk to what only in-process code can do.** The "external apps
 shouldn't use the plugin SDK" rule is about *which code uses which surface*, not about who
 wrote it. `openclaw-plugin/` runs **inside** the gateway process, so it is a legitimate
-plugin and remains the only way to register agent tools. Anchor's Next.js server is the
+plugin and remains the only way to register agent tools. dsul's Next.js server is the
 external app, and it talks HTTP. Two codebases, two roles.
 
 Known third-party plugin limits (bundled-only, not available to us):
 `api.session.workflow.scheduleSessionTurn`, `api.runtime.gateway.request`,
 `sendSessionAttachment`, and any unprompted push to a channel. Anything needing those must
-be driven from Anchor's side via hooks/cron instead.
+be driven from dsul's side via hooks/cron instead.
 
 **ClawBoy-expo is not part of this architecture.** It is an independent OpenClaw client and
-a place to borrow code from if a need arises; Anchor requires no shared code with it. (Note
+a place to borrow code from if a need arises; dsul requires no shared code with it. (Note
 for that repo separately: current gateways pin operator clients to protocol v4; a v3-only
 client will stop connecting.)
 
@@ -195,7 +195,7 @@ client will stop connecting.)
 5. **Delegation state must never overload `items.status`.** Task/habit status vocabularies
    are frozen external contracts (the plugin `safeParse`s the context response and
    **throws** on drift). Delegation rides its own columns.
-6. **Anchor's DB is the source of truth**; gateway sessions are disposable working memory.
+6. **dsul's DB is the source of truth**; gateway sessions are disposable working memory.
 7. **The operator/gateway token is server-side only.** It lives in `user_secrets`
    (service-role only, per migration 012) and must never enter a client component or the
    browser bundle.
@@ -294,18 +294,18 @@ the moment a real agent writes it, so extend it only additively; and `setItemCom
 Written down because none could be checked without a gateway, and each has a one-line fix:
 
 1. **Does posting to a keyed session APPEND or REPLACE history?** The gateway holds session
-   state, so resending a full transcript each turn may duplicate it. Anchor currently sends
+   state, so resending a full transcript each turn may duplicate it. dsul currently sends
    the system prompt plus only the newest turn, behind
    `SEND_FULL_TRANSCRIPT_TO_GATEWAY` in `lib/openclaw-gateway.ts`. Under-sending costs
    context the gateway already has; over-sending corrupts it. **Flip the constant if a
    gateway turns out to be stateless per request.**
-2. **Does the OpenAI-compatible endpoint accept `x-openclaw-session-key` from Anchor's
+2. **Does the OpenAI-compatible endpoint accept `x-openclaw-session-key` from dsul's
    origin,** with `gateway.http.endpoints.chatCompletions.enabled: true`? If not, fall back
    to the OpenAI `user` field, which the docs say derives a stable key.
-3. **What does `model` mean here?** Anchor sends `agentId ?? 'default'`. If a gateway
+3. **What does `model` mean here?** dsul sends `agentId ?? 'default'`. If a gateway
    rejects that, it needs its own config field rather than reusing `openclaw_agent_id`.
-4. **CORS/ingress**: Anchor calls the gateway server-side, so browser CORS does not apply —
-   but the gateway must be reachable from wherever Anchor runs (Vercel), which a
+4. **CORS/ingress**: dsul calls the gateway server-side, so browser CORS does not apply —
+   but the gateway must be reachable from wherever dsul runs (Vercel), which a
    tailnet-only gateway is not. Local dev works; production may need Tailscale Funnel or
    equivalent. This is the most likely thing to be wrong.
 
@@ -320,8 +320,8 @@ Written down because none could be checked without a gateway, and each has a one
 - `lib/openclaw-gateway.ts` + the `/api/chat` gateway branch + `/api/agent/gateway` +
   migration 023 — the server-side transport, alongside the plugin path, opt-in by config.
 
-**Phase 2a — Anchor as an MCP server.** The executor should be an adapter, not a
-commitment. Anchor's agent API is the durable asset; which runtime acts on it is not.
+**Phase 2a — dsul as an MCP server.** The executor should be an adapter, not a
+commitment. dsul's agent API is the durable asset; which runtime acts on it is not.
 Exposing that API over MCP means OpenClaw *and* Claude, ChatGPT, Cursor and anything else
 MCP-capable can act on the planner, with no per-vendor plugin each time — OpenClaw's own
 docs describe consuming remote MCP servers (`mcp.servers.<name>`, `type: "http"`, OAuth).
@@ -330,9 +330,9 @@ against a vendor-neutral tool surface or against one gateway's plugin API.
 
 **Phase 2b — delegation, as a PULL. SHIPPED** (`a376de5`, `00ec597`).
 
-The agent asks Anchor what it owes; Anchor never calls the gateway. Three MCP tools close
-the loop: `anchor_my_work` (assigned, open items only), `anchor_report_progress` (writes
-`aiStatus`/`aiResult`), `anchor_item_activity` (reads the trail, including the user's answer
+The agent asks dsul what it owes; dsul never calls the gateway. Three MCP tools close
+the loop: `dsul_my_work` (assigned, open items only), `dsul_report_progress` (writes
+`aiStatus`/`aiResult`), `dsul_item_activity` (reads the trail, including the user's answer
 to a blocked question). The UI half already existed — `AgentSection` — and gained a reply
 box on `blocked`.
 
@@ -488,13 +488,13 @@ cannot write arbitrary columns, and renders as React children so it cannot scrip
 
 **Phase 2f — a question you can answer with one tap. SHIPPED.**
 
-`anchor_report_progress` with status `blocked` could always ask a question; what it could
+`dsul_report_progress` with status `blocked` could always ask a question; what it could
 not do is offer ANSWERS. Most of what actually stops delegated work is a choice — which
 Dana, which of the two invoices, is Thursday still fine — and making the user retype a name
 into a box is the difference between a loop that closes in a second and one that waits until
 they have the energy to compose a sentence.
 
-- **`anchor_ask_user`** → `POST /api/agent/items/:id/ask`. Blocks the item and posts the
+- **`dsul_ask_user`** → `POST /api/agent/items/:id/ask`. Blocks the item and posts the
   question in ONE call: a question without the block renders nowhere (nothing draws a reply
   box unless `aiStatus` is `blocked`), and a block without the question is the old
   behaviour — so two tool calls would make the half-done state reachable every time a run
@@ -529,7 +529,7 @@ they have the energy to compose a sentence.
   registry's own header names this hazard. Now guarded on `agentAssignable`, plus a 409 for
   an item assigned to nobody, which fails the same way in a different shape.
 - **Options could attach to the wrong question.** The question the user reads comes from
-  `aiResult`, which `anchor_report_progress` also sets — and that path writes no event. Ask
+  `aiResult`, which `dsul_report_progress` also sets — and that path writes no event. Ask
   with options, then ask again through the old tool, and the new question rendered above the
   OLD question's buttons; a tap filed "Dana Reyes" as the answer to "what's the invoice
   number". Options are now matched against the current `aiResult`, which also handles a lost
@@ -672,13 +672,13 @@ Named as a known gap twice, and only solvable once `aiStatusAt` existed: a worke
 mid-task (crash, reclaimed container, gateway switched off) and nothing cleans that up.
 
 **Half of it turned out already to work**, which is worth recording because the gap was
-being described wrongly. `working` is in `OPEN_AI_STATUSES`, so `anchor_my_work` never
+being described wrongly. `working` is in `OPEN_AI_STATUSES`, so `dsul_my_work` never
 stopped offering a stuck item; and `AgentSection`'s Unassign already cleared the state. What
 was missing was narrower and more specific:
 
 - **The worker had no way to tell a live run from a dead one.** `selectAssignedWork` omitted
   `aiStatusAt` — exactly the blindness the item row had before migration 041. It now travels,
-  against the response's own `fetchedAt`, and `anchor_my_work` explains the reading: minutes
+  against the response's own `fetchedAt`, and `dsul_my_work` explains the reading: minutes
   old means leave it alone, hours old means that run died and you should finish it. A worker
   treating every `working` item as somebody else's leaves the user work they handed over and
   never got back; one treating every `working` item as abandoned double-runs whatever is
@@ -711,11 +711,11 @@ That argument had three holes and the review found all of them.
   replacement run's result: the user reads a report written against a premise they discarded,
   with the real result gone from the panel. Reporting `blocked` was worse — the item flips
   back from finished to "needs you", asking a question from the run they killed. Fixed
-  properly rather than argued away: `anchor_report_progress` now goes to its own route
+  properly rather than argued away: `dsul_report_progress` now goes to its own route
   carrying `lastSeenAt`, a **compare-and-set on `ai_status_at`**, and a stale report is
   refused with the current value so the worker can re-read. The button is now safe by
   construction rather than by being rare.
-- **The MCP instruction told workers to steal live work.** `anchor_report_progress` instructs
+- **The MCP instruction told workers to steal live work.** `dsul_report_progress` instructs
   reports at START, FINISH and STUCK only — there is no heartbeat — so a HEALTHY two-hour job
   has a two-hour-old stamp *by construction*. The text I added said hours-old means dead,
   pick it up and finish it: an instruction to double-run every long job, issued to a runtime
@@ -724,7 +724,7 @@ That argument had three holes and the review found all of them.
   `selectAssignedWork` returns items assigned to ANYONE, so it applied to other workers' items
   too. Rewritten: leave a `working` item alone; the stamp is not a heartbeat; only past
   `QUIET_HOURS` **and** assigned to you may you take it, and then only by reporting `working`
-  first and continuing if that call succeeds. `anchor_report_progress` now asks for periodic
+  first and continuing if that call succeeds. `dsul_report_progress` now asks for periodic
   reports, which is what makes the stamp mean anything at all.
 - **The surface offering the button never showed the evidence the argument rested on.**
   `AgentSection` printed the raw `WORKING` badge and then a Try again from nowhere — and
@@ -746,14 +746,14 @@ than a lost result, which is the right failure.
 
 ### Wiring it up (gateway side)
 
-Anchor's half is done; the agent needs a schedule. Roughly:
+dsul's half is done; the agent needs a schedule. Roughly:
 
 ```bash
-openclaw cron add anchor-work \
+openclaw cron add dsul-work \
   --schedule '*/10 * * * *' \
-  --prompt 'Call anchor_my_work. For each queued item: mark it working, do it, then report
+  --prompt 'Call dsul_my_work. For each queued item: mark it working, do it, then report
             done with what you found, or blocked with the question you need answered.
-            If anchor_my_work returns nothing, stop.'
+            If dsul_my_work returns nothing, stop.'
 ```
 
 Check `openclaw cron` for the exact flags — the shape above is from the automation docs,
@@ -788,7 +788,7 @@ Known gaps, none of them blocking a first run:
 infrastructure: it would sit on an unvalidated Phase 1. Phase 3 is this document, the
 capability-registry seam that lets a hosted tier slot in as one config row, and an honest
 statement of what a hosted tier actually needs before it is a product: server-held provider
-keys with per-user cost accounting and rate limits, an Anchor-operated agent runtime
+keys with per-user cost accounting and rate limits, an dsul-operated agent runtime
 (nobody else's gateway to lean on), abuse controls, and a support answer for "the agent did
 something I didn't want". That is a business, not a sprint — the market read is that it is
 also the only path off the power-user tier.

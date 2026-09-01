@@ -41,7 +41,7 @@ export function OmniLauncher() {
         // !defaultPrevented), handing Escape to the omnibar, which closes via
         // ui-store when there's nothing left to clear.
         onEscapeKeyDown={(e) => e.preventDefault()}
-        // Anchor the bar's top a little above centre so the whole bar + panel
+        // dsul the bar's top a little above centre so the whole bar + panel
         // ASSEMBLY reads balanced — the panel drops below and its optical centre
         // lands ~mid-viewport (overrides DialogContent's own centering). The
         // omnibar supplies the card surface, so the content stays transparent.

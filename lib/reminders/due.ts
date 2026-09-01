@@ -1,5 +1,5 @@
 /**
- * due.ts — the ONE definition of "does Anchor owe you a nudge right now?"
+ * due.ts — the ONE definition of "does dsul owe you a nudge right now?"
  *
  * Written the way lib/active.ts and lib/overdue.ts were, and for the same
  * reason: this predicate is about to be asked by the reminder scan, the last

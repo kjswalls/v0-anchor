@@ -356,7 +356,7 @@ const habitCoreShape = {
  *
  * FROZEN. `HabitSchema` is what the OpenClaw plugin `safeParse`s (it throws on
  * drift), `HabitCreateSchema`/`HabitUpdateSchema` are the agent's write
- * vocabulary, and `AnchorContextResponseSchema.habits` is typed off it. The
+ * vocabulary, and `DsulContextResponseSchema.habits` is typed off it. The
  * collapse happened underneath this, not to it.
  */
 const habitShape = {
@@ -951,7 +951,7 @@ export const GoalUpdateSchema = z
     .superRefine(rejectGoalDerivedFields)
     .superRefine(rejectForeignContainerKeys);
 // ── API response schemas ───────────────────────────────────────────────────────
-export const AnchorContextResponseSchema = z.object({
+export const DsulContextResponseSchema = z.object({
     userId: z.string(),
     userTimezone: z.string().optional(),
     fetchedAt: z.string(),
@@ -1065,7 +1065,7 @@ export const ProposalSchema = z.object({
 });
 /** What the model is asked to return; ids and timestamps are stamped locally. */
 export const ProposalDraftSchema = ProposalSchema.omit({ id: true, createdAt: true });
-export const AnchorChangeEventSchema = z.object({
+export const DsulChangeEventSchema = z.object({
     event: z.enum([
         'tasks.updated',
         'habits.updated',

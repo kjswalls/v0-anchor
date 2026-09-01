@@ -117,7 +117,7 @@ describe('reportLiveCompletion — posting', () => {
     await reportLiveCompletion(service, input);
     const body = String(fetchMock.mock.calls[0][1].body);
     expect(body).toContain('daystamp=20260810');
-    expect(body).toContain('requestid=anchor-2026-08-10-h1');
+    expect(body).toContain('requestid=dsul-2026-08-10-h1');
   });
 
   // Claim-then-act: a row somebody already committed is a datapoint already up.

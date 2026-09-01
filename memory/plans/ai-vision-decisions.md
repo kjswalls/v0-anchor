@@ -11,7 +11,7 @@ product decisions" section. What follows is what tonight's work opened up.
 
 ## 1. Scoped API keys, before a third-party runtime holds one
 
-Anchor's agent key is **one per user, plaintext, unscoped, no expiry, full read+write**.
+dsul's agent key is **one per user, plaintext, unscoped, no expiry, full read+write**.
 That was fine while the only holder was your own gateway. The MCP server does not widen what
 a key can do — it is a second protocol over the same surface — but it does change *who
 plausibly holds one*: the whole point of MCP is that Claude, Cursor or ChatGPT can connect.
@@ -60,7 +60,7 @@ under jsdom.
 
 ## 4. Delegation kickoff — hooks token, or let the agent spawn it?
 
-Phase 2b needs something that actually *starts* a background run. Two shapes: Anchor calls
+Phase 2b needs something that actually *starts* a background run. Two shapes: dsul calls
 `POST /hooks/agent` on the gateway (needs a dedicated `hooks.token`, a second credential to
 store and explain), or the in-chat agent calls `sessions_spawn` itself when you ask it to
 take something on (no new credential, but the kickoff only happens inside a conversation).
@@ -117,7 +117,7 @@ Full detail in [ai-vision.md](ai-vision.md#unverified-assumptions-test-these-fir
    what it is. Remembering means the gateway is session-stateful and the default is right;
    forgetting means it is stateless per request — flip `SEND_FULL_TRANSCRIPT_TO_GATEWAY` in
    `lib/openclaw-gateway.ts`. → part of **issue #260**.
-4. **Reachability from Vercel.** Anchor calls the gateway server-side, so browser CORS is
+4. **Reachability from Vercel.** dsul calls the gateway server-side, so browser CORS is
    irrelevant — but a tailnet-only gateway is not reachable from Vercel. Local dev works;
    production likely needs Funnel or equivalent. Still the most likely thing to be wrong.
 5. **Point a real MCP client at `/api/mcp`** (**issue #261**; the scheduled pull loop that
@@ -127,15 +127,15 @@ Full detail in [ai-vision.md](ai-vision.md#unverified-assumptions-test-these-fir
 
    ```bash
    openclaw mcp add anchor \
-     --url https://<anchor-host>/api/mcp \
+     --url https://<dsul-host>/api/mcp \
      --transport streamable-http
    # then add the header through the scoped config editor or config:
-   #   mcp.servers.anchor.headers.Authorization = "Bearer anchor_<key>"
+   #   mcp.servers.anchor.headers.Authorization = "Bearer dsul_<key>"
    #   (keep the key out of config literals — use the secret mechanism)
    openclaw mcp doctor anchor --probe
    ```
 
    `doctor --probe` is the real proof: the docs are explicit that saving a definition proves
-   nothing about reachability. A successful probe listing **fifteen** `anchor_*` tools is the
+   nothing about reachability. A successful probe listing **fifteen** `dsul_*` tools is the
    first time this code has spoken to a client (eleven predates the delegation tools). `--include` can narrow the tool set if you
    want the agent to see only reads at first.

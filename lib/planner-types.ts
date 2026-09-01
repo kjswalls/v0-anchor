@@ -2,13 +2,13 @@
  * planner-types.ts
  *
  * Core entity types (Task, Habit, Project) are the source of
- * truth in @anchor-app/types and re-exported from there.
+ * truth in @dsul/types and re-exported from there.
  *
- * This file adds Anchor app-specific types and constants that don't need to
+ * This file adds dsul app-specific types and constants that don't need to
  * be shared externally (ViewMode, FilterState, UI helpers, etc.).
  */
 
-// ── Re-export shared types from @anchor-app/types ─────────────────────────────
+// ── Re-export shared types from @dsul/types ─────────────────────────────
 export type {
   Priority,
   TimeBucket,
@@ -37,7 +37,7 @@ export type {
   ProposalOperation,
   ProposalCreateOp,
   ProposalUpdateOp,
-} from '@anchor-app/types'
+} from '@dsul/types'
 
 // ── App-only types ────────────────────────────────────────────────────────────
 
@@ -72,7 +72,7 @@ export const GROUP_BY_VALUES: readonly GroupBy[] = [
 /**
  * Coerce whatever a persisted payload holds.
  *
- * Two live sources can carry `'status'`: `anchor-view`'s own `canvasGroupBy`,
+ * Two live sources can carry `'status'`: `dsul-view`'s own `canvasGroupBy`,
  * and `planner-storage`'s `groupBy`, which `adoptLegacyViewPrefs` copies across
  * on first mount. Unrecognised values reach `groupRows`, whose container branch
  * is the fallthrough — so an unknown string would silently group by project.
@@ -101,7 +101,7 @@ export interface PlannerState {
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
 
-import type { Priority, TimeBucket, RepeatFrequency, TaskStatus, Task, Habit, Project } from '@anchor-app/types'
+import type { Priority, TimeBucket, RepeatFrequency, TaskStatus, Task, Habit, Project } from '@dsul/types'
 
 export const TIME_BUCKET_RANGES: Record<TimeBucket, { start: number; end: number; label: string }> = {
   anytime:   { start: 0,  end: 24, label: 'Anytime'   },

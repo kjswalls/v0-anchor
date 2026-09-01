@@ -5,7 +5,7 @@ import {
   type ProposalContext,
 } from '@/lib/proposal';
 import { hydrateCustomTypes } from '@/lib/item-registry';
-import { ProposalCreateOpSchema, ProposalDraftSchema } from '@anchor-app/types';
+import { ProposalCreateOpSchema, ProposalDraftSchema } from '@dsul/types';
 import type { Item, ProposalOperation } from '@/lib/planner-types';
 
 /**

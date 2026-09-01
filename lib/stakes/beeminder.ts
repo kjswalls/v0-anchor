@@ -2,7 +2,7 @@
  * stakes/beeminder.ts — put the day on a graph that costs money to break.
  *
  * The best evidence-to-effort ratio of anything in Tier 3, and the reason is
- * that Anchor is not trying to be the commitment device here — Beeminder
+ * that dsul is not trying to be the commitment device here — Beeminder
  * already is one, with a payment rail, a derailment ladder and years of
  * behaviour behind it. This posts the datapoint and gets out of the way.
  *
@@ -140,7 +140,7 @@ function goalUrl(creds: BeeminderCredentials, goal: string, suffix: string): str
  * to retry.
  */
 export function requestIdFor(dateStr: string, subject: string): string {
-  return `anchor-${dateStr}-${subject}`
+  return `dsul-${dateStr}-${subject}`
 }
 
 /**
@@ -161,7 +161,7 @@ export async function postDatapoint(
     body: new URLSearchParams({
       auth_token: creds.authToken,
       value: '1',
-      comment: `Anchor — ${entry.subjectTitle} on ${entry.dateStr}`,
+      comment: `dsul — ${entry.subjectTitle} on ${entry.dateStr}`,
       requestid: requestIdFor(entry.dateStr, entry.subject),
       daystamp: entry.dateStr.replace(/-/g, ''),
     }).toString(),

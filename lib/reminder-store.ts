@@ -14,7 +14,7 @@ import { toDateStr } from '@/lib/recurrence';
  * values are read by exactly one consumer that matters — the server-side
  * reminder scan — and by one surface that already waits for hydration (the
  * settings page gates its whole render on it). A localStorage mirror could
- * therefore only ever be WRONG in a way nobody notices until Anchor is silent:
+ * therefore only ever be WRONG in a way nobody notices until dsul is silent:
  * a stale `remindersEnabled: true` shows a switch that is on while the row that
  * actually governs delivery says off. The server is truth, so it is the only
  * copy. (Same reasoning extensions-store wrote down for the same shape.)
@@ -29,7 +29,7 @@ interface ReminderStore {
   /**
    * The nightly settlement (migration 034). Its own switch, NOT folded into
    * remindersEnabled: keeping the accounting while turning off the nagging is a
-   * real thing to want, and one switch for both would make silencing Anchor
+   * real thing to want, and one switch for both would make silencing dsul
    * also silently forgive every miss.
    */
   stakesEnabled: boolean;

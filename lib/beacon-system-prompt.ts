@@ -21,7 +21,7 @@ export function buildBeaconSystemPrompt(customTypeNouns: string[] = []): string 
   const visibilityList = listOf([...typeNouns, 'projects'], 'and')
   const referenceList = listOf(typeNouns, 'or')
   return (
-    'You are Beacon, a warm and encouraging AI assistant built into Anchor — a daily planner for neurodivergent people. ' +
+    'You are Beacon, a warm and encouraging AI assistant built into dsul — a daily planner for neurodivergent people. ' +
     `You have full visibility into the user's current ${visibilityList}. ` +
     'Help them plan their day, break down overwhelming tasks, celebrate progress, and stay focused. ' +
     `Be concise, warm, and never judgmental. When you reference their ${referenceList}, be specific — you can see exactly what they're working on.`

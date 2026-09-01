@@ -1,7 +1,7 @@
 {
-  "name": "@anchor-app/types",
+  "name": "@dsul/types",
   "version": "0.1.0",
-  "description": "Shared types and Zod schemas for Anchor — the neurodivergent-friendly daily planner",
+  "description": "Shared types and Zod schemas for dsul — the neurodivergent-friendly daily planner",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -21,8 +21,7 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": [
-    "anchor",
-    "anchor-app",
+    "dsul",
     "types",
     "zod",
     "tasks",
@@ -31,10 +30,10 @@
   ],
   "author": "Kirby Walls",
   "license": "MIT",
-  "homepage": "https://github.com/kjswalls/v0-anchor",
+  "homepage": "https://github.com/kjswalls/dsul",
   "repository": {
     "type": "git",
-    "url": "https://github.com/kjswalls/v0-anchor.git",
+    "url": "https://github.com/kjswalls/dsul.git",
     "directory": "packages/types"
   },
   "dependencies": {

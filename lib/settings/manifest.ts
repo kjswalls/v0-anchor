@@ -4,7 +4,7 @@ import {
   MoonStar,
   Sparkles,
   Command,
-  Anchor,
+  Zap,
   Blocks,
   type LucideIcon,
 } from 'lucide-react';
@@ -42,7 +42,7 @@ import { decodeKeys, encodeKeys, formatKeys, isApplePlatform } from '@/lib/comma
 import type { TimeBucket } from '@/lib/planner-types';
 
 /**
- * Every setting Anchor surfaces, as data.
+ * Every setting dsul surfaces, as data.
  *
  * ONE declaration feeds the /settings page, its search index, and the
  * `data-setting` e2e handles. The palette's `settings.*` commands are still
@@ -83,7 +83,7 @@ export type RootPaneId =
   | 'beacon'
   | 'keyboard'
   | 'extensions'
-  | 'anchor';
+  | 'dsul';
 
 /**
  * One extension's own pane.
@@ -144,7 +144,7 @@ export const PANES: SettingsPane[] = [
     id: 'rituals',
     name: 'Rituals',
     icon: MoonStar,
-    blurb: 'The moments Anchor opens by itself.',
+    blurb: 'The moments dsul opens by itself.',
   },
   {
     id: 'beacon',
@@ -165,12 +165,12 @@ export const PANES: SettingsPane[] = [
     // The rail entry is now an INDEX — the blurb says so, because the pane
     // stopped being the place the switches are and became the place they are
     // listed from.
-    blurb: 'Optional pieces of Anchor — on when you want them. Open one to set it up.',
+    blurb: 'Optional pieces of dsul — on when you want them. Open one to set it up.',
   },
   {
-    id: 'anchor',
-    name: 'Anchor',
-    icon: Anchor,
+    id: 'dsul',
+    name: 'dsul',
+    icon: Zap,
     blurb: 'The account, the tour, and how to reach us.',
   },
 ];
@@ -208,7 +208,7 @@ export const EXTENSION_PANES: SettingsPane[] = OFFICIAL_EXTENSIONS.map((extensio
  *
  * Search results group by walking this, so the order here IS the order a
  * multi-pane result list reads in — "Extensions" then its extensions, not the
- * extensions scattered after Anchor.
+ * extensions scattered after dsul.
  */
 export const ALL_PANES: SettingsPane[] = PANES.flatMap((pane) => [
   pane,
@@ -682,7 +682,7 @@ export const SETTINGS: SettingRecord[] = [
     id: 'day.timeFormat',
     pane: 'day',
     label: 'Time format',
-    description: 'How every time in Anchor reads.',
+    description: 'How every time in dsul reads.',
     control: 'enum',
     dbColumn: 'time_format',
     options: [
@@ -793,7 +793,7 @@ export const SETTINGS: SettingRecord[] = [
     control: 'enum',
     options: [
       // The stored values stay 'spine'/'tray'. They're persisted in the
-      // anchor-view blob, and renaming one to match its label would reset
+      // dsul-view blob, and renaming one to match its label would reset
       // every user's choice for a piece of copy.
       { value: 'spine', label: 'Threaded seam' },
       { value: 'tray', label: 'Head & tray' },
@@ -825,7 +825,7 @@ export const SETTINGS: SettingRecord[] = [
     // motion": animationsEnabled=false is what stamps data-reduce-motion, and
     // an inverted control is one refactor away from a silent polarity bug.
     label: 'Animations',
-    description: 'Turn off to reduce motion across Anchor.',
+    description: 'Turn off to reduce motion across dsul.',
     control: 'switch',
     dbColumn: 'animations_enabled',
     keywords: ['motion', 'transitions', 'jumpy', 'still', 'reduce motion', 'animate'],
@@ -1045,7 +1045,7 @@ export const SETTINGS: SettingRecord[] = [
     // produces it. The pledge tier's whole claim is that "you owe £30" is
     // backed by rows a person can look at, and a record with no reader is a
     // number the app made up.
-    description: 'Every settled day, and what it came to. Read-only — Anchor keeps the record, it cannot take payment.',
+    description: 'Every settled day, and what it came to. Read-only — dsul keeps the record, it cannot take payment.',
     control: 'action',
     dependsOn: 'rituals.stakes',
     keywords: ['owe', 'owed', 'debt', 'pledge', 'history', 'record', 'money', 'settled', 'stakes'],
@@ -1057,7 +1057,7 @@ export const SETTINGS: SettingRecord[] = [
     id: 'rituals.push',
     pane: 'rituals',
     label: 'Push notifications',
-    description: 'Let Anchor reach this device when a ritual fires.',
+    description: 'Let dsul reach this device when a ritual fires.',
     control: 'switch',
     keywords: ['notify', 'alerts', 'phone', 'reminders', 'badge', 'notification'],
     unavailable: (ctx) => {
@@ -1193,10 +1193,10 @@ export const SETTINGS: SettingRecord[] = [
      visible only from inside a dialog. */
   ...SHORTCUT_RECORDS,
 
-  /* ── Anchor ───────────────────────────────────────────────────────────── */
+  /* ── dsul ───────────────────────────────────────────────────────────── */
   {
-    id: 'anchor.tour',
-    pane: 'anchor',
+    id: 'dsul.tour',
+    pane: 'dsul',
     label: 'Replay the tour',
     description: 'Walks you back through the shell. Takes you to the planner.',
     control: 'action',
@@ -1206,8 +1206,8 @@ export const SETTINGS: SettingRecord[] = [
     defaultValue: 'Replay',
   },
   {
-    id: 'anchor.feedback',
-    pane: 'anchor',
+    id: 'dsul.feedback',
+    pane: 'dsul',
     label: 'Send feedback',
     description: 'Goes straight to the person who can fix it.',
     control: 'action',
@@ -1217,8 +1217,8 @@ export const SETTINGS: SettingRecord[] = [
     defaultValue: 'Write',
   },
   {
-    id: 'anchor.signOut',
-    pane: 'anchor',
+    id: 'dsul.signOut',
+    pane: 'dsul',
     label: 'Sign out',
     control: 'action',
     keywords: ['log out', 'logout', 'account', 'leave', 'switch account'],

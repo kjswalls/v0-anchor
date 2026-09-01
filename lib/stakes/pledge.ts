@@ -6,7 +6,7 @@
  * would hate to fund is what makes the loss vivid, and a generic fine is a much
  * weaker version of the same idea.
  *
- * ANCHOR DOES NOT MOVE MONEY, and says so wherever a user can see it. There is
+ * DSUL DOES NOT MOVE MONEY, and says so wherever a user can see it. There is
  * no payment rail here and no attempt to look like one — this records what is
  * owed, tells the user, and optionally tells a witness. A commitment device
  * that silently failed to collect would be worse than no device at all, because
@@ -120,7 +120,7 @@ export const pledgeAdapter: StakeAdapter = {
         // the claim the pledge tier makes for itself is that the number is
         // backed by rows you can read — so the tap has to land on them.
         url: '/ledger',
-        tag: `anchor-pledge-${outcome.dateStr}`,
+        tag: `dsul-pledge-${outcome.dateStr}`,
       })
     } catch (err) {
       problems.push(`push: ${err instanceof Error ? err.message : String(err)}`)

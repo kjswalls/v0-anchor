@@ -2,11 +2,11 @@ import { createServiceClient } from './supabase-service'
 import { sseFrame } from './sse'
 
 /**
- * openclaw-gateway.ts — Anchor's side of the OpenClaw gateway conversation.
+ * openclaw-gateway.ts — dsul's side of the OpenClaw gateway conversation.
  *
  * SERVER ONLY. The gateway token is full operator access to the user's gateway
  * — the docs are blunt about it — so it must never reach a client component or
- * the browser bundle. The browser talks to Anchor; Anchor talks to the gateway.
+ * the browser bundle. The browser talks to dsul; dsul talks to the gateway.
  * That is a CONVENTION here, not a guarantee, and it is worth being honest
  * about which: `createServiceClient()` throws without SUPABASE_SECRET_KEY, but
  * only when called — importing this module into a client component would
@@ -77,15 +77,15 @@ export async function getGatewayConfig(userId: string): Promise<GatewayConfig | 
  * are reserved namespaces the gateway rejects from external callers, and a
  * caller-supplied key would also let one browser address another thread. Both
  * are structurally impossible here because every key is built from the fixed
- * `anchor:` literal plus values the server already knows — so there is no
+ * `dsul:` literal plus values the server already knows — so there is no
  * denylist to maintain and nothing to keep in sync with the gateway.
  */
 export function chatSessionKey(userId: string): string {
-  return `anchor:u:${userId}:chat`
+  return `dsul:u:${userId}:chat`
 }
 
 export function itemSessionKey(userId: string, itemId: string): string {
-  return `anchor:u:${userId}:item:${itemId}`
+  return `dsul:u:${userId}:item:${itemId}`
 }
 
 /**
@@ -104,11 +104,11 @@ export function itemSessionKey(userId: string, itemId: string): string {
  * fresh key each time would leave an unbounded trail of sessions behind.
  */
 export function proposeSessionKey(userId: string): string {
-  return `anchor:u:${userId}:propose`
+  return `dsul:u:${userId}:propose`
 }
 
 /**
- * Guard for the one place Anchor fetches a URL the user typed.
+ * Guard for the one place dsul fetches a URL the user typed.
  *
  * Deliberately does NOT block RFC1918 or CGNAT 100.64/10: a Tailscale address
  * is the intended, normal deployment, and blocking private ranges here would
@@ -164,7 +164,7 @@ function isMetadataHostname(host: string): boolean {
 /**
  * The host rules, without a TLS policy.
  *
- * Split out because Anchor now fetches TWO user-supplied URLs and they differ
+ * Split out because dsul now fetches TWO user-supplied URLs and they differ
  * on exactly one axis. A gateway URL must be https outside local development —
  * it carries a bearer token that is full operator access. A plugin WEBHOOK URL
  * is the plugin's own listener, typically plain http on the tailnet that
@@ -227,7 +227,7 @@ export function assertSafeOutboundUrl(
 }
 
 /**
- * The gateway URL — the one Anchor sends an operator-access bearer token to, so
+ * The gateway URL — the one dsul sends an operator-access bearer token to, so
  * TLS is not optional.
  */
 export function assertAllowedGatewayUrl(
@@ -272,7 +272,7 @@ export function gatewayTurnMessages(
  * Extracts the incremental text from one OpenAI-shaped streaming chunk.
  *
  * Exported for tests: this is the only place that knows the gateway's wire
- * shape, and everything downstream sees Anchor frames.
+ * shape, and everything downstream sees dsul frames.
  */
 export function deltaFromChunk(payload: unknown): string {
   if (!payload || typeof payload !== 'object') return ''
@@ -286,7 +286,7 @@ export function deltaFromChunk(payload: unknown): string {
 
 /**
  * Opens a streaming chat against the gateway and returns a ReadableStream of
- * ANCHOR frames (`data: {"content":…}` … `data: [DONE]`), so the browser parser
+ * dsul frames (`data: {"content":…}` … `data: [DONE]`), so the browser parser
  * is identical for every tier and provider.
  */
 export async function streamGatewayChat({
@@ -327,7 +327,7 @@ export async function streamGatewayChat({
   return translateGatewayStream(res.body)
 }
 
-/** OpenAI-shaped SSE in, Anchor frames out. */
+/** OpenAI-shaped SSE in, dsul frames out. */
 export function translateGatewayStream(
   body: ReadableStream<Uint8Array>
 ): ReadableStream<Uint8Array> {
@@ -351,7 +351,7 @@ export function translateGatewayStream(
           for (const text of framesIn(buffer, true)) {
             if (text) controller.enqueue(encoder.encode(sseFrame({ content: text })))
           }
-          // Always terminate, even if the gateway didn't: Anchor's client
+          // Always terminate, even if the gateway didn't: dsul's client
           // parser stops on [DONE], and without one it reads to EOF.
           controller.enqueue(encoder.encode('data: [DONE]\n\n'))
           controller.close()

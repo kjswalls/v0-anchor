@@ -1,6 +1,6 @@
-# Anchor Project Context (.cursorrules)
+# dsul Project Context (.cursorrules)
 
-You are an expert full-stack developer assisting with "Anchor", a neurodivergent-friendly daily planner built by Sunday Softworks.
+You are an expert full-stack developer assisting with "dsul", a neurodivergent-friendly daily planner built by Sunday Softworks.
 
 ## Tech Stack
 - Frontend: Next.js 16 (App Router), React 19, Tailwind CSS v4, shadcn/ui.
@@ -18,7 +18,7 @@ You are an expert full-stack developer assisting with "Anchor", a neurodivergent
 - **Theme Hydration**: Block auth events from re-applying stale DB themes immediately after a manual toggle.
 
 ## AI Integration (Beacon & OpenClaw)
-- Anchor's built-in AI is named **Beacon**.
+- dsul's built-in AI is named **Beacon**.
 - Uses SSE (Server-Sent Events) for chat streaming in serverless/edge environments, not WebSockets.
 - OpenClaw Plugin architecture uses the `before_prompt_build` hook for context injection (must return `{ prependContext: content }`).
 
@@ -28,9 +28,9 @@ You are an expert full-stack developer assisting with "Anchor", a neurodivergent
 - Do not break existing tests. If adding core logic (especially date math or task recurrence), add Vitest coverage.
 
 ## Project Status
-Anchor is in **dogfood phase** as of April 2026. Core features are shipped. Focus is polish, stability, and pre-launch cleanup before public release.
+dsul is in **dogfood phase** as of April 2026. Core features are shipped. Focus is polish, stability, and pre-launch cleanup before public release.
 - GitHub Projects board: https://github.com/users/kjswalls/projects/1 (Phase field is source of truth)
-- Repo: https://github.com/kjswalls/v0-anchor
+- Repo: https://github.com/kjswalls/dsul
 
 ## Current Priorities (What we are working on right now)
 - Push notifications / reminders (#49, #50, #51, #168) — deferred to Phase 2.
@@ -40,10 +40,10 @@ Anchor is in **dogfood phase** as of April 2026. Core features are shipped. Focu
 - Undo-redo E2E test failures in `undo-redo.spec.ts` — underlying bug fixed (PR #154), tests need rewrite (#177).
 - Beacon Phase 2 issues: ND-aware system prompt (#169), self-intro (#170), localStorage (#171), action tier (#172), Pro hosted AI (#173), proactive design (#174), MCP design (#175).
 
-## Beacon (Anchor's Built-in AI)
-- Anchor's AI assistant is named **Beacon** — do not rename or refer to it as anything else.
-- Three tiers: Free (read-only, ~5 msg/day), Pro (full actions, Anchor-hosted), Power (BYOK + OpenClaw).
-- Action tier uses native Anchor API routes (`/api/agent/*`) — NOT OpenClaw.
+## Beacon (dsul's Built-in AI)
+- dsul's AI assistant is named **Beacon** — do not rename or refer to it as anything else.
+- Three tiers: Free (read-only, ~5 msg/day), Pro (full actions, dsul-hosted), Power (BYOK + OpenClaw).
+- Action tier uses native dsul API routes (`/api/agent/*`) — NOT OpenClaw.
 - The moat is the ND-aware system prompt (overload recognition, task avoidance, reframing, time blindness).
 - SSE streaming for chat (not WebSockets — serverless constraint).
 

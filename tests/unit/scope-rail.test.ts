@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildScopeRows, programStateForSwitch, type ScopeRow } from '@/lib/scope-rail';
-import type { Routine, Program } from '@anchor-app/types';
+import type { Routine, Program } from '@dsul/types';
 
 const TZ = 'America/New_York';
 const TODAY = '2026-08-10';

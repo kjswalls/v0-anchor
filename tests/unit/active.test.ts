@@ -11,7 +11,7 @@ import {
   routineStandingOn,
   type ActivationContext,
 } from '@/lib/active';
-import type { Item, Routine, Program } from '@anchor-app/types';
+import type { Item, Routine, Program } from '@dsul/types';
 
 const ctx: ActivationContext = { userTimezone: 'America/New_York' };
 

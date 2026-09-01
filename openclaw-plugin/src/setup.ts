@@ -2,7 +2,7 @@ import { createInterface } from 'node:readline/promises'
 import { readConfigFileSnapshotForWrite, writeConfigFile } from 'openclaw/plugin-sdk/config-runtime'
 import type { OpenClawConfig } from 'openclaw/plugin-sdk/config-runtime'
 
-const ANCHOR_URL = 'https://v0-anchor-plum.vercel.app'
+const DSUL_URL = 'https://do.dsul.app'
 const POLL_INTERVAL_MS = 3000
 const MAX_WAIT_MS = 15 * 60 * 1000 // 15 minutes
 
@@ -21,8 +21,8 @@ function sleep(ms: number): Promise<void> {
 async function promptPublicUrl(): Promise<string | undefined> {
   if (!process.stdin.isTTY) return undefined
 
-  console.log('\n  Gateway public URL — lets Anchor push changes to the plugin and')
-  console.log('  powers the Anchor sidebar chat. Example:')
+  console.log('\n  Gateway public URL — lets dsul push changes to the plugin and')
+  console.log('  powers the dsul sidebar chat. Example:')
   console.log('    https://midgar-1b4eaa3.turkey-rockhopper.ts.net')
   console.log('  Leave blank for pull-only mode (no webhooks, no chat).\n')
 
@@ -41,14 +41,14 @@ async function promptPublicUrl(): Promise<string | undefined> {
 }
 
 export async function runSetup(): Promise<void> {
-  console.log('\n⚓  Anchor — Device Authorization\n')
+  console.log('\n⚡  dsul — Device Authorization\n')
 
   // 1. Initialize session
   let sessionId: string
   let userCode: string
   let connectUrl: string
   try {
-    const res = await fetch(`${ANCHOR_URL}/api/agent/connect/init`, { method: 'POST' })
+    const res = await fetch(`${DSUL_URL}/api/agent/connect/init`, { method: 'POST' })
     if (!res.ok) {
       const body = await res.json().catch(() => ({}))
       console.error(`❌  Failed to start session: ${body.error ?? res.statusText}`)
@@ -64,7 +64,7 @@ export async function runSetup(): Promise<void> {
     userCode = data.userCode
     connectUrl = data.connectUrl
   } catch (err) {
-    console.error(`❌  Could not reach Anchor: ${(err as Error).message}`)
+    console.error(`❌  Could not reach dsul: ${(err as Error).message}`)
     process.exit(1)
   }
 
@@ -83,10 +83,10 @@ export async function runSetup(): Promise<void> {
   while (Date.now() < deadline) {
     await sleep(POLL_INTERVAL_MS)
 
-    let poll: { status: string; apiKey?: string; anchorUrl?: string; error?: string }
+    let poll: { status: string; apiKey?: string; dsulUrl?: string; error?: string }
     try {
       const pollRes = await fetch(
-        `${ANCHOR_URL}/api/agent/connect/poll?session=${encodeURIComponent(sessionId)}`
+        `${DSUL_URL}/api/agent/connect/poll?session=${encodeURIComponent(sessionId)}`
       )
       poll = await pollRes.json()
     } catch {
@@ -101,7 +101,7 @@ export async function runSetup(): Promise<void> {
 
       // 4. Validate the key works
       try {
-        const ctxRes = await fetch(`${ANCHOR_URL}/api/agent/context`, {
+        const ctxRes = await fetch(`${DSUL_URL}/api/agent/context`, {
           headers: { Authorization: `Bearer ${poll.apiKey}` },
         })
         if (!ctxRes.ok) {
@@ -117,10 +117,10 @@ export async function runSetup(): Promise<void> {
 
       // 5. Collect the gateway public URL, then write config
       const publicUrl = await promptPublicUrl()
-      await writePluginConfig(poll.anchorUrl ?? ANCHOR_URL, poll.apiKey, publicUrl)
+      await writePluginConfig(poll.dsulUrl ?? DSUL_URL, poll.apiKey, publicUrl)
       if (!publicUrl) {
         console.log('\n  Pull-only mode — webhook push and sidebar chat are off.')
-        console.log('  Add publicUrl to the anchor-context config in openclaw.json to enable them.')
+        console.log('  Add publicUrl to the dsul-context config in openclaw.json to enable them.')
       }
       console.log('\nConfig saved. Restart the gateway: openclaw gateway restart\n')
       return
@@ -149,7 +149,7 @@ export async function runSetup(): Promise<void> {
 }
 
 async function writePluginConfig(
-  anchorUrl: string,
+  dsulUrl: string,
   apiKey: string,
   publicUrl?: string
 ): Promise<void> {
@@ -158,31 +158,31 @@ async function writePluginConfig(
   const config = snapshot.config as OpenClawConfig & Record<string, unknown>
   const plugins = ((config.plugins ?? {}) as Record<string, unknown>)
 
-  // Add anchor-context to plugins.allow if not already present
+  // Add dsul-context to plugins.allow if not already present
   const allow = Array.isArray(plugins.allow) ? [...plugins.allow] : []
-  if (!allow.includes('anchor-context')) {
-    allow.push('anchor-context')
+  if (!allow.includes('dsul-context')) {
+    allow.push('dsul-context')
   }
   plugins.allow = allow
 
   const entries = ((plugins.entries ?? {}) as Record<string, unknown>)
-  const existing = ((entries['anchor-context'] ?? {}) as Record<string, unknown>)
+  const existing = ((entries['dsul-context'] ?? {}) as Record<string, unknown>)
 
   // Merge into the existing plugin config rather than replacing it — re-running
   // setup used to silently drop hand-added keys like webhookSecret, agentId,
   // and cacheTtlMs. publicUrl is only overwritten when the wizard collected one,
   // so skipping the prompt keeps whatever is already configured.
   const existingConfig = ((existing.config ?? {}) as Record<string, unknown>)
-  const existingAnchorConfig = ((existingConfig['anchor-context'] ?? {}) as Record<string, unknown>)
+  const existingDsulConfig = ((existingConfig['dsul-context'] ?? {}) as Record<string, unknown>)
 
-  entries['anchor-context'] = {
+  entries['dsul-context'] = {
     ...existing,
     enabled: true,
     config: {
       ...existingConfig,
-      'anchor-context': {
-        ...existingAnchorConfig,
-        anchorUrl,
+      'dsul-context': {
+        ...existingDsulConfig,
+        dsulUrl,
         apiKey,
         ...(publicUrl ? { publicUrl } : {}),
       },

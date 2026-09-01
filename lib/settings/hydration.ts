@@ -4,8 +4,8 @@
  * expression buried in a component.
  *
  * WHY THIS EXISTS AT ALL. Every store the settings surface reads is
- * localStorage-persisted under a browser-GLOBAL key (`anchor-planner`,
- * `anchor-morning`, `anchor-view`, …). On a shared browser those keys hold
+ * localStorage-persisted under a browser-GLOBAL key (`dsul-planner`,
+ * `dsul-morning`, `dsul-view`, …). On a shared browser those keys hold
  * whoever signed in last. So between mount and the moment Supabase answers,
  * the surface would render the PREVIOUS account's values as live controls, and
  * a click inside that window writes someone else's preference into this user's

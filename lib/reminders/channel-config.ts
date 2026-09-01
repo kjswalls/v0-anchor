@@ -61,9 +61,9 @@ export const CHANNEL_SETTINGS: ChannelSettingsSpec[] = [
         label: 'Home Assistant URL',
         placeholder: 'https://home.example.com',
         // Worth saying, because the obvious value is the one that cannot work:
-        // Anchor calls this from a server, not from your browser.
+        // dsul calls this from a server, not from your browser.
         description:
-          'Reachable from the internet — Anchor calls it from its own server, so a LAN address only works on a self-hosted Anchor.',
+          'Reachable from the internet — dsul calls it from its own server, so a LAN address only works on a self-hosted dsul.',
       },
       {
         key: 'players',
@@ -103,7 +103,7 @@ export const CHANNEL_SETTINGS: ChannelSettingsSpec[] = [
     ],
     secrets: [
       { key: 'accountSid', label: 'Account SID', description: 'From the Twilio console.' },
-      { key: 'authToken', label: 'Auth token', description: 'Write-only. Anchor never shows it again.' },
+      { key: 'authToken', label: 'Auth token', description: 'Write-only. dsul never shows it again.' },
     ],
   },
   {
@@ -134,7 +134,7 @@ export const CHANNEL_SETTINGS: ChannelSettingsSpec[] = [
     ],
     secrets: [
       { key: 'accountSid', label: 'Account SID', description: 'From the Twilio console.' },
-      { key: 'authToken', label: 'Auth token', description: 'Write-only. Anchor never shows it again.' },
+      { key: 'authToken', label: 'Auth token', description: 'Write-only. dsul never shows it again.' },
     ],
   },
 ]

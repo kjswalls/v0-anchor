@@ -4,7 +4,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  * POST/DELETE /api/agent/register — where the user says "send my item data
  * here".
  *
- * That framing is the whole review of this route. Anchor POSTs the contents of
+ * That framing is the whole review of this route. dsul POSTs the contents of
  * every mutated item to `webhookUrl`, from registration until revocation, from
  * every instance. So the URL is exactly as dangerous as the gateway URL —
  * `assertAllowedGatewayUrl` exists in this repo for that class and is applied
@@ -34,7 +34,7 @@ vi.mock('@/lib/supabase-service', () => ({
 
 import { POST, DELETE } from '@/app/api/agent/register/route';
 
-const post = (body: unknown, auth = 'Bearer anchor_key') =>
+const post = (body: unknown, auth = 'Bearer dsul_key') =>
   POST(
     new Request('http://localhost/api/agent/register', {
       method: 'POST',
@@ -47,13 +47,13 @@ const del = (body: unknown) =>
   DELETE(
     new Request('http://localhost/api/agent/register', {
       method: 'DELETE',
-      headers: { authorization: 'Bearer anchor_key', 'content-type': 'application/json' },
+      headers: { authorization: 'Bearer dsul_key', 'content-type': 'application/json' },
       body: JSON.stringify(body),
     }) as never
   );
 
 const hook = (over: Record<string, unknown> = {}) => ({
-  pluginId: 'anchor-context',
+  pluginId: 'dsul-context',
   webhookUrl: 'https://gateway.example/hook',
   events: ['tasks.updated'],
   ...over,
@@ -163,15 +163,15 @@ describe('telling the truth about the write', () => {
 
 describe('revoking', () => {
   it('removes the registration', async () => {
-    expect((await del({ pluginId: 'anchor-context' })).status).toBe(200);
-    expect(deregisterPlugin).toHaveBeenCalledWith('u1', 'anchor-context');
+    expect((await del({ pluginId: 'dsul-context' })).status).toBe(200);
+    expect(deregisterPlugin).toHaveBeenCalledWith('u1', 'dsul-context');
   });
 
   it('reports a failed revocation rather than claiming success', async () => {
     // The user is taking away where their data goes. Every other instance
     // keeps reading the row until it is actually gone.
     deregisterPlugin.mockResolvedValue({ ok: false, reason: 'could not reach the store' } as never);
-    const res = await del({ pluginId: 'anchor-context' });
+    const res = await del({ pluginId: 'dsul-context' });
     expect(res.status).toBe(500);
     expect((await res.json()).error).toMatch(/could not reach/i);
   });

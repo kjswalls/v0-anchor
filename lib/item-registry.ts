@@ -11,7 +11,7 @@
  */
 
 import { format } from 'date-fns'
-import { TASK_FIELDS, HABIT_FIELDS } from '@anchor-app/types'
+import { TASK_FIELDS, HABIT_FIELDS } from '@dsul/types'
 // The noun for the CLASSIFY axis lives there, not here. Value import in this
 // direction only — container-registry takes `ItemTypeConfig` as a TYPE, which
 // erases, so the runtime module graph stays acyclic.
@@ -35,7 +35,7 @@ import type {
   RepeatFrequency,
   TaskItem,
   TimeBucket,
-} from '@anchor-app/types'
+} from '@dsul/types'
 
 export interface ItemTypeConfig {
   type: ItemType
@@ -296,7 +296,7 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
         // `tasks` keeps this section's task-only shape; ordering is now the
         // selector's (recent newest-first, then the long-overdue tail).
         // Empty inactive set, deliberately and not by omission: `tasks` reaches
-        // this renderer ALREADY filtered of suppressed items (buildAnchorContext
+        // this renderer ALREADY filtered of suppressed items (buildDsulContext
         // applies isOpenLoopSuppressedOn before dispatching to the per-type
         // renderers), so re-filtering here would be a no-op — and this
         // function's output is byte-pinned by tests/unit/ai-context.test.ts.

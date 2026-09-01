@@ -15,11 +15,11 @@ function errorResult(status: number, text: string) {
 }
 
 export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
-  // ── anchor_get_context ────────────────────────────────────────────────────
+  // ── dsul_get_context ────────────────────────────────────────────────────
   api.registerTool((ctx: { sessionId?: string }) => ({
-    name: 'anchor_get_context',
-    label: 'Anchor: Get Context',
-    description: 'Retrieve current tasks, habits, and projects from Anchor. Call this before responding to any task or habit management request, when the user asks about their schedule or what they need to do today, or when you need fresh context after making changes. Returns a short acknowledgement if context is already fresh in this session.',
+    name: 'dsul_get_context',
+    label: 'dsul: Get Context',
+    description: 'Retrieve current tasks, habits, and projects from dsul. Call this before responding to any task or habit management request, when the user asks about their schedule or what they need to do today, or when you need fresh context after making changes. Returns a short acknowledgement if context is already fresh in this session.',
     parameters: Type.Object({}),
     async execute(_toolCallId: string) {
       const ttlMs = cfg.cacheTtlMs ?? 5 * 60 * 1000
@@ -39,11 +39,11 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
     },
   }))
 
-  // ── anchor_create_task ────────────────────────────────────────────────────
+  // ── dsul_create_task ────────────────────────────────────────────────────
   api.registerTool({
-    name: 'anchor_create_task',
-    label: 'Anchor: Create Task',
-    description: 'Create a new task in Anchor.',
+    name: 'dsul_create_task',
+    label: 'dsul: Create Task',
+    description: 'Create a new task in dsul.',
     parameters: Type.Object({
       title: Type.String({ description: 'Task title' }),
       startDate: Type.Optional(Type.String({ description: 'YYYY-MM-DD' })),
@@ -72,7 +72,7 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
       if (params.priority) body.priority = params.priority
       if (params.project) body.project = params.project
 
-      const res = await fetch(`${cfg.anchorUrl}/api/agent/tasks`, {
+      const res = await fetch(`${cfg.dsulUrl}/api/agent/tasks`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${cfg.apiKey}`,
@@ -87,11 +87,11 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
     },
   })
 
-  // ── anchor_update_task ────────────────────────────────────────────────────
+  // ── dsul_update_task ────────────────────────────────────────────────────
   api.registerTool({
-    name: 'anchor_update_task',
-    label: 'Anchor: Update Task',
-    description: 'Update an existing task in Anchor. For one-off tasks, set status to complete them. For recurring tasks, use completedDates instead of status to record per-date completions.',
+    name: 'dsul_update_task',
+    label: 'dsul: Update Task',
+    description: 'Update an existing task in dsul. For one-off tasks, set status to complete them. For recurring tasks, use completedDates instead of status to record per-date completions.',
     parameters: Type.Object({
       id: Type.String({ description: 'Task UUID' }),
       title: Type.Optional(Type.String()),
@@ -122,7 +122,7 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
       if (fields.project !== undefined) body.project = fields.project
       if (fields.completedDates !== undefined) body.completedDates = fields.completedDates
 
-      const res = await fetch(`${cfg.anchorUrl}/api/agent/tasks/${id}`, {
+      const res = await fetch(`${cfg.dsulUrl}/api/agent/tasks/${id}`, {
         method: 'PATCH',
         headers: {
           Authorization: `Bearer ${cfg.apiKey}`,
@@ -137,16 +137,16 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
     },
   })
 
-  // ── anchor_delete_task ────────────────────────────────────────────────────
+  // ── dsul_delete_task ────────────────────────────────────────────────────
   api.registerTool({
-    name: 'anchor_delete_task',
-    label: 'Anchor: Delete Task',
-    description: 'Soft-delete a task in Anchor (recoverable from trash for 30 days).',
+    name: 'dsul_delete_task',
+    label: 'dsul: Delete Task',
+    description: 'Soft-delete a task in dsul (recoverable from trash for 30 days).',
     parameters: Type.Object({
       id: Type.String({ description: 'Task UUID' }),
     }),
     async execute(_toolCallId: string, params: { id: string }) {
-      const res = await fetch(`${cfg.anchorUrl}/api/agent/tasks/${params.id}`, {
+      const res = await fetch(`${cfg.dsulUrl}/api/agent/tasks/${params.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${cfg.apiKey}` },
       })
@@ -157,11 +157,11 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
     },
   })
 
-  // ── anchor_create_habit ───────────────────────────────────────────────────
+  // ── dsul_create_habit ───────────────────────────────────────────────────
   api.registerTool({
-    name: 'anchor_create_habit',
-    label: 'Anchor: Create Habit',
-    description: 'Create a new habit in Anchor.',
+    name: 'dsul_create_habit',
+    label: 'dsul: Create Habit',
+    description: 'Create a new habit in dsul.',
     parameters: Type.Object({
       title: Type.String({ description: 'Habit title' }),
       repeatFrequency: Type.Optional(Type.String({ description: 'daily | weekly | weekdays | weekends | monthly | custom' })),
@@ -176,7 +176,7 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
       if (params.repeatFrequency) body.repeatFrequency = params.repeatFrequency
       if (params.repeatDays) body.repeatDays = params.repeatDays
 
-      const res = await fetch(`${cfg.anchorUrl}/api/agent/habits`, {
+      const res = await fetch(`${cfg.dsulUrl}/api/agent/habits`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${cfg.apiKey}`,
@@ -191,11 +191,11 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
     },
   })
 
-  // ── anchor_update_habit ───────────────────────────────────────────────────
+  // ── dsul_update_habit ───────────────────────────────────────────────────
   api.registerTool({
-    name: 'anchor_update_habit',
-    label: 'Anchor: Update Habit',
-    description: 'Update an existing habit in Anchor.',
+    name: 'dsul_update_habit',
+    label: 'dsul: Update Habit',
+    description: 'Update an existing habit in dsul.',
     parameters: Type.Object({
       id: Type.String({ description: 'Habit UUID' }),
       title: Type.Optional(Type.String()),
@@ -208,7 +208,7 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
       if (params.repeatFrequency !== undefined) body.repeatFrequency = params.repeatFrequency
       if (params.repeatDays !== undefined) body.repeatDays = params.repeatDays
 
-      const res = await fetch(`${cfg.anchorUrl}/api/agent/habits/${params.id}`, {
+      const res = await fetch(`${cfg.dsulUrl}/api/agent/habits/${params.id}`, {
         method: 'PATCH',
         headers: {
           Authorization: `Bearer ${cfg.apiKey}`,
@@ -223,16 +223,16 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
     },
   })
 
-  // ── anchor_delete_habit ───────────────────────────────────────────────────
+  // ── dsul_delete_habit ───────────────────────────────────────────────────
   api.registerTool({
-    name: 'anchor_delete_habit',
-    label: 'Anchor: Delete Habit',
-    description: 'Soft-delete a habit in Anchor.',
+    name: 'dsul_delete_habit',
+    label: 'dsul: Delete Habit',
+    description: 'Soft-delete a habit in dsul.',
     parameters: Type.Object({
       id: Type.String({ description: 'Habit UUID' }),
     }),
     async execute(_toolCallId: string, params: { id: string }) {
-      const res = await fetch(`${cfg.anchorUrl}/api/agent/habits/${params.id}`, {
+      const res = await fetch(`${cfg.dsulUrl}/api/agent/habits/${params.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${cfg.apiKey}` },
       })
@@ -243,15 +243,15 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
     },
   })
 
-  // ── anchor_pause ──────────────────────────────────────────────────────────
+  // ── dsul_pause ──────────────────────────────────────────────────────────
   //
   // One tool for the three entities that pause through the same two columns.
   // Programs are deliberately NOT here: they switch through `state`, and the
   // difference matters enough to make the caller say it — see
-  // anchor_update_collection.
+  // dsul_update_collection.
   api.registerTool({
-    name: 'anchor_pause',
-    label: 'Anchor: Pause or Resume',
+    name: 'dsul_pause',
+    label: 'dsul: Pause or Resume',
     description:
       'Pause or resume a task, habit, or routine. Pausing HIDES it from the ' +
       'schedule and every list without deleting it, and without touching its ' +
@@ -282,7 +282,7 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
         // names what to do instead rather than only what is wrong.
         const hint =
           params.kind === 'goal'
-            ? " Goals do not pause — they hide nothing. Use anchor_update_collection with state: achieved or abandoned to close one, or put the work in a program to set it aside for a season."
+            ? " Goals do not pause — they hide nothing. Use dsul_update_collection with state: achieved or abandoned to close one, or put the work in a program to set it aside for a season."
             : ''
         return errorResult(
           400,
@@ -296,7 +296,7 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
       // NOT do.
       if (params.paused && params.until) body.pausedUntil = params.until
 
-      const res = await fetch(`${cfg.anchorUrl}/api/agent/${path}/${params.id}`, {
+      const res = await fetch(`${cfg.dsulUrl}/api/agent/${path}/${params.id}`, {
         method: 'PATCH',
         headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
@@ -309,10 +309,10 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
     },
   })
 
-  // ── anchor_create_collection ──────────────────────────────────────────────
+  // ── dsul_create_collection ──────────────────────────────────────────────
   api.registerTool({
-    name: 'anchor_create_collection',
-    label: 'Anchor: Create Routine, Program or Goal',
+    name: 'dsul_create_collection',
+    label: 'dsul: Create Routine, Program or Goal',
     description:
       'Create a ROUTINE (a small reusable set of items — a morning routine — ' +
       'that can be paused as one), a PROGRAM (a period of life, like a ' +
@@ -375,10 +375,10 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
     },
   })
 
-  // ── anchor_update_collection ──────────────────────────────────────────────
+  // ── dsul_update_collection ──────────────────────────────────────────────
   api.registerTool({
-    name: 'anchor_update_collection',
-    label: 'Anchor: Update Routine, Program or Goal',
+    name: 'dsul_update_collection',
+    label: 'dsul: Update Routine, Program or Goal',
     description:
       'Update a routine, program or goal. Membership arrays REPLACE the whole ' +
       'set rather than adding to it — read the current members from context ' +
@@ -434,10 +434,10 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
     },
   })
 
-  // ── anchor_delete_collection ──────────────────────────────────────────────
+  // ── dsul_delete_collection ──────────────────────────────────────────────
   api.registerTool({
-    name: 'anchor_delete_collection',
-    label: 'Anchor: Delete Routine, Program or Goal',
+    name: 'dsul_delete_collection',
+    label: 'dsul: Delete Routine, Program or Goal',
     description:
       'Soft-delete a routine, program or goal (recoverable for 30 days). Its ' +
       'MEMBERS are not deleted — they are released and become visible again ' +
@@ -453,7 +453,7 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
       if (!path) {
         return errorResult(400, `kind must be one of ${COLLECTION_KINDS} (got "${params.kind}")`)
       }
-      const res = await fetch(`${cfg.anchorUrl}/api/agent/${path}/${params.id}`, {
+      const res = await fetch(`${cfg.dsulUrl}/api/agent/${path}/${params.id}`, {
         method: 'DELETE',
         headers: { Authorization: `Bearer ${cfg.apiKey}` },
       })
@@ -557,8 +557,8 @@ async function writeCollection(
 
   const url =
     method === 'POST'
-      ? `${cfg.anchorUrl}/api/agent/${path}`
-      : `${cfg.anchorUrl}/api/agent/${path}/${id}`
+      ? `${cfg.dsulUrl}/api/agent/${path}`
+      : `${cfg.dsulUrl}/api/agent/${path}/${id}`
   const res = await fetch(url, {
     method,
     headers: { Authorization: `Bearer ${cfg.apiKey}`, 'Content-Type': 'application/json' },

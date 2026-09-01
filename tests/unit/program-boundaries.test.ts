@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { programBoundaries, boundaryLabel, programSuppressionOn } from '@/lib/program-boundaries';
-import type { Item, Program, Routine } from '@anchor-app/types';
+import type { Item, Program, Routine } from '@dsul/types';
 
 /**
  * The two things the grid says out loud about programs: where a run of days

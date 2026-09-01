@@ -14,7 +14,7 @@ import { usePlannerStore } from './planner-store';
  * `readPersistedAutoAgeLastRunDate`), and the key plus the envelope shape must
  * exist as a literal in exactly one file.
  */
-export const MORNING_STORE_PERSIST_KEY = 'anchor-morning-store';
+export const MORNING_STORE_PERSIST_KEY = 'dsul-morning-store';
 
 /** The account-owned settings, exactly as they arrive from user_settings. */
 export interface MorningServerSettings {

@@ -61,7 +61,7 @@ vi.mock('@/lib/supabase-service', () => ({
 const fetchSpy = vi.fn(async () => ({ ok: true, status: 200 }));
 
 const reg = (over: Record<string, unknown> = {}) => ({
-  pluginId: 'anchor-context',
+  pluginId: 'dsul-context',
   webhookUrl: 'https://gateway.example/hook',
   secret: 's3cret',
   userId: 'u1',
@@ -99,7 +99,7 @@ describe('surviving a cold start', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       user_id: 'u1',
-      plugin_id: 'anchor-context',
+      plugin_id: 'dsul-context',
       webhook_url: 'https://gateway.example/hook',
     });
   });
@@ -126,7 +126,7 @@ describe('surviving a cold start', () => {
   it('forgets a deregistered plugin everywhere', async () => {
     const instanceA = await load();
     await instanceA.registerPlugin(reg());
-    await instanceA.deregisterPlugin('u1', 'anchor-context');
+    await instanceA.deregisterPlugin('u1', 'dsul-context');
 
     const instanceB = await load();
     await instanceB.notifyPlugins('u1', 'tasks.updated', {});
@@ -165,7 +165,7 @@ describe('who gets told', () => {
     await m.registerPlugin(reg());
     await m.notifyPlugins('u1', 'tasks.updated', { id: 't1' });
     const headers = (fetchSpy.mock.calls[0][1] as { headers: Record<string, string> }).headers;
-    expect(headers['X-Anchor-Signature']).toMatch(/^sha256=[0-9a-f]{64}$/);
+    expect(headers['X-Dsul-Signature']).toMatch(/^sha256=[0-9a-f]{64}$/);
   });
 
   it('sends unsigned when the plugin chose not to set one', async () => {
@@ -173,7 +173,7 @@ describe('who gets told', () => {
     await m.registerPlugin(reg({ secret: '' }));
     await m.notifyPlugins('u1', 'tasks.updated', {});
     const headers = (fetchSpy.mock.calls[0][1] as { headers: Record<string, string> }).headers;
-    expect(headers['X-Anchor-Signature']).toBeUndefined();
+    expect(headers['X-Dsul-Signature']).toBeUndefined();
   });
 });
 
@@ -230,7 +230,7 @@ describe('deployed ahead of the migration', () => {
     selectError = missing;
     const m = await load();
     await m.notifyPlugins('u1', 'tasks.updated', {}); // trips the latch
-    const removed = await m.deregisterPlugin('u1', 'anchor-context');
+    const removed = await m.deregisterPlugin('u1', 'dsul-context');
     expect(removed.ok).toBe(false);
   });
 
@@ -297,7 +297,7 @@ describe('cache invalidation ordering', () => {
     await m.notifyPlugins('u1', 'tasks.updated', {});
     expect(fetchSpy).toHaveBeenCalledTimes(1);
 
-    await m.deregisterPlugin('u1', 'anchor-context');
+    await m.deregisterPlugin('u1', 'dsul-context');
     await m.notifyPlugins('u1', 'tasks.updated', {});
     // Still once: the second notify must not find the removed hook.
     expect(fetchSpy).toHaveBeenCalledTimes(1);

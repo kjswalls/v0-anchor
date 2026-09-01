@@ -12,7 +12,7 @@ import { EXTENSION_SETTINGS, isKnownSecretKey } from '@/lib/extension-settings';
  *
  *   GET  returns which keys are SET, never a value. Not even a masked one — a
  *        masked token still leaks its length and its last four characters, and
- *        there is no screen in Anchor that needs either.
+ *        there is no screen in dsul that needs either.
  *   PUT  merges values in. `null` deletes a key.
  *
  * The session cookie authorises; the service client performs. The user id comes

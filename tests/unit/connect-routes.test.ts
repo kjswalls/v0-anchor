@@ -243,7 +243,7 @@ describe('POST /api/agent/connect/authorize', () => {
       // session lookup
       { data: { id: 'session-uuid-1', status: 'pending', expires_at: new Date(Date.now() + 60000).toISOString() }, error: null },
       // existing api key lookup → found
-      { data: { openclaw_api_key: 'anchor_existingkey' }, error: null },
+      { data: { openclaw_api_key: 'dsul_existingkey' }, error: null },
       // update session (no upsert needed since key exists)
       { data: null, error: null },
     );
@@ -356,14 +356,14 @@ describe('GET /api/agent/connect/poll', () => {
     expect(body.status).toBe('pending');
   });
 
-  it('returns { status: "authorized", apiKey, anchorUrl } and marks consumed', async () => {
+  it('returns { status: "authorized", apiKey, dsulUrl } and marks consumed', async () => {
     enqueue(
       {
         data: {
           id: 'session-1',
           status: 'authorized',
           expires_at: new Date(Date.now() + 60000).toISOString(),
-          api_key: 'anchor_abc123',
+          api_key: 'dsul_abc123',
           last_polled_at: null,
         },
         error: null,
@@ -376,8 +376,8 @@ describe('GET /api/agent/connect/poll', () => {
     const res = await GET(req);
     const body = await res.json();
     expect(body.status).toBe('authorized');
-    expect(body.apiKey).toBe('anchor_abc123');
-    expect(body.anchorUrl).toBe('https://v0-anchor-plum.vercel.app');
+    expect(body.apiKey).toBe('dsul_abc123');
+    expect(body.dsulUrl).toBe('https://do.dsul.app');
   });
 
   it('returns { status: "consumed" } without apiKey for already-consumed sessions', async () => {
@@ -387,7 +387,7 @@ describe('GET /api/agent/connect/poll', () => {
           id: 'session-1',
           status: 'consumed',
           expires_at: new Date(Date.now() + 60000).toISOString(),
-          api_key: 'anchor_abc123',
+          api_key: 'dsul_abc123',
           last_polled_at: null,
         },
         error: null,

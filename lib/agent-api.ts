@@ -11,7 +11,7 @@ import {
   ProgramUpdateSchema,
   GoalCreateSchema,
   GoalUpdateSchema,
-} from '@anchor-app/types'
+} from '@dsul/types'
 import { createServiceClient, resolveUserIdFromApiKey } from './supabase-service'
 import {
   createTask,
@@ -1103,7 +1103,7 @@ async function goalStatePatch(
  * Runs AFTER the item update, against the stored row: the body may carry a
  * partial patch, and it is the resulting shape that decides the role. Failures
  * here do not fail the PATCH — the item edit is the caller's request and it has
- * already succeeded; the role is Anchor's bookkeeping.
+ * already succeeded; the role is dsul's bookkeeping.
  */
 async function demoteInvalidGoalRoles(
   client: DbClient,

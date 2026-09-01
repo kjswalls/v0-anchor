@@ -51,7 +51,7 @@ export function KeyboardShortcutsModal({
             Keyboard shortcuts
           </DialogTitle>
           <DialogDescription className="sr-only">
-            Every binding in Anchor, rebindable in place.
+            Every binding in dsul, rebindable in place.
           </DialogDescription>
         </DialogHeader>
 

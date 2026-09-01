@@ -1,4 +1,4 @@
-# Anchor PWA Icons
+# dsul PWA Icons
 
 Drop the following files here (exported from Photoshop/Midjourney logo):
 

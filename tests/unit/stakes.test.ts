@@ -14,7 +14,7 @@ import { formatMoney, nameList, partnerDigest, pledgeSummary } from '@/lib/stake
 import { settleOneDay } from '@/lib/stakes/settle';
 import { daysToSettle } from '@/lib/reminders/scan';
 import type { ActivationContext } from '@/lib/active';
-import type { Item, Program } from '@anchor-app/types';
+import type { Item, Program } from '@dsul/types';
 import type { StakeContext } from '@/lib/stakes/types';
 
 vi.mock('@/lib/push-send', () => ({

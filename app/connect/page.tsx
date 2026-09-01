@@ -74,13 +74,13 @@ function ConnectPageInner() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <div className="max-w-sm w-full text-center space-y-4">
-          <div className="text-4xl">⚓</div>
+          <div className="text-4xl">⚡</div>
           <h1 className="text-xl font-semibold text-foreground">Connect OpenClaw</h1>
           <p className="text-sm text-muted-foreground">
-            To connect your AI agent to Anchor, run:
+            To connect your AI agent to dsul, run:
           </p>
           <code className="block bg-muted text-foreground text-sm rounded-md px-4 py-3 font-mono">
-            openclaw anchor-context setup
+            openclaw dsul-context setup
           </code>
           <p className="text-xs text-muted-foreground">
             The setup command will print a URL — open it here to authorize.
@@ -94,7 +94,7 @@ function ConnectPageInner() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="max-w-sm w-full space-y-6">
         <div className="text-center space-y-2">
-          <div className="text-4xl">⚓</div>
+          <div className="text-4xl">⚡</div>
           <h1 className="text-xl font-semibold text-foreground">Connect OpenClaw</h1>
         </div>
 
@@ -111,7 +111,7 @@ function ConnectPageInner() {
               onClick={handleLogin}
               className="w-full bg-primary text-primary-foreground rounded-md px-4 py-2.5 text-sm font-medium hover:bg-primary/90 transition-colors"
             >
-              Log in to Anchor
+              Log in to dsul
             </button>
           </div>
         )}

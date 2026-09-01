@@ -66,21 +66,21 @@ describe('GET /api/openclaw/status', () => {
   // The regression this route exists for: a device-authorized plugin running
   // without publicUrl never registers a chat URL, and used to read as a failure.
   it('reports pull-only when authorized but no chat URL was registered', async () => {
-    mockRow = { openclaw_api_key: 'anchor_abc', openclaw_chat_url: null, openclaw_agent_id: null };
+    mockRow = { openclaw_api_key: 'dsul_abc', openclaw_chat_url: null, openclaw_agent_id: null };
     const body = await (await GET()).json();
     expect(body).toEqual({ state: 'pull-only', agentId: null });
   });
 
   it('still reports pull-only when a stale agentId outlived the chat URL', async () => {
-    mockRow = { openclaw_api_key: 'anchor_abc', openclaw_chat_url: '', openclaw_agent_id: 'main' };
+    mockRow = { openclaw_api_key: 'dsul_abc', openclaw_chat_url: '', openclaw_agent_id: 'main' };
     const body = await (await GET()).json();
     expect(body).toEqual({ state: 'pull-only', agentId: null });
   });
 
   it('reports connected when both the API key and a chat URL are present', async () => {
     mockRow = {
-      openclaw_api_key: 'anchor_abc',
-      openclaw_chat_url: 'https://gw.example/plugins/anchor/chat',
+      openclaw_api_key: 'dsul_abc',
+      openclaw_chat_url: 'https://gw.example/plugins/dsul/chat',
       openclaw_agent_id: 'planner',
     };
     const body = await (await GET()).json();
@@ -89,12 +89,12 @@ describe('GET /api/openclaw/status', () => {
 
   it('never returns the API key itself', async () => {
     mockRow = {
-      openclaw_api_key: 'anchor_secret',
-      openclaw_chat_url: 'https://gw.example/plugins/anchor/chat',
+      openclaw_api_key: 'dsul_secret',
+      openclaw_chat_url: 'https://gw.example/plugins/dsul/chat',
       openclaw_agent_id: 'main',
     };
     const raw = await (await GET()).text();
-    expect(raw).not.toContain('anchor_secret');
+    expect(raw).not.toContain('dsul_secret');
   });
 
   it('500s when the settings read fails', async () => {

@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 
 
 /**
- * A miniature Anchor that redraws as you change the rows beneath it.
+ * A miniature dsul that redraws as you change the rows beneath it.
  *
  * WHAT IS REAL AND WHAT IS NOT, and why. The bucket is the actual `BucketCard`
  * — it imports no dnd and reads only view-store, so mounting it outside the

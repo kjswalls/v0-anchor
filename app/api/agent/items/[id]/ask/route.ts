@@ -7,7 +7,7 @@ import { getItemTypeConfig } from '@/lib/item-registry'
  * POST /api/agent/items/:id/ask — the agent asks the user something answerable
  * in one tap.
  *
- * `anchor_report_progress` with status `blocked` already lets a worker ask a
+ * `dsul_report_progress` with status `blocked` already lets a worker ask a
  * question; what it cannot do is offer ANSWERS. Most of the questions that
  * actually block delegated work are choices, not essays — which Dana, which of
  * the two invoices, is Thursday still fine — and making the user retype a name

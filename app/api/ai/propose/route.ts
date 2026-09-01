@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
-import { ProposalDraftSchema } from '@anchor-app/types'
+import { ProposalDraftSchema } from '@dsul/types'
 import { createClient } from '@/lib/supabase-server'
 import {
   extractJsonObject,
@@ -54,7 +54,7 @@ const DEFAULT_MODEL = 'gpt-4o-mini'
 
 export const maxDuration = 60
 
-const SYSTEM_PROMPT = `You are Beacon, the planning assistant inside Anchor — a daily planner for neurodivergent people.
+const SYSTEM_PROMPT = `You are Beacon, the planning assistant inside dsul — a daily planner for neurodivergent people.
 
 You turn a request into a PROPOSAL: a small set of concrete changes the user accepts with one tap. You never make changes yourself.
 
@@ -92,7 +92,7 @@ Rules:
  * else. The size guidance is the load-bearing part — a fifteen-step decomposition
  * of a task someone is already avoiding is a fresh source of dread, not help.
  */
-const BREAKDOWN_PROMPT = `You are Beacon, the planning assistant inside Anchor — a daily planner for neurodivergent people.
+const BREAKDOWN_PROMPT = `You are Beacon, the planning assistant inside dsul — a daily planner for neurodivergent people.
 
 The user has one thing that feels too big. Break it into the few concrete steps that would actually get it moving.
 

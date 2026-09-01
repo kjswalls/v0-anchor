@@ -247,7 +247,7 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
     `${step}-${desktopSubStep}-${mobileSubStep}`
   );
 
-  // Anchor a card just outside the spotlight target, computed from its live
+  // dsul a card just outside the spotlight target, computed from its live
   // rect — replaces hardcoded left/right offsets that broke when the sidebar
   // width changed. Falls back to null (callers keep a static class) if no rect.
   const cardAnchor = (side: 'left' | 'right') => {
@@ -429,7 +429,7 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
             <div className="relative">
               <Image
                 src="/icons/icon-192.png"
-                alt="Anchor"
+                alt="dsul"
                 width={80}
                 height={80}
                 className="rounded-2xl shadow-lg"
@@ -437,7 +437,7 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
             </div>
 
             <div className="space-y-2">
-              <h1 className="text-2xl font-semibold text-foreground">Welcome to Anchor ⚓</h1>
+              <h1 className="text-2xl font-semibold text-foreground">Welcome to dsul ⚡</h1>
               <p className="text-muted-foreground text-sm leading-relaxed">
                 Your calm space to plan the day.
                 <br />

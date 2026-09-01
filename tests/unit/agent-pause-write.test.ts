@@ -8,7 +8,7 @@ import {
   RoutineUpdateSchema,
   ProgramCreateSchema,
   ProgramUpdateSchema,
-} from '@anchor-app/types';
+} from '@dsul/types';
 
 /**
  * The agent write surface for pausing (plan Phase 4).

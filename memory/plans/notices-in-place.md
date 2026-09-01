@@ -175,7 +175,7 @@ re-derived per render from a timezone.
    reveals a line with a stepped `clip-path` wipe and one neutral sheen crossing
    it. **The dock line NEVER types** — the dock is where the urgent and the
    homeless live, and anything urgent must be legible immediately. Under either
-   motion veto — the OS `prefers-reduced-motion` or Anchor's own
+   motion veto — the OS `prefers-reduced-motion` or dsul's own
    `[data-reduce-motion]` — the text simply appears, with no class for CSS to
    undo. The full sentence is in the DOM from the first frame in every case, so
    the reveal is a paint effect and never an availability one.

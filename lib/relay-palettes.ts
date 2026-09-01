@@ -60,7 +60,7 @@ export const RELAY_LIGHT_PALETTES: Record<RelayLightPaletteKey, RelayLightPalett
   ink: {
     label: 'Ink',
     kind: 'mono',
-    description: 'Shades of the cool ink (indigo, hue ~272) — echoes Anchor’s text color.',
+    description: 'Shades of the cool ink (indigo, hue ~272) — echoes dsul’s text color.',
     colors: [
       'oklch(0.62 0.09 272)',
       'oklch(0.56 0.11 272)',

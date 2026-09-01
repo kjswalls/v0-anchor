@@ -32,10 +32,10 @@ import { resolve } from 'node:path';
 import {
   HabitSchema,
   HabitGroupSchema,
-  AnchorContextResponseSchema,
+  DsulContextResponseSchema,
   HABIT_FIELDS,
   type HabitItem,
-} from '@anchor-app/types';
+} from '@dsul/types';
 import {
   toLegacyHabit,
   fromLegacyHabit,
@@ -192,7 +192,7 @@ describe('/api/agent/context keeps habitGroups[] alive as a projection', () => {
 
   it('parses whole against the plugin schema, which throws on drift', async () => {
     const body = await call();
-    const parsed = AnchorContextResponseSchema.safeParse(body);
+    const parsed = DsulContextResponseSchema.safeParse(body);
     expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
     // And the habit reached it under the legacy field name.
     expect(body.habits[0].group).toBe('Wellness');
@@ -204,7 +204,7 @@ describe('/api/agent/context keeps habitGroups[] alive as a projection', () => {
 describe('a container write still announces itself under BOTH event names', () => {
   /**
    * `habitGroups.updated` is in the plugin's pinned event enum
-   * (AnchorChangeEventSchema) and in the subscription it registers on setup
+   * (DsulChangeEventSchema) and in the subscription it registers on setup
    * (openclaw-plugin/src/webhook.ts). `notifyPlugins` DROPS an unregistered
    * name, so going quiet on it does not fail anywhere — it silently
    * unsubscribes every deployed build and leaves it on a stale cache until

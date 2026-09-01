@@ -68,7 +68,7 @@ test.describe('Sidebar resize', () => {
   test.beforeEach(async ({ page }) => {
     await loginTestUser(page);
     // Every context starts from globalSetup's storageState, which carries no
-    // anchor-sidebar-settings record — so the column is at its default. Assert
+    // dsul-sidebar-settings record — so the column is at its default. Assert
     // it, because every width below is relative to this.
     await expect.poll(() => columnWidth(page)).toBe(DEFAULT_W);
   });
@@ -230,7 +230,7 @@ test.describe('Sidebar resize', () => {
     });
 
     test('the track stays concentric with the grip', async ({ page }) => {
-      // The hairline appears on hover and runs through the grip. Anchor the two
+      // The hairline appears on hover and runs through the grip. dsul the two
       // to different x and the grip reads as hanging off the line rather than
       // threaded onto it — invisible at rest, obvious the moment you hover.
       const bar = (await sash(page).boundingBox())!;

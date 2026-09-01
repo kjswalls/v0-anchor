@@ -12,7 +12,7 @@ import {
  * RelayField — an ambient "data relay" visualization: a grid of glowing
  * rounded-square tiles that pulse in a wave rippling out from a focal point.
  * Ported from the Sunday Softworks site (a full-bleed canvas hero) and tuned
- * for Anchor. Dark mode reads the live theme tokens and blends additively
+ * for dsul. Dark mode reads the live theme tokens and blends additively
  * (`lighter`) so the tiles bloom as glowing nodes on the navy ground. Light
  * mode can't add light to near-white paper, so it inverts the trick: a
  * monochrome GRAYSCALE ramp (near-neutral, only a whisper of the cool ink hue),

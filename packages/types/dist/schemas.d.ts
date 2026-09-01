@@ -3198,7 +3198,7 @@ export declare const GoalUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodEffects<z.
     milestoneIds?: string[] | undefined;
     checkinIds?: string[] | undefined;
 }>;
-export declare const AnchorContextResponseSchema: z.ZodObject<{
+export declare const DsulContextResponseSchema: z.ZodObject<{
     userId: z.ZodString;
     userTimezone: z.ZodOptional<z.ZodString>;
     fetchedAt: z.ZodString;
@@ -5223,7 +5223,7 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
     })[];
     rationale?: string | undefined;
 }>;
-export declare const AnchorChangeEventSchema: z.ZodObject<{
+export declare const DsulChangeEventSchema: z.ZodObject<{
     event: z.ZodEnum<["tasks.updated", "habits.updated", "projects.updated", "habitGroups.updated"]>;
     userId: z.ZodString;
     data: z.ZodUnknown;

@@ -17,7 +17,7 @@ interface AISettings {
  * Every field here belongs to the ACCOUNT, not the browser — and one of them is
  * a credential.
  *
- * `anchor-ai-settings` is a browser-global localStorage key, so on a shared
+ * `dsul-ai-settings` is a browser-global localStorage key, so on a shared
  * browser this blob is whoever signed in last. `apiKey` in particular is a
  * secret the next person to sign in could read out of devtools and edit through
  * the settings UI, which is why this store is in the clear registry
@@ -60,7 +60,7 @@ export const useAISettingsStore = create<AISettingsStore>()(
       setSystemPrompt: (systemPrompt) => set({ systemPrompt }),
     }),
     {
-      name: 'anchor-ai-settings',
+      name: 'dsul-ai-settings',
       partialize: (state) => ({
         provider: state.provider,
         apiKey: state.apiKey,

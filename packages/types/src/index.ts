@@ -32,8 +32,8 @@ export {
   ProgramUpdateSchema,
   GoalCreateSchema,
   GoalUpdateSchema,
-  AnchorContextResponseSchema,
-  AnchorChangeEventSchema,
+  DsulContextResponseSchema,
+  DsulChangeEventSchema,
   AiStatusSchema,
   ProposalCreateOpSchema,
   ProposalUpdateOpSchema,
@@ -77,8 +77,8 @@ import {
   CustomItemSchema,
   ItemSchema,
   ItemTypeDefSchema,
-  AnchorContextResponseSchema,
-  AnchorChangeEventSchema,
+  DsulContextResponseSchema,
+  DsulChangeEventSchema,
   AiStatusSchema,
   ProposalCreateOpSchema,
   ProposalUpdateOpSchema,
@@ -113,8 +113,8 @@ export type ItemType         = Item['type']
 /** The built-in types with dedicated schema branches and static registry configs. */
 export type KnownItemType    = TaskItem['type'] | HabitItem['type']
 export type ItemTypeDef      = z.infer<typeof ItemTypeDefSchema>
-export type AnchorContextResponse = z.infer<typeof AnchorContextResponseSchema>
-export type AnchorChangeEvent     = z.infer<typeof AnchorChangeEventSchema>
+export type DsulContextResponse = z.infer<typeof DsulContextResponseSchema>
+export type DsulChangeEvent     = z.infer<typeof DsulChangeEventSchema>
 export type AiStatus              = z.infer<typeof AiStatusSchema>
 export type ProposalCreateOp      = z.infer<typeof ProposalCreateOpSchema>
 export type ProposalUpdateOp      = z.infer<typeof ProposalUpdateOpSchema>

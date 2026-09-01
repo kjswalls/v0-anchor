@@ -1,4 +1,4 @@
-# Anchor
+# dsul
 
 A personal planning PWA — a day/week schedule grid, a braindump sidebar, recurring
 habits, an end-of-day review, and an AI assistant ("Beacon"). Next.js App Router +
@@ -17,9 +17,9 @@ pnpm db:push        # supabase db push
 pnpm db:new <name>  # supabase migration new
 ```
 
-pnpm workspace (Node 24). `packages/types` is `@anchor-app/types`, and its `dist/` is
+pnpm workspace (Node 24). `packages/types` is `@dsul/types`, and its `dist/` is
 **committed** — CI rebuilds it and fails on any drift from `src`, so a schema edit
-without `pnpm --filter @anchor-app/types build` is a red build. `openclaw-plugin/` is a
+without `pnpm --filter @dsul/types build` is a red build. `openclaw-plugin/` is a
 separate consumer of the agent API; its `dist/` is gitignored and built at publish time,
 so CI does not gate it — a plugin `src` change reaches users only when the npm package
 is republished.

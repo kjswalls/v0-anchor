@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { buildAnchorContext } from '@/lib/ai-context';
+import { buildDsulContext } from '@/lib/ai-context';
 import { BEACON_SYSTEM_PROMPT, buildBeaconSystemPrompt } from '@/lib/beacon-system-prompt';
 import type { Item } from '@/lib/planner-types';
 
@@ -9,7 +9,7 @@ import type { Item } from '@/lib/planner-types';
  * pre-unification builder. These tests lock the exact output.
  */
 
-describe('buildAnchorContext', () => {
+describe('buildDsulContext', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     // A Wednesday, well away from midnight in any plausible test TZ.
@@ -78,10 +78,10 @@ describe('buildAnchorContext', () => {
   ];
 
   it('renders the exact pre-unification presentation', () => {
-    const out = buildAnchorContext({ items, projects: [{ id: 'p1', name: 'Work', emoji: '' }] });
+    const out = buildDsulContext({ items, projects: [{ id: 'p1', name: 'Work', emoji: '' }] });
     expect(out).toBe(
       [
-        '## Anchor Context',
+        '## dsul Context',
         'Date: Wednesday, July 15 2026',
         '',
         "### Today's Tasks",
@@ -108,7 +108,7 @@ describe('buildAnchorContext', () => {
   });
 
   it('renders the empty-state lines', () => {
-    const out = buildAnchorContext({ items: [], projects: [] });
+    const out = buildDsulContext({ items: [], projects: [] });
     expect(out).toContain('No tasks scheduled for today.');
     expect(out).toContain('No habits tracked.');
     expect(out).toContain('No projects.');
@@ -118,7 +118,7 @@ describe('buildAnchorContext', () => {
 describe('BEACON_SYSTEM_PROMPT', () => {
   it('is byte-identical to the pre-registry string', () => {
     expect(BEACON_SYSTEM_PROMPT).toBe(
-      'You are Beacon, a warm and encouraging AI assistant built into Anchor — a daily planner for neurodivergent people. ' +
+      'You are Beacon, a warm and encouraging AI assistant built into dsul — a daily planner for neurodivergent people. ' +
         "You have full visibility into the user's current tasks, habits, and projects. " +
         'Help them plan their day, break down overwhelming tasks, celebrate progress, and stay focused. ' +
         "Be concise, warm, and never judgmental. When you reference their tasks or habits, be specific — you can see exactly what they're working on."

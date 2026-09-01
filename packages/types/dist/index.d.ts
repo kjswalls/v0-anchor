@@ -1,7 +1,7 @@
-export { PrioritySchema, TimeBucketSchema, TimeOfDaySchema, TaskStatusSchema, HabitStatusSchema, RepeatFrequencySchema, RecurrenceFieldsSchema, ProjectSchema, HabitGroupSchema, ProgramStateSchema, RoutineSchema, ProgramSchema, GoalStateSchema, GoalRoleSchema, GoalSchema, TaskSchema, HabitSchema, TaskItemSchema, HabitItemSchema, CustomItemSchema, ItemSchema, ItemTypeDefSchema, TaskCreateSchema, HabitCreateSchema, TaskUpdateSchema, HabitUpdateSchema, RoutineCreateSchema, RoutineUpdateSchema, ProgramCreateSchema, ProgramUpdateSchema, GoalCreateSchema, GoalUpdateSchema, AnchorContextResponseSchema, AnchorChangeEventSchema, AiStatusSchema, ProposalCreateOpSchema, ProposalUpdateOpSchema, ProposalOperationSchema, ProposalSchema, ProposalDraftSchema, } from './schemas.js';
+export { PrioritySchema, TimeBucketSchema, TimeOfDaySchema, TaskStatusSchema, HabitStatusSchema, RepeatFrequencySchema, RecurrenceFieldsSchema, ProjectSchema, HabitGroupSchema, ProgramStateSchema, RoutineSchema, ProgramSchema, GoalStateSchema, GoalRoleSchema, GoalSchema, TaskSchema, HabitSchema, TaskItemSchema, HabitItemSchema, CustomItemSchema, ItemSchema, ItemTypeDefSchema, TaskCreateSchema, HabitCreateSchema, TaskUpdateSchema, HabitUpdateSchema, RoutineCreateSchema, RoutineUpdateSchema, ProgramCreateSchema, ProgramUpdateSchema, GoalCreateSchema, GoalUpdateSchema, DsulContextResponseSchema, DsulChangeEventSchema, AiStatusSchema, ProposalCreateOpSchema, ProposalUpdateOpSchema, ProposalOperationSchema, ProposalSchema, ProposalDraftSchema, } from './schemas.js';
 export { TASK_FIELDS, HABIT_FIELDS, PROJECT_FIELDS, HABIT_GROUP_FIELDS, ROUTINE_FIELDS, PROGRAM_FIELDS, GOAL_FIELDS, } from './schemas.js';
 import { z } from 'zod';
-import { PrioritySchema, TimeBucketSchema, TaskStatusSchema, HabitStatusSchema, RepeatFrequencySchema, RecurrenceFieldsSchema, ProjectSchema, HabitGroupSchema, ProgramStateSchema, RoutineSchema, ProgramSchema, GoalStateSchema, GoalRoleSchema, GoalSchema, TaskSchema, HabitSchema, TaskItemSchema, HabitItemSchema, CustomItemSchema, ItemSchema, ItemTypeDefSchema, AnchorContextResponseSchema, AnchorChangeEventSchema, AiStatusSchema, ProposalCreateOpSchema, ProposalUpdateOpSchema, ProposalOperationSchema, ProposalSchema, ProposalDraftSchema } from './schemas.js';
+import { PrioritySchema, TimeBucketSchema, TaskStatusSchema, HabitStatusSchema, RepeatFrequencySchema, RecurrenceFieldsSchema, ProjectSchema, HabitGroupSchema, ProgramStateSchema, RoutineSchema, ProgramSchema, GoalStateSchema, GoalRoleSchema, GoalSchema, TaskSchema, HabitSchema, TaskItemSchema, HabitItemSchema, CustomItemSchema, ItemSchema, ItemTypeDefSchema, DsulContextResponseSchema, DsulChangeEventSchema, AiStatusSchema, ProposalCreateOpSchema, ProposalUpdateOpSchema, ProposalOperationSchema, ProposalSchema, ProposalDraftSchema } from './schemas.js';
 export type Priority = z.infer<typeof PrioritySchema>;
 export type TimeBucket = z.infer<typeof TimeBucketSchema>;
 export type TaskStatus = z.infer<typeof TaskStatusSchema>;
@@ -28,8 +28,8 @@ export type ItemType = Item['type'];
 /** The built-in types with dedicated schema branches and static registry configs. */
 export type KnownItemType = TaskItem['type'] | HabitItem['type'];
 export type ItemTypeDef = z.infer<typeof ItemTypeDefSchema>;
-export type AnchorContextResponse = z.infer<typeof AnchorContextResponseSchema>;
-export type AnchorChangeEvent = z.infer<typeof AnchorChangeEventSchema>;
+export type DsulContextResponse = z.infer<typeof DsulContextResponseSchema>;
+export type DsulChangeEvent = z.infer<typeof DsulChangeEventSchema>;
 export type AiStatus = z.infer<typeof AiStatusSchema>;
 export type ProposalCreateOp = z.infer<typeof ProposalCreateOpSchema>;
 export type ProposalUpdateOp = z.infer<typeof ProposalUpdateOpSchema>;

@@ -41,7 +41,7 @@ import { ShortcutsPanel } from './shortcuts-panel';
  * why the results list groups by ALL_PANES rather than by the rail.
  */
 
-const ADV_KEY = 'anchor-settings-advanced';
+const ADV_KEY = 'dsul-settings-advanced';
 
 function Eyebrow({
   children,
@@ -376,7 +376,7 @@ export function SettingsShell({
           className="hover:text-foreground inline-flex items-center gap-1 transition-colors"
         >
           <ChevronLeft className="size-3.5" aria-hidden />
-          Anchor
+          dsul
         </Link>
         {parentPane && (
           <>
@@ -561,7 +561,7 @@ export function SettingsShell({
               {results.destinations.length > 0 && (
                 <section aria-labelledby="results-elsewhere">
                   <Eyebrow as="h2" id="results-elsewhere">
-                    Elsewhere in Anchor
+                    Elsewhere in dsul
                   </Eyebrow>
                   <div className="divide-border divide-y">
                     {results.destinations.map((hit) => (

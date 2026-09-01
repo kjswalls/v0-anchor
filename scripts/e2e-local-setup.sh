@@ -29,7 +29,7 @@ cd "$(git rev-parse --show-toplevel)"
 # The dedicated test user. The email MUST contain e2e/test/playwright — that is
 # what unlocks the litter-sweep guard in tests/e2e/global-setup.ts. Override via
 # env if you like; the defaults are fine for a local throwaway account.
-TEST_USER_EMAIL="${TEST_USER_EMAIL:-e2e@anchor.test}"
+TEST_USER_EMAIL="${TEST_USER_EMAIL:-e2e@dsul.test}"
 TEST_USER_PASSWORD="${TEST_USER_PASSWORD:-e2e-local-password}"
 
 # Services e2e does NOT need. Excluding them roughly halves the stack's RAM —

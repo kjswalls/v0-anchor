@@ -67,7 +67,7 @@ export function isPushConfigured(): boolean {
 function configureVapid(): void {
   if (vapidConfigured) return
   webPush.setVapidDetails(
-    'mailto:hello@anchor.app',
+    'mailto:hello@dsul.app',
     process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY as string,
     process.env.VAPID_PRIVATE_KEY as string,
   )

@@ -26,7 +26,7 @@ export type NoticeAnchor = 'braindump' | 'day-header';
 /**
  * The shape of a thing the app says first.
  *
- * Anchor has two directions of speech and they used to be scattered. The user
+ * dsul has two directions of speech and they used to be scattered. The user
  * speaks to the app through one input at the bottom of the sidebar; the app
  * spoke back from a 50px strip in the canvas, a modal, a `text-xs` line two of
  * six layouts rendered, and a five-second toast. A notice is the app's half of

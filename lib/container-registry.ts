@@ -10,7 +10,7 @@ import type { ItemTypeConfig } from './item-registry';
  *
  * ── the three roles ──────────────────────────────────────────────────────────
  *
- * Anchor has four container tables and they are not four of a kind. One says
+ * dsul has four container tables and they are not four of a kind. One says
  * what an item IS ABOUT, two say WHEN IT COUNTS, and one says WHY IT MATTERS —
  * and that difference decides every question anyone asks about them:
  *
@@ -328,7 +328,7 @@ export const ASPIRE_KINDS: readonly AspireKind[] = Object.values(CONTAINER_KINDS
  * container ref apart from all of them (GroupSection hunts a glyph only for a
  * real ref; LaneCap picks a colour the same way). A bare name would collide
  * with every one of those the moment a user names a container "high". It is
- * also already the persisted format in `anchor-view`, so dropping it would be a
+ * also already the persisted format in `dsul-view`, so dropping it would be a
  * blob migration for no gain — `normalizeFilters` instead rewrites the retired
  * `group:` prefix to `project:` on read.
  *

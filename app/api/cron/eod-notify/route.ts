@@ -79,7 +79,7 @@ export async function GET(req: NextRequest) {
         title: 'End of day 🌙',
         body: "How'd today go?",
         url: '/?eod=1',
-        tag: `anchor-eod-${userToday}`,
+        tag: `dsul-eod-${userToday}`,
       });
     } catch (err) {
       console.error('[eod-notify] Push failed for', userId, err);

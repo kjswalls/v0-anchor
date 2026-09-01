@@ -196,8 +196,8 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // the escape hatch durable across reloads and devices.
       let paletteReset = false;
       try {
-        paletteReset = sessionStorage.getItem('anchor-palette-reset') === '1';
-        if (paletteReset) sessionStorage.removeItem('anchor-palette-reset');
+        paletteReset = sessionStorage.getItem('dsul-palette-reset') === '1';
+        if (paletteReset) sessionStorage.removeItem('dsul-palette-reset');
       } catch {
         // Private mode — no flag to consume.
       }

@@ -11,7 +11,7 @@ const projectNamesFrom = (refs: string[]) => namesOfKind(refs, 'project');
  *
  * zustand's persist `merge` defaults to a SHALLOW `{...current, ...persisted}`,
  * so a nested object is replaced wholesale rather than merged. A stored
- * `anchor-view` blob predates `containers`, so without a custom merge every
+ * `dsul-view` blob predates `containers`, so without a custom merge every
  * existing install reads `filters.containers` as `undefined` and `.length`
  * throws on the first render — a white screen, not a degraded filter.
  *
@@ -46,7 +46,7 @@ describe('the persist merge, through a real rehydrate', () => {
   };
 
   const seed = (state: Record<string, unknown>) =>
-    localStorage.setItem('anchor-view', JSON.stringify({ version: 1, state }));
+    localStorage.setItem('dsul-view', JSON.stringify({ version: 1, state }));
 
   beforeEach(() => {
     localStorage.clear();

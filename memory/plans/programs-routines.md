@@ -201,7 +201,7 @@ now "programs"). Adjacent but NOT decided here: #201 (recurring-task home base),
     programs.spec (boundary-week drag case).
 
 12. **RESOLVED (Kirby, 2026-08-08): the entity is named `Program`.** The working
-    title "schedule" collided with Anchor's most saturated noun — the grid IS "the
+    title "schedule" collided with dsul's most saturated noun — the grid IS "the
     schedule" (`isScheduled`, `scheduleTask`, ScheduleBlock, ScheduleSheet, "Add to
     schedule"). Program won over Phase/Era (both connote sequential, one-at-a-time,
     non-repeating periods — fighting the locked multi-active + recurring semantics)
@@ -276,7 +276,7 @@ to a table without `updated_at` makes every UPDATE throw (`record "new" has no f
   pausedUntil})` after the spread) — otherwise an agent could POST a born-invisible
   item, and the 201 echo (agent-api.ts entity spread) would claim pause state it may
   not have stored. Create-with-pause is a Phase 4 decision.
-- AnchorContextResponseSchema: optional `programs[]`, `routines[]`, schemaVersion 4
+- DsulContextResponseSchema: optional `programs[]`, `routines[]`, schemaVersion 4
   (Phase 4).
 
 ## The resolver's consumers — surface checklist
@@ -294,7 +294,7 @@ dateless surfaces resolve at today (decision 3).
 | Braindump — braindump.tsx membership predicate (:187-214) | Suppressed pending items leave the main sections and appear in the collapsed **Paused** section (decision 10) — including dated/scheduled ones the membership predicate would never admit. |
 | Item dialog / panel / /item/[id] page | NEW ROW: shows effective activation state — "Paused until Sep 1" / "Hidden with your Summer program (inactive)" — guilt-free styling. Without it, editing or scheduling a found-via-search suppressed item is a silent no-op on every surface (the chips show WHICH containers, not whether they're suppressing). |
 | Move-verbs into a suppressed window (DnD, EOD move-all, date pickers, ScheduleSheet) | NEW ROW: allowed + receipt toast (decision 11). |
-| Beacon context — buildAnchorContext | Per-type section inputs filtered with `isOpenLoopSuppressedOn(item, today)` — NOT the focusItemId lookup, which stays on the unfiltered array (a per-item thread on a paused item is explicit intent; filtering it would silently blind the thread to its own subject — the "focus id not found → section omitted" behavior is pinned in item-growth tests and would swallow it without error). Renderers stay pure; byte-pinned ai-context tests keep passing on unchanged inputs; the focus section may carry the paused annotation. |
+| Beacon context — buildDsulContext | Per-type section inputs filtered with `isOpenLoopSuppressedOn(item, today)` — NOT the focusItemId lookup, which stays on the unfiltered array (a per-item thread on a paused item is explicit intent; filtering it would silently blind the thread to its own subject — the "focus id not found → section omitted" behavior is pinned in item-growth tests and would swallow it without error). Renderers stay pure; byte-pinned ai-context tests keep passing on unchanged inputs; the focus section may carry the paused annotation. |
 | Agent context — /api/agent/context | tasks[]/habits[] filtered by `isOpenLoopSuppressedOn(item, today)` server-side (decision 6, with the history-rule waiver). items[] unfiltered + pause metadata. Requires the route to fetch routines/programs/join tables from Phase 2 on — assigned in phasing. |
 | Search / palette — lib/search.ts, commands/entities.ts | Suppressed items REMAIN findable (explicit intent) with a quiet paused annotation; today-scoped commands (isDoneOn listings, goto.overdue) go through the resolver. |
 | Manager UI | Shows containers, their states, and their members (including suppressed) with state pills. NOT the home for container-less paused items — that's the braindump Paused section (decision 10). |
@@ -671,9 +671,9 @@ dateless surfaces resolve at today (decision 3).
   `pausedUntil = today` rather than clearing the pair — so both columns survive on
   a live row and reading `pausedAt` alone would report a date already past.
 
-  Four tools, not seven: `anchor_pause` covers the three entities that pause
+  Four tools, not seven: `dsul_pause` covers the three entities that pause
   through the same two columns, plus create/update/delete for collections behind a
-  `kind` discriminator. **Programs are deliberately excluded from `anchor_pause`** —
+  `kind` discriminator. **Programs are deliberately excluded from `dsul_pause`** —
   writing `active` onto a program that was following its dates silently ends the
   date-following (the Phase 3 review's sharpest bug), so switching one is an
   explicit `state` rather than a boolean that hides the difference. The Collections
@@ -970,7 +970,7 @@ prefix (join rows CASCADE); per-spec container cleanup via direct service-key RE
 (resetUserSettings precedent); cleanupByTitlePrefix switches from tasks[]/habits[]
 to items[] — the projections filter suppressed items out, so a spec that pauses a
 fixture and fails would otherwise leak it invisibly. Plugin smoke: GET
-/api/agent/context parses with the OLD published AnchorContextResponseSchema while
+/api/agent/context parses with the OLD published DsulContextResponseSchema while
 paused items and both new arrays are present.
 
 ## Adversarial review (round 1, 2026-08-08)

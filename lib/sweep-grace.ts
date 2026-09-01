@@ -43,7 +43,7 @@
 
 import { daysOverdue, toDateOnly } from './overdue';
 
-const KEY = 'anchor-sweep-grace';
+const KEY = 'dsul-sweep-grace';
 
 /**
  * The largest `morningAutoAgeDays` the settings UI offers. Entries older than

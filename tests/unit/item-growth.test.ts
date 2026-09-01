@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { updatesToRow } from '@/lib/db';
 import { selectOverdue } from '@/lib/overdue';
-import { buildAnchorContext } from '@/lib/ai-context';
+import { buildDsulContext } from '@/lib/ai-context';
 import type { Item, TaskItem } from '@/lib/planner-types';
 
 const NONE: ReadonlySet<string> = new Set();
@@ -103,11 +103,11 @@ describe('focused-item context section', () => {
   };
 
   it('is absent from the base output', () => {
-    expect(buildAnchorContext(base)).not.toContain('### Focused item');
+    expect(buildDsulContext(base)).not.toContain('### Focused item');
   });
 
   it('renders the item, its agent state, and subtask checkboxes when focused', () => {
-    const out = buildAnchorContext({ ...base, focusItemId: 'p1' });
+    const out = buildDsulContext({ ...base, focusItemId: 'p1' });
     expect(out).toContain('### Focused item');
     expect(out).toContain('Draft the deck [id: p1]');
     expect(out).toContain('Assigned to: openclaw (working)');
@@ -116,7 +116,7 @@ describe('focused-item context section', () => {
   });
 
   it('tolerates a focus id that resolves to nothing', () => {
-    const out = buildAnchorContext({ ...base, focusItemId: 'gone' });
+    const out = buildDsulContext({ ...base, focusItemId: 'gone' });
     expect(out).not.toContain('### Focused item');
   });
 });

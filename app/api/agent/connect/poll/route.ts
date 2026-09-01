@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase-service'
 
-const ANCHOR_URL = 'https://v0-anchor-plum.vercel.app'
+const DSUL_URL = 'https://do.dsul.app'
 const POLL_RATE_LIMIT_MS = 2000 // 1 poll per 2s per session
 
 /**
@@ -15,7 +15,7 @@ const POLL_RATE_LIMIT_MS = 2000 // 1 poll per 2s per session
  * Returns:
  *   { status: "pending" }
  *   { status: "expired" }
- *   { status: "authorized", apiKey: string, anchorUrl: string }  — one-shot, marks consumed
+ *   { status: "authorized", apiKey: string, dsulUrl: string }  — one-shot, marks consumed
  */
 export async function GET(req: NextRequest) {
   try {
@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({
         status: 'authorized',
         apiKey: session.api_key,
-        anchorUrl: ANCHOR_URL,
+        dsulUrl: DSUL_URL,
       })
     }
 

@@ -1,4 +1,4 @@
-import { AiStatusSchema } from '@anchor-app/types'
+import { AiStatusSchema } from '@dsul/types'
 import { isItemActiveOn, isOpenLoopOn } from '../active'
 import { AGENT_QUIET_AFTER_MS } from '../agent-status'
 import { getItemTypeConfig } from '../item-registry'
@@ -6,11 +6,11 @@ import type { Item, Routine, Program } from '../planner-types'
 import type { McpToolDescriptor } from './protocol'
 
 /**
- * tools.ts — Anchor's planner, as MCP tools.
+ * tools.ts — dsul's planner, as MCP tools.
  *
  * Each tool is PURE planning: it turns arguments into "which agent-API endpoint,
  * which method, which body". Executing that plan is the transport's job. The
- * point of the split is that every semantic Anchor's agent API enforces —
+ * point of the split is that every semantic dsul's agent API enforces —
  * whole-set membership replacement, pause-as-a-verb, container-by-name,
  * goal-role eligibility, the demoted-roles response — keeps living in ONE place
  * (lib/agent-api.ts) instead of being re-implemented here. A tool surface that
@@ -159,7 +159,7 @@ const AI_STATUSES = AiStatusSchema.options
  * The staleness line, shared with the UI's `AGENT_QUIET_AFTER_MS` rather than
  * described in prose.
  *
- * An earlier version of the `anchor_my_work` text said "minutes old" versus
+ * An earlier version of the `dsul_my_work` text said "minutes old" versus
  * "hours old" and named no boundary, so the model picked its own and picked a
  * different one each run.
  */
@@ -296,22 +296,22 @@ export function selectAssignedWork(
 
 export const MCP_TOOLS: McpTool[] = [
   {
-    name: 'anchor_my_work',
+    name: 'dsul_my_work',
     description:
       'The list of items the user has handed to you, and the ONLY thing you need to poll. ' +
       'Returns just the assigned items rather than the whole planner. Each one carries an ' +
       "aiStatus: 'queued' means nobody has started it, 'working' means someone has, " +
       "'blocked' means it is waiting on an answer from the user. " +
       'The loop is: take a queued item, mark it working so a second run does not double it, ' +
-      'do the work, then report with anchor_report_progress. An item already sitting at ' +
-      "'blocked' may have been answered — read anchor_item_activity before assuming it is " +
+      'do the work, then report with dsul_report_progress. An item already sitting at ' +
+      "'blocked' may have been answered — read dsul_item_activity before assuming it is " +
       'still stuck. ' +
       "An item at 'working' belongs to a run that is probably still going: LEAVE IT ALONE. " +
       'Its aiStatusAt is when that status was last written, not a heartbeat, so an ' +
       'old stamp on a long job is normal and proves nothing. ' +
       `Only if the stamp is more than ${QUIET_HOURS} hours older than this response's fetchedAt AND the ` +
       'item is assigned to you may you treat that run as gone. Even then, take it by calling ' +
-      "anchor_report_progress with 'working' FIRST and continuing only if that call succeeds " +
+      "dsul_report_progress with 'working' FIRST and continuing only if that call succeeds " +
       '— it refuses when someone else has touched the item, which is what stops two of you ' +
       'working the same task and overwriting each other. ' +
       'Never touch an item assigned to someone else. ' +
@@ -330,7 +330,7 @@ export const MCP_TOOLS: McpTool[] = [
     }),
   },
   {
-    name: 'anchor_item_activity',
+    name: 'dsul_item_activity',
     description:
       'The history of one item: status changes, edits, and — the reason you are here — any ' +
       "answer the user has written back to you. After you mark something 'blocked' with a " +
@@ -344,10 +344,10 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
-    name: 'anchor_ask_user',
+    name: 'dsul_ask_user',
     description:
       'Ask the user a question you are stuck on, offering answers they can tap. ' +
-      'Use this INSTEAD of anchor_report_progress when the answer is a choice — which ' +
+      'Use this INSTEAD of dsul_report_progress when the answer is a choice — which ' +
       'person, which of two files, is that date still fine. It blocks the item and posts ' +
       'the question in one call, so there is no half-done state. ' +
       'Prefer it: most questions that stop delegated work are choices, and a tap gets you ' +
@@ -355,7 +355,7 @@ export const MCP_TOOLS: McpTool[] = [
       'Offer options ONLY when they are genuinely exhaustive — a question whose real answer ' +
       'is not on the list is worse than no options at all. Omit them for anything open-ended ' +
       '(the user always keeps a free-text box either way). ' +
-      'The answer comes back through anchor_item_activity as an `agent_reply` entry, and the ' +
+      'The answer comes back through dsul_item_activity as an `agent_reply` entry, and the ' +
       'item returns to your queue by itself.',
     inputSchema: obj(
       {
@@ -392,7 +392,7 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
-    name: 'anchor_report_progress',
+    name: 'dsul_report_progress',
     description:
       'Say where you have got to on an item assigned to you. Call it when you START ' +
       "(status 'working'), when you FINISH (status 'done', with the outcome in result), and " +
@@ -408,7 +408,7 @@ export const MCP_TOOLS: McpTool[] = [
       'Pass lastSeenAt with the aiStatusAt you last read for the item. The call is REFUSED ' +
       'if it no longer matches — meaning the user or another run changed the item while you ' +
       'were working, and your report would have overwritten theirs. Re-read it with ' +
-      'anchor_my_work and decide again rather than retrying blindly.',
+      'dsul_my_work and decide again rather than retrying blindly.',
     inputSchema: obj(
       {
         id: ID,
@@ -419,7 +419,7 @@ export const MCP_TOOLS: McpTool[] = [
         },
         result: str('What to show the user: the outcome, the finding, or the question you are stuck on.'),
         lastSeenAt: str(
-          "The aiStatusAt you last read for this item, from anchor_my_work. The write is " +
+          "The aiStatusAt you last read for this item, from dsul_my_work. The write is " +
             'refused if it no longer matches, which is what stops your report overwriting ' +
             'one from a run that took over while you were working. Omit only for the very ' +
             'first report on an item that had no status yet.'
@@ -450,7 +450,7 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
-    name: 'anchor_get_context',
+    name: 'dsul_get_context',
     description:
       "Read the user's whole planner: today's tasks, habits and streaks, projects, " +
       'routines, programs and goals, plus their timezone. Call this before any write — ' +
@@ -460,7 +460,7 @@ export const MCP_TOOLS: McpTool[] = [
     plan: () => ({ method: 'GET', path: '/api/agent/context' }),
   },
   {
-    name: 'anchor_create_task',
+    name: 'dsul_create_task',
     description:
       'Create a one-off task. Use the project NAME, not an id. Omit startDate to leave ' +
       'it in the Braindump rather than guessing a day for it.',
@@ -485,7 +485,7 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
-    name: 'anchor_update_task',
+    name: 'dsul_update_task',
     description:
       'Change an existing task. Send only the fields you are changing. To complete one, ' +
       "set status to 'completed' — but for a RECURRING task use completedDates instead, " +
@@ -517,7 +517,7 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
-    name: 'anchor_delete_task',
+    name: 'dsul_delete_task',
     description:
       'Delete a task. It goes to trash for 30 days. Deleting a task deletes its subtasks ' +
       'too. Prefer cancelling over deleting when the user simply changed their mind.',
@@ -529,7 +529,7 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
-    name: 'anchor_create_habit',
+    name: 'dsul_create_habit',
     description:
       'Create a recurring habit. A habit belongs to a group (by NAME) and repeats by ' +
       "definition — there is no 'none' frequency. Use custom with repeatDays for " +
@@ -561,7 +561,7 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
-    name: 'anchor_update_habit',
+    name: 'dsul_update_habit',
     description:
       'Change an existing habit. To mark one done for a day, add that date to ' +
       'completedDates — habits are never completed by status. completedDates and ' +
@@ -592,7 +592,7 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
-    name: 'anchor_delete_habit',
+    name: 'dsul_delete_habit',
     description:
       'Delete a habit and its whole streak history. Goes to trash for 30 days. Almost ' +
       'always the wrong verb: if the user is just stepping away from it, pause it instead ' +
@@ -605,7 +605,7 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
-    name: 'anchor_pause',
+    name: 'dsul_pause',
     description:
       'Put something down for a while, or pick it back up. Pausing HIDES the item ' +
       'without ending it and without touching its history — the right verb when a user ' +
@@ -642,7 +642,7 @@ export const MCP_TOOLS: McpTool[] = [
     },
   },
   {
-    name: 'anchor_create_collection',
+    name: 'dsul_create_collection',
     description:
       'Create a routine (a set of items that switch on and off together), a program (a ' +
       'dated season holding items and routines), or a goal (something being worked ' +
@@ -670,7 +670,7 @@ export const MCP_TOOLS: McpTool[] = [
     plan: (args) => planCollection(args, 'POST'),
   },
   {
-    name: 'anchor_update_collection',
+    name: 'dsul_update_collection',
     description:
       'Change a routine, program or goal. Membership arrays REPLACE the whole set, so ' +
       'read the current members from get_context and send the full list, or you will ' +
@@ -700,7 +700,7 @@ export const MCP_TOOLS: McpTool[] = [
     plan: (args) => planCollection(args, 'PATCH'),
   },
   {
-    name: 'anchor_delete_collection',
+    name: 'dsul_delete_collection',
     description:
       'Delete a routine, program or goal. Its member items are NOT deleted — they simply ' +
       'stop belonging to it.',

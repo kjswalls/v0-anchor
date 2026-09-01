@@ -1,11 +1,11 @@
-import type { AnchorCache, PluginConfig } from './plugin-types.js'
-import { AnchorContextResponseSchema } from '@anchor-app/types'
+import type { DsulCache, PluginConfig } from './plugin-types.js'
+import { DsulContextResponseSchema } from '@dsul/types'
 
-let cache: AnchorCache | null = null
+let cache: DsulCache | null = null
 const lastInjectedAt = new Map<string, number>()  // per-conversation: when full context was last returned to the model
 let lastModifiedAt: number | null = null  // when cache was last dirtied by a write/webhook (cache-wide)
 
-export function getCache(): AnchorCache | null {
+export function getCache(): DsulCache | null {
   return cache
 }
 
@@ -51,7 +51,7 @@ let queued: Promise<void> | null = null
 /**
  * Single-flight wrapper around the context fetch (issue #140).
  *
- * Anchor can deliver webhooks back-to-back, and each one calls this. Without a
+ * dsul can deliver webhooks back-to-back, and each one calls this. Without a
  * guard, two overlapping fetches both write `cache` and the *last to resolve*
  * wins — which may be the older snapshot.
  *
@@ -85,18 +85,18 @@ function startFetch(cfg: PluginConfig): Promise<void> {
 }
 
 async function doFetch(cfg: PluginConfig): Promise<void> {
-  const res = await fetch(`${cfg.anchorUrl}/api/agent/context`, {
+  const res = await fetch(`${cfg.dsulUrl}/api/agent/context`, {
     headers: { Authorization: `Bearer ${cfg.apiKey}` },
   })
-  if (!res.ok) throw new Error(`Anchor context fetch failed: ${res.status} ${res.statusText}`)
+  if (!res.ok) throw new Error(`dsul context fetch failed: ${res.status} ${res.statusText}`)
 
   const raw = await res.json()
-  const parsed = AnchorContextResponseSchema.safeParse(raw)
+  const parsed = DsulContextResponseSchema.safeParse(raw)
   if (!parsed.success) {
-    // Schema mismatch — Anchor API may have changed. Log details and use what we have.
-    console.warn('[anchor-context] API response validation failed. The @anchor-app/types package may need updating.')
+    // Schema mismatch — dsul API may have changed. Log details and use what we have.
+    console.warn('[dsul-context] API response validation failed. The @dsul/types package may need updating.')
     console.warn(parsed.error.flatten())
-    throw new Error('Anchor API schema mismatch — see logs for details')
+    throw new Error('dsul API schema mismatch — see logs for details')
   }
 
   const data = parsed.data

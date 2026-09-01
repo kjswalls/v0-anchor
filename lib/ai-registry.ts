@@ -4,7 +4,7 @@
  * The sibling of [item-registry.ts](item-registry.ts), and it exists for the
  * same reason: every place the app wants to ask "is this OpenClaw or Beacon?"
  * should instead ask what the current tier *can do*. Adding a tier (a hosted
- * Anchor-operated agent, a local model, whatever comes next) means adding a
+ * dsul-operated agent, a local model, whatever comes next) means adding a
  * config here — not adding code paths through the UI.
  *
  * Tiers are deliberately NOT equivalent, and the UI must not pretend otherwise:
@@ -45,11 +45,11 @@ export interface AITierConfig {
   /**
    * Conversation state lives on the backend, keyed by session, so a thread
    * survives a reload and follows the user across devices. False means the
-   * transcript is only as durable as Anchor's own storage.
+   * transcript is only as durable as dsul's own storage.
    */
   hasServerSessions: boolean
   /**
-   * The agent can reach the user outside Anchor (its own channels). Gates
+   * The agent can reach the user outside dsul (its own channels). Gates
    * "notify me when it's done" affordances that would otherwise be a lie.
    */
   canNotifyOutOfApp: boolean
@@ -71,7 +71,7 @@ export const AI_TIERS: Record<AITier, AITierConfig> = {
     label: 'Beacon',
     canChat: true,
     canPropose: true,
-    // Rebuilding a tool loop, a task queue and background workers inside Anchor
+    // Rebuilding a tool loop, a task queue and background workers inside dsul
     // to fake delegation on a bare completions API is the one thing this
     // architecture is explicitly not doing.
     canDelegate: false,

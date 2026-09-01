@@ -1,12 +1,12 @@
-import type { Goal, Item, Program, Routine } from '@anchor-app/types'
+import type { Goal, Item, Program, Routine } from '@dsul/types'
 import { getCache } from './cache.js'
-import type { AnchorCache } from './plugin-types.js'
+import type { DsulCache } from './plugin-types.js'
 
 function getLocalDate(timezone: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: timezone }).format(new Date())
 }
 
-/** ~200–400 tokens — returned by anchor_get_context tool */
+/** ~200–400 tokens — returned by dsul_get_context tool */
 export function buildFullContext(): string {
   const cache = getCache()
   if (!cache) return ''
@@ -194,7 +194,7 @@ function renderGoals(
  * finished, dropped, or never existed. The last two invite a recreate that
  * duplicates the row.
  */
-function suppressedItemIds(cache: AnchorCache): Set<string> {
+function suppressedItemIds(cache: DsulCache): Set<string> {
   const visible = new Set([...cache.tasks.map((t) => t.id), ...cache.habits.map((h) => h.id)])
   // Only the two projected types. A custom type appears in items[] and in
   // NEITHER projection by design, so without this it would read as suppressed.
@@ -205,7 +205,7 @@ function suppressedItemIds(cache: AnchorCache): Set<string> {
   )
 }
 
-function renderPaused(cache: AnchorCache, today: string, ids: ReadonlySet<string>): string[] {
+function renderPaused(cache: DsulCache, today: string, ids: ReadonlySet<string>): string[] {
   if (!cache.items.length) return []
   const suppressed = cache.items.filter((i) => ids.has(i.id))
   if (!suppressed.length) return []
@@ -222,7 +222,7 @@ function renderPaused(cache: AnchorCache, today: string, ids: ReadonlySet<string
   return lines
 }
 
-function causeFor(item: Item, cache: AnchorCache, today: string): string {
+function causeFor(item: Item, cache: DsulCache, today: string): string {
   // The item's own pause wins the explanation, matching lib/active.ts — it is
   // the one the user set on this row and the one this row's own resume undoes.
   // Naming a container instead would send them to a control that leaves the

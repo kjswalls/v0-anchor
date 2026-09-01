@@ -47,7 +47,7 @@ const BRAINDUMP_GROUP_BY_VALUES: readonly BraindumpGroupBy[] = [
  * Same hazard `isGroupBy` guards on the canvas side: an unrecognised string
  * reaches `groupRows`, whose container branch is the fallthrough, so a stale or
  * devtools-edited value would silently group the braindump by project. This
- * union is user-persisted in `anchor-view` and was widened after ship, so a blob
+ * union is user-persisted in `dsul-view` and was widened after ship, so a blob
  * written when it was 'none' | 'type' | 'project' is fine, but a garbage value is
  * not — and unlike the canvas keys, this one was never coerced in `merge` before.
  */
@@ -350,11 +350,11 @@ export const useViewStore = create<ViewStore>()(
     {
       // NOT bumped for weekDaysVisible. zustand's default merge keeps the
       // initial value for any key the persisted payload lacks, so an existing
-      // 'anchor-view' blob rehydrates with the default and no migration. A bump
+      // 'dsul-view' blob rehydrates with the default and no migration. A bump
       // would invalidate every stored payload — including the literal version:1
       // one tests/e2e/helpers/session.ts seeds, which would reset adoptedLegacy
       // and re-run the legacy adoption on a fixture.
-      name: 'anchor-view',
+      name: 'dsul-view',
       version: 1,
       /**
        * Deep-merge the two filter objects; shallow-merge everything else.

@@ -29,7 +29,7 @@ and three of them were **completely invisible**.
    own lane, so every rail sits beside its own pane rather than bunching at the shared
    edge; a single faint **start-tie** (`startTie`, drawn once by the first member) runs
    along the shared start line to mark them as one slot. No badge, no warning colour, no
-   dotted border — Anchor is guilt-free by design and an overlap is not an error.
+   dotted border — dsul is guilt-free by design and an overlap is not an error.
    *(This replaced the original "the rail thickens" — one shared lane, bunched swells at
    `5 + pitch·k`, a compound two-pins-in-one-hole bead. On screen the tiled panes spread
    across the width while their rails stayed jammed left, so a member's rail read as
@@ -111,7 +111,7 @@ and three of them were **completely invisible**.
       - `maxOverlapCols` on `DaySchedule` and the mobile router's `1` are both gone — the
         ~294px mobile field derives two channels on its own.
 - [x] **Phase 6 — Looked at, in both themes** (2026-07-30). Day and week, light and dark,
-      via a throwaway Playwright harness against the real app and the `anchor-e2e` user
+      via a throwaway Playwright harness against the real app and the `dsul-e2e` user
       (seeded all three topologies, screenshotted, swept — no litter left). All three read
       correctly; the week column visibly widens and the grid scrolls. Screenshots are not
       committed. Findings below.

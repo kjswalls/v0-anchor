@@ -17,8 +17,8 @@ describe('the tool surface', () => {
     }
   });
 
-  it('names every tool anchor_*, since they share a namespace with other servers', () => {
-    for (const t of MCP_TOOLS) expect(t.name).toMatch(/^anchor_[a-z_]+$/);
+  it('names every tool dsul_*, since they share a namespace with other servers', () => {
+    for (const t of MCP_TOOLS) expect(t.name).toMatch(/^dsul_[a-z_]+$/);
   });
 
   it('gives every tool an object input schema that refuses unknown keys', () => {
@@ -39,11 +39,11 @@ describe('the tool surface', () => {
 
 describe('items', () => {
   it('reads context with a GET and no body', () => {
-    expect(plan('anchor_get_context')).toEqual({ method: 'GET', path: '/api/agent/context' });
+    expect(plan('dsul_get_context')).toEqual({ method: 'GET', path: '/api/agent/context' });
   });
 
   it('creates a task', () => {
-    expect(plan('anchor_create_task', { title: 'Book dentist', startDate: '2026-08-06' })).toEqual({
+    expect(plan('dsul_create_task', { title: 'Book dentist', startDate: '2026-08-06' })).toEqual({
       method: 'POST',
       path: '/api/agent/tasks',
       body: { title: 'Book dentist', startDate: '2026-08-06' },
@@ -51,38 +51,38 @@ describe('items', () => {
   });
 
   it('refuses a create with no title rather than posting an empty one', () => {
-    expect(plan('anchor_create_task', {})).toMatchObject({ error: expect.stringContaining('title') });
-    expect(plan('anchor_create_task', { title: '   ' })).toMatchObject({ error: expect.any(String) });
+    expect(plan('dsul_create_task', {})).toMatchObject({ error: expect.stringContaining('title') });
+    expect(plan('dsul_create_task', { title: '   ' })).toMatchObject({ error: expect.any(String) });
   });
 
   it('drops keys the endpoint does not accept', () => {
     // Zod strips unknown keys server-side and returns a lying 200; not sending
     // them is how the model finds out.
-    const result = plan('anchor_update_task', { id: 'x', title: 'New', bogus: 1 }) as {
+    const result = plan('dsul_update_task', { id: 'x', title: 'New', bogus: 1 }) as {
       body: Record<string, unknown>;
     };
     expect(result.body).toEqual({ title: 'New' });
   });
 
   it('puts the id in the path, never the body', () => {
-    expect(plan('anchor_update_task', { id: 'abc', priority: 'high' })).toEqual({
+    expect(plan('dsul_update_task', { id: 'abc', priority: 'high' })).toEqual({
       method: 'PATCH',
       path: '/api/agent/tasks/abc',
       body: { priority: 'high' },
     });
-    expect(plan('anchor_delete_task', { id: 'abc' })).toEqual({
+    expect(plan('dsul_delete_task', { id: 'abc' })).toEqual({
       method: 'DELETE',
       path: '/api/agent/tasks/abc',
     });
   });
 
   it('routes habits to their own endpoints', () => {
-    expect(plan('anchor_create_habit', { title: 'Stretch', group: 'Health' })).toEqual({
+    expect(plan('dsul_create_habit', { title: 'Stretch', group: 'Health' })).toEqual({
       method: 'POST',
       path: '/api/agent/habits',
       body: { title: 'Stretch', group: 'Health' },
     });
-    expect(plan('anchor_update_habit', { id: 'h1', completedDates: ['2026-08-06'] })).toEqual({
+    expect(plan('dsul_update_habit', { id: 'h1', completedDates: ['2026-08-06'] })).toEqual({
       method: 'PATCH',
       path: '/api/agent/habits/h1',
       body: { completedDates: ['2026-08-06'] },
@@ -91,14 +91,14 @@ describe('items', () => {
 
   it('tells the model, in the tool text, how to complete a recurring item', () => {
     // The single most common way to corrupt a series is status-instead-of-date.
-    expect(toolByName('anchor_update_task')!.description).toMatch(/completedDates/);
-    expect(toolByName('anchor_update_habit')!.description).toMatch(/completedDates/);
+    expect(toolByName('dsul_update_task')!.description).toMatch(/completedDates/);
+    expect(toolByName('dsul_update_habit')!.description).toMatch(/completedDates/);
   });
 });
 
 describe('pause', () => {
   it('pauses with an exclusive return date', () => {
-    expect(plan('anchor_pause', { kind: 'habit', id: 'h1', paused: true, until: '2026-08-10' })).toEqual({
+    expect(plan('dsul_pause', { kind: 'habit', id: 'h1', paused: true, until: '2026-08-10' })).toEqual({
       method: 'PATCH',
       path: '/api/agent/habits/h1',
       body: { paused: true, pausedUntil: '2026-08-10' },
@@ -106,7 +106,7 @@ describe('pause', () => {
   });
 
   it('resumes without a date', () => {
-    expect(plan('anchor_pause', { kind: 'task', id: 't1', paused: false })).toEqual({
+    expect(plan('dsul_pause', { kind: 'task', id: 't1', paused: false })).toEqual({
       method: 'PATCH',
       path: '/api/agent/tasks/t1',
       body: { paused: false },
@@ -115,19 +115,19 @@ describe('pause', () => {
 
   it('refuses a resume that carries a date, rather than silently dropping it', () => {
     expect(
-      plan('anchor_pause', { kind: 'task', id: 't1', paused: false, until: '2026-08-10' })
+      plan('dsul_pause', { kind: 'task', id: 't1', paused: false, until: '2026-08-10' })
     ).toMatchObject({ error: expect.stringContaining('only valid when pausing') });
   });
 
   it('refuses a kind that has no pause verb', () => {
     // Programs use `state`, not pause.
-    expect(plan('anchor_pause', { kind: 'program', id: 'p1', paused: true })).toMatchObject({
+    expect(plan('dsul_pause', { kind: 'program', id: 'p1', paused: true })).toMatchObject({
       error: expect.stringContaining('kind must be one of'),
     });
   });
 
   it('requires paused to be a boolean', () => {
-    expect(plan('anchor_pause', { kind: 'task', id: 't1', paused: 'yes' })).toMatchObject({
+    expect(plan('dsul_pause', { kind: 'task', id: 't1', paused: 'yes' })).toMatchObject({
       error: expect.any(String),
     });
   });
@@ -135,14 +135,14 @@ describe('pause', () => {
 
 describe('collections', () => {
   it('creates each kind at its own endpoint', () => {
-    expect(plan('anchor_create_collection', { kind: 'routine', name: 'Morning' })).toMatchObject({
+    expect(plan('dsul_create_collection', { kind: 'routine', name: 'Morning' })).toMatchObject({
       method: 'POST',
       path: '/api/agent/routines',
     });
-    expect(plan('anchor_create_collection', { kind: 'program', name: 'Marathon block' })).toMatchObject({
+    expect(plan('dsul_create_collection', { kind: 'program', name: 'Marathon block' })).toMatchObject({
       path: '/api/agent/programs',
     });
-    expect(plan('anchor_create_collection', { kind: 'goal', name: 'Run a 10k' })).toMatchObject({
+    expect(plan('dsul_create_collection', { kind: 'goal', name: 'Run a 10k' })).toMatchObject({
       path: '/api/agent/goals',
     });
   });
@@ -150,7 +150,7 @@ describe('collections', () => {
   it('REFUSES keys a kind does not take instead of stripping them', () => {
     // Silently dropping milestoneIds off a routine is how a model concludes it
     // created milestones it did not.
-    const result = plan('anchor_create_collection', {
+    const result = plan('dsul_create_collection', {
       kind: 'routine',
       name: 'Morning',
       milestoneIds: ['a'],
@@ -160,13 +160,13 @@ describe('collections', () => {
   });
 
   it('names what the kind DOES accept in the refusal', () => {
-    const result = plan('anchor_create_collection', { kind: 'goal', name: 'x', routineIds: ['a'] });
+    const result = plan('dsul_create_collection', { kind: 'goal', name: 'x', routineIds: ['a'] });
     expect((result as { error: string }).error).toMatch(/memberIds/);
   });
 
   it('allows each kind its own keys', () => {
     expect(
-      plan('anchor_create_collection', {
+      plan('dsul_create_collection', {
         kind: 'goal',
         name: 'Run a 10k',
         why: 'because',
@@ -175,26 +175,26 @@ describe('collections', () => {
       })
     ).toMatchObject({ method: 'POST', path: '/api/agent/goals' });
     expect(
-      plan('anchor_update_collection', { kind: 'program', id: 'p1', routineIds: ['r1'], state: 'active' })
+      plan('dsul_update_collection', { kind: 'program', id: 'p1', routineIds: ['r1'], state: 'active' })
     ).toMatchObject({ method: 'PATCH', path: '/api/agent/programs/p1' });
   });
 
   it('warns in the tool text that membership replaces rather than appends', () => {
-    expect(toolByName('anchor_update_collection')!.description).toMatch(/REPLACE|replace/);
+    expect(toolByName('dsul_update_collection')!.description).toMatch(/REPLACE|replace/);
   });
 
   it('refuses an unknown kind', () => {
-    expect(plan('anchor_create_collection', { kind: 'sprocket', name: 'x' })).toMatchObject({
+    expect(plan('dsul_create_collection', { kind: 'sprocket', name: 'x' })).toMatchObject({
       error: expect.stringContaining('kind must be one of'),
     });
-    expect(plan('anchor_delete_collection', { kind: 'sprocket', id: 'x' })).toMatchObject({
+    expect(plan('dsul_delete_collection', { kind: 'sprocket', id: 'x' })).toMatchObject({
       error: expect.any(String),
     });
   });
 
   it('requires an id to update or delete', () => {
-    expect(plan('anchor_update_collection', { kind: 'goal' })).toMatchObject({ error: expect.any(String) });
-    expect(plan('anchor_delete_collection', { kind: 'goal' })).toMatchObject({ error: expect.any(String) });
+    expect(plan('dsul_update_collection', { kind: 'goal' })).toMatchObject({ error: expect.any(String) });
+    expect(plan('dsul_delete_collection', { kind: 'goal' })).toMatchObject({ error: expect.any(String) });
   });
 });
 
@@ -203,7 +203,7 @@ describe('delegation — the pull loop', () => {
     // Its own route rather than the generic task PATCH: that one verified only
     // account ownership, so a late report from a superseded run overwrote the
     // work that had replaced it. See the compare-and-set block at the foot.
-    expect(plan('anchor_report_progress', { id: 't1', status: 'working' })).toEqual({
+    expect(plan('dsul_report_progress', { id: 't1', status: 'working' })).toEqual({
       method: 'POST',
       path: '/api/agent/items/t1/progress',
       body: { aiStatus: 'working' },
@@ -212,31 +212,31 @@ describe('delegation — the pull loop', () => {
 
   it('carries the result text, which is what the user actually reads', () => {
     expect(
-      plan('anchor_report_progress', { id: 't1', status: 'done', result: 'Booked for Thu 10am.' })
+      plan('dsul_report_progress', { id: 't1', status: 'done', result: 'Booked for Thu 10am.' })
     ).toMatchObject({ body: { aiStatus: 'done', aiResult: 'Booked for Thu 10am.' } });
   });
 
   it('refuses a status outside the vocabulary rather than inventing one', () => {
     // aiStatus is a frozen contract the moment a real agent writes it.
-    expect(plan('anchor_report_progress', { id: 't1', status: 'in-progress' })).toMatchObject({
+    expect(plan('dsul_report_progress', { id: 't1', status: 'in-progress' })).toMatchObject({
       error: expect.stringContaining('status must be one of'),
     });
   });
 
   it('requires an id and a status', () => {
-    expect(plan('anchor_report_progress', { status: 'done' })).toMatchObject({ error: expect.any(String) });
-    expect(plan('anchor_report_progress', { id: 't1' })).toMatchObject({ error: expect.any(String) });
+    expect(plan('dsul_report_progress', { status: 'done' })).toMatchObject({ error: expect.any(String) });
+    expect(plan('dsul_report_progress', { id: 't1' })).toMatchObject({ error: expect.any(String) });
   });
 
   it('teaches the blocked-means-ask-the-user rule in the tool text', () => {
-    const description = toolByName('anchor_report_progress')!.description;
+    const description = toolByName('dsul_report_progress')!.description;
     expect(description).toMatch(/blocked/);
     expect(description).toMatch(/question/i);
   });
 
   it('can write the delegation fields through the ordinary update tool too', () => {
     expect(
-      plan('anchor_update_task', { id: 't1', assignee: 'openclaw', aiStatus: 'queued' })
+      plan('dsul_update_task', { id: 't1', assignee: 'openclaw', aiStatus: 'queued' })
     ).toMatchObject({ body: { assignee: 'openclaw', aiStatus: 'queued' } });
   });
 });
@@ -352,23 +352,23 @@ describe('selectAssignedWork', () => {
   });
 });
 
-describe('anchor_item_activity — the reply channel', () => {
+describe('dsul_item_activity — the reply channel', () => {
   it('reads one item\'s trail', () => {
-    expect(plan('anchor_item_activity', { id: 't1' })).toEqual({
+    expect(plan('dsul_item_activity', { id: 't1' })).toEqual({
       method: 'GET',
       path: '/api/agent/items/t1/events',
     });
   });
 
   it('requires an id', () => {
-    expect(plan('anchor_item_activity', {})).toMatchObject({ error: expect.any(String) });
+    expect(plan('dsul_item_activity', {})).toMatchObject({ error: expect.any(String) });
   });
 
   it('tells the agent where a blocked answer shows up', () => {
     // Without this steer the agent marks something blocked and never looks back.
-    const description = toolByName('anchor_item_activity')!.description;
+    const description = toolByName('dsul_item_activity')!.description;
     expect(description).toMatch(/agent_reply/);
-    expect(toolByName('anchor_my_work')!.description).toMatch(/anchor_item_activity/);
+    expect(toolByName('dsul_my_work')!.description).toMatch(/dsul_item_activity/);
   });
 });
 
@@ -393,7 +393,7 @@ describe('what the worker is given', () => {
   });
 });
 
-describe('anchor_ask_user — a question with answers', () => {
+describe('dsul_ask_user — a question with answers', () => {
   /**
    * Most of what actually stops delegated work is a CHOICE — which Dana, which
    * of the two invoices, is Thursday still fine. `report_progress('blocked')`
@@ -405,7 +405,7 @@ describe('anchor_ask_user — a question with answers', () => {
     // Two calls would make the half-done state reachable whenever a run dies
     // in between: a question with no block renders nowhere, and a block with no
     // question is the old text-box behaviour.
-    expect(plan('anchor_ask_user', { id: 'i1', question: 'Which Dana?' })).toEqual({
+    expect(plan('dsul_ask_user', { id: 'i1', question: 'Which Dana?' })).toEqual({
       method: 'POST',
       path: '/api/agent/items/i1/ask',
       body: { question: 'Which Dana?' },
@@ -413,7 +413,7 @@ describe('anchor_ask_user — a question with answers', () => {
   });
 
   it('carries the options through verbatim', () => {
-    const result = plan('anchor_ask_user', {
+    const result = plan('dsul_ask_user', {
       id: 'i1',
       question: 'Which Dana?',
       options: ['Dana Reyes', 'Dana Whitfield'],
@@ -426,12 +426,12 @@ describe('anchor_ask_user — a question with answers', () => {
   it('omits options entirely rather than sending an empty list', () => {
     // An empty array reads to the route as "offer no buttons", which is right,
     // but sending the key at all invites a UI that renders an empty chip row.
-    const result = plan('anchor_ask_user', { id: 'i1', question: 'What next?', options: [] });
+    const result = plan('dsul_ask_user', { id: 'i1', question: 'What next?', options: [] });
     expect(result).not.toHaveProperty('body.options');
   });
 
   it('drops rubbish in the options rather than the whole question', () => {
-    const result = plan('anchor_ask_user', {
+    const result = plan('dsul_ask_user', {
       id: 'i1',
       question: 'Which one?',
       options: ['Real answer', '', '   ', 42, null],
@@ -440,16 +440,16 @@ describe('anchor_ask_user — a question with answers', () => {
   });
 
   it('refuses without a question, which is all the user ever sees', () => {
-    expect(plan('anchor_ask_user', { id: 'i1' })).toHaveProperty('error');
+    expect(plan('dsul_ask_user', { id: 'i1' })).toHaveProperty('error');
   });
 
   it('refuses without an id', () => {
-    expect(plan('anchor_ask_user', { question: 'Which Dana?' })).toHaveProperty('error');
+    expect(plan('dsul_ask_user', { question: 'Which Dana?' })).toHaveProperty('error');
   });
 
   it('tells the agent to write options as answers, not as labels', () => {
     // "the first one" is useless as a reply: the text is sent back verbatim.
-    const schema = toolByName('anchor_ask_user')!.inputSchema as {
+    const schema = toolByName('dsul_ask_user')!.inputSchema as {
       properties: { options: { description: string } };
     };
     expect(schema.properties.options.description).toMatch(/verbatim/i);
@@ -458,7 +458,7 @@ describe('anchor_ask_user — a question with answers', () => {
   it('warns against options that are not exhaustive', () => {
     // A question whose real answer is not on the list is worse than no options
     // — it reads as a closed set and the user has to notice it is not.
-    expect(toolByName('anchor_ask_user')!.description).toMatch(/exhaustive/i);
+    expect(toolByName('dsul_ask_user')!.description).toMatch(/exhaustive/i);
   });
 });
 
@@ -517,24 +517,24 @@ describe('resuming a run that died', () => {
   it('tells the worker to leave a live run alone, and names a threshold', () => {
     /**
      * An earlier version of this text said "hours old means that run died —
-     * pick it up and finish it". `anchor_report_progress` instructed reports
+     * pick it up and finish it". `dsul_report_progress` instructed reports
      * only at START, FINISH and STUCK, so a HEALTHY two-hour job has a
      * two-hour-old stamp by construction — that sentence was an instruction to
      * double-run every long job, issued to a runtime with no user in the loop.
      * It also named no boundary, so the model picked a different one each run.
      */
-    const description = toolByName('anchor_my_work')!.description;
+    const description = toolByName('dsul_my_work')!.description;
     expect(description).toMatch(/leave it alone/i);
     expect(description).toMatch(/not a heartbeat/i);
     expect(description).toMatch(/\d+ hours/);
     expect(description).toMatch(/assigned to you/i);
     expect(description).toMatch(/never touch an item assigned to someone else/i);
     // And the taking must go through the refusable call, not just be asserted.
-    expect(description).toMatch(/anchor_report_progress/);
+    expect(description).toMatch(/dsul_report_progress/);
   });
 
   it('tells the worker to report periodically, which is what makes the stamp mean anything', () => {
-    const description = toolByName('anchor_report_progress')!.description;
+    const description = toolByName('dsul_report_progress')!.description;
     expect(description).toMatch(/periodically/i);
     expect(description).toMatch(/lastSeenAt/);
     expect(description).toMatch(/refused/i);
@@ -545,7 +545,7 @@ describe('resuming a run that died', () => {
     // check, no precondition, so a late report from a superseded run landed
     // unconditionally over the work that replaced it.
     expect(
-      plan('anchor_report_progress', { id: 'i1', status: 'done', lastSeenAt: '2026-08-26T10:00:00.000Z' })
+      plan('dsul_report_progress', { id: 'i1', status: 'done', lastSeenAt: '2026-08-26T10:00:00.000Z' })
     ).toEqual({
       method: 'POST',
       path: '/api/agent/items/i1/progress',
@@ -554,7 +554,7 @@ describe('resuming a run that died', () => {
   });
 
   it('omits the precondition when the worker has no stamp to send', () => {
-    expect(plan('anchor_report_progress', { id: 'i1', status: 'working' })).toEqual({
+    expect(plan('dsul_report_progress', { id: 'i1', status: 'working' })).toEqual({
       method: 'POST',
       path: '/api/agent/items/i1/progress',
       body: { aiStatus: 'working' },

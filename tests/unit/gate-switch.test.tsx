@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup, screen } from '@testing-library/react';
 import { GroupSection } from '@/components/primitives/group-section';
 import { usePlannerStore } from '@/lib/planner-store';
-import type { Routine, Program } from '@anchor-app/types';
+import type { Routine, Program } from '@dsul/types';
 
 /**
  * The seam a mutation would break silently: RowGroup.gate → GroupSection → the

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { usePlannerStore } from '@/lib/planner-store';
 import { setGateOn } from '@/lib/gate-toggle';
-import type { Routine, Program } from '@anchor-app/types';
+import type { Routine, Program } from '@dsul/types';
 
 /**
  * setGateOn — the one guarded, click-time-resolved write behind both the group-

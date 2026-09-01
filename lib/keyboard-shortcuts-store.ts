@@ -90,7 +90,7 @@ interface KeyboardShortcutsStore {
    * shows up later: writing a copy of today's default PINS the user to it, so
    * the day a release moves ⌘/ somewhere better, everyone who ever pressed the
    * row's reset button silently keeps the old key with no override visible to
-   * explain it. Removing the entry is what makes "reset" mean "follow Anchor".
+   * explain it. Removing the entry is what makes "reset" mean "follow dsul".
    */
   resetShortcut: (id: string) => void;
   resetShortcuts: () => void;
@@ -102,7 +102,7 @@ interface KeyboardShortcutsStore {
    * modal; this is the registry's entry point, and the registry has to be able
    * to ask every store the same thing by the same name.
    *
-   * `anchor-keyboard-shortcuts` is browser-global and never synced, so on a
+   * `dsul-keyboard-shortcuts` is browser-global and never synced, so on a
    * shared browser one person's ⌘K lands somewhere the next person never put
    * it. That is worth clearing on a known change of user.
    *
@@ -141,7 +141,7 @@ export const useKeyboardShortcutsStore = create<KeyboardShortcutsStore>()(
       },
     }),
     {
-      name: 'anchor-keyboard-shortcuts',
+      name: 'dsul-keyboard-shortcuts',
       version: 3,
       migrate: (persistedState: unknown, version: number) => {
         if (version >= 3) return persistedState as KeyboardShortcutsStore;

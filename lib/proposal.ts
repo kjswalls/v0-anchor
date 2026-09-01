@@ -279,7 +279,7 @@ export function buildCatchUpProposal(
 /**
  * A compact, id-bearing index of the user's actionable items.
  *
- * Separate from buildAnchorContext (lib/ai-context.ts) on purpose: that blob is
+ * Separate from buildDsulContext (lib/ai-context.ts) on purpose: that blob is
  * pinned byte-for-byte by tests as Beacon's chat context and carries no ids,
  * but a proposal has to reference items by id to update them.
  */

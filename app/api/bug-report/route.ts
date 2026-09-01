@@ -47,16 +47,16 @@ export async function POST(req: NextRequest) {
   if (reportType === 'bug' && steps?.trim()) {
     bodyParts.push(`## Steps to reproduce\n\n${steps.trim()}`);
   }
-  bodyParts.push('---\n_Reported via Anchor app_');
+  bodyParts.push('---\n_Reported via dsul app_');
   const issueBody = bodyParts.join('\n\n');
 
   // POST to GitHub
-  const githubRes = await fetch('https://api.github.com/repos/kjswalls/v0-anchor/issues', {
+  const githubRes = await fetch('https://api.github.com/repos/kjswalls/dsul/issues', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
       'Content-Type': 'application/json',
-      'User-Agent': 'anchor-app',
+      'User-Agent': 'dsul-app',
     },
     body: JSON.stringify({ title: title.trim(), body: issueBody, labels }),
   });

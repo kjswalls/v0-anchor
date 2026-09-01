@@ -17,7 +17,7 @@ import { EXT_COMPLETION_CONFETTI } from '@/lib/extension-registry';
 export function celebrateCompletion(): void {
   if (typeof window === 'undefined') return;
   if (!useExtensionsStore.getState().isEnabled(EXT_COMPLETION_CONFETTI)) return;
-  // Two vetoes: Anchor's own animations toggle (stamped on <html> by
+  // Two vetoes: dsul's own animations toggle (stamped on <html> by
   // supabase-provider) and the OS preference, which canvas-confetti checks
   // itself via disableForReducedMotion.
   if (document.documentElement.hasAttribute('data-reduce-motion')) return;
@@ -29,7 +29,7 @@ export function celebrateCompletion(): void {
         startVelocity: 28,
         origin: { y: 0.7 },
         // Lime-family hexes — a canvas can't read CSS custom properties, and
-        // the burst should read as Anchor, not a generic party (the onboarding
+        // the burst should read as dsul, not a generic party (the onboarding
         // tour's purple burst predates the brand rule).
         colors: ['#b8e45c', '#8fd14f', '#5a8f22', '#e8c96a'],
         disableForReducedMotion: true,

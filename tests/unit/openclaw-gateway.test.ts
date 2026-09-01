@@ -38,7 +38,7 @@ function streamOf(...chunks: string[]): ReadableStream<Uint8Array> {
   });
 }
 
-/** Runs the translator and reads the result back through Anchor's own parser. */
+/** Runs the translator and reads the result back through dsul's own parser. */
 async function translated(...chunks: string[]): Promise<string[]> {
   const out: string[] = [];
   for await (const frame of parseSseFrames(translateGatewayStream(streamOf(...chunks)))) {
@@ -73,7 +73,7 @@ describe('deltaFromChunk', () => {
 });
 
 describe('translateGatewayStream', () => {
-  it('turns gateway chunks into Anchor frames', async () => {
+  it('turns gateway chunks into dsul frames', async () => {
     expect(await translated(chunk('Hel'), chunk('lo'), 'data: [DONE]\n\n')).toEqual(['Hel', 'lo']);
   });
 
@@ -94,7 +94,7 @@ describe('translateGatewayStream', () => {
   });
 
   it('always terminates with [DONE], even when the gateway does not send one', async () => {
-    // Anchor's client parser stops on [DONE]; without one it would read to EOF.
+    // dsul's client parser stops on [DONE]; without one it would read to EOF.
     const decoder = new TextDecoder();
     const stream = translateGatewayStream(streamOf(chunk('a')));
     const reader = stream.getReader();
@@ -118,16 +118,16 @@ describe('translateGatewayStream', () => {
 });
 
 describe('session keys', () => {
-  it('namespaces every key under anchor: — subagent:, cron: and acp: are reserved', () => {
-    expect(chatSessionKey('u1')).toBe('anchor:u:u1:chat');
-    expect(itemSessionKey('u1', 'abc-123')).toBe('anchor:u:u1:item:abc-123');
+  it('namespaces every key under dsul: — subagent:, cron: and acp: are reserved', () => {
+    expect(chatSessionKey('u1')).toBe('dsul:u:u1:chat');
+    expect(itemSessionKey('u1', 'abc-123')).toBe('dsul:u:u1:item:abc-123');
   });
 
   it('keeps proposals off the conversation key', () => {
     // A proposal turn is a system prompt demanding JSON. Splicing that into the
     // user's own thread would leave the next thing they said being answered by
     // a model that had just been told to reply in JSON only.
-    expect(proposeSessionKey('u1')).toBe('anchor:u:u1:propose');
+    expect(proposeSessionKey('u1')).toBe('dsul:u:u1:propose');
     expect(proposeSessionKey('u1')).not.toBe(chatSessionKey('u1'));
   });
 
@@ -141,12 +141,12 @@ describe('session keys', () => {
 
   it('cannot be pushed into a reserved namespace by hostile input', () => {
     // Keys are built from a fixed literal, so even an id that looks like a
-    // reserved prefix stays under anchor:. This is why nothing accepts a
+    // reserved prefix stays under dsul:. This is why nothing accepts a
     // caller-supplied session key.
     for (const hostile of ['subagent:evil', 'cron:evil', 'acp:evil', '../../cron:evil']) {
-      expect(chatSessionKey(hostile).startsWith('anchor:')).toBe(true);
-      expect(itemSessionKey('u1', hostile).startsWith('anchor:')).toBe(true);
-      expect(proposeSessionKey(hostile).startsWith('anchor:')).toBe(true);
+      expect(chatSessionKey(hostile).startsWith('dsul:')).toBe(true);
+      expect(itemSessionKey('u1', hostile).startsWith('dsul:')).toBe(true);
+      expect(proposeSessionKey(hostile).startsWith('dsul:')).toBe(true);
     }
   });
 });
@@ -333,7 +333,7 @@ describe('gatewayCompletion', () => {
   // outlive this block and silently answer anything added after it.
   afterEach(() => vi.unstubAllGlobals());
 
-  const config = { baseUrl: 'https://gw.example.com', token: 'tok', agentId: 'anchor' };
+  const config = { baseUrl: 'https://gw.example.com', token: 'tok', agentId: 'dsul' };
   const messages = [{ role: 'user' as const, content: 'hi' }];
 
   function mockFetch(impl: (url: string, init: RequestInit) => unknown) {
@@ -350,19 +350,19 @@ describe('gatewayCompletion', () => {
 
   it('posts a non-streaming turn to the completions endpoint with the session key', async () => {
     const spy = mockFetch(() => ok('{}'));
-    await gatewayCompletion({ config, messages, sessionKey: 'anchor:u:u1:propose' });
+    await gatewayCompletion({ config, messages, sessionKey: 'dsul:u:u1:propose' });
 
     const [url, init] = spy.mock.calls[0];
     expect(url).toBe('https://gw.example.com/v1/chat/completions');
     const headers = init.headers as Record<string, string>;
     expect(headers.Authorization).toBe('Bearer tok');
-    expect(headers['x-openclaw-session-key']).toBe('anchor:u:u1:propose');
+    expect(headers['x-openclaw-session-key']).toBe('dsul:u:u1:propose');
     // A redirect would bounce this authenticated request — bearer token and all
     // — at a host the URL guard never saw.
     expect(init.redirect).toBe('error');
     const body = JSON.parse(init.body as string);
     expect(body.stream).toBe(false);
-    expect(body.model).toBe('anchor');
+    expect(body.model).toBe('dsul');
     // `response_format` is an OpenAI parameter an arbitrary agent may reject
     // outright, and a rejected request yields nothing at all to recover from.
     expect(body).not.toHaveProperty('response_format');

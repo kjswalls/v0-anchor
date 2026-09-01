@@ -1,6 +1,6 @@
 import type { IncomingMessage } from 'node:http'
 import type { PluginConfig } from './plugin-types.js'
-import { AnchorChangeEventSchema } from '@anchor-app/types'
+import { DsulChangeEventSchema } from '@dsul/types'
 
 export async function verifyHmac(secret: string, body: string, sigHeader: string): Promise<boolean> {
   const enc = new TextEncoder()
@@ -14,25 +14,25 @@ export async function verifyHmac(secret: string, body: string, sigHeader: string
   return sigHeader === `sha256=${hex}`
 }
 
-export async function registerWithAnchor(
+export async function registerWithDsul(
   cfg: PluginConfig,
   webhookUrl: string,
   logger: { info: (s: string) => void; warn: (s: string) => void }
 ): Promise<void> {
-  const res = await fetch(`${cfg.anchorUrl}/api/agent/register`, {
+  const res = await fetch(`${cfg.dsulUrl}/api/agent/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
     body: JSON.stringify({
-      pluginId: 'anchor-context',
+      pluginId: 'dsul-context',
       webhookUrl,
       secret: cfg.webhookSecret ?? '',
       events: ['tasks.updated', 'habits.updated', 'projects.updated', 'habitGroups.updated'],
     }),
   })
   if (res.ok) {
-    logger.info(`anchor-context: webhook registered → ${webhookUrl}`)
+    logger.info(`dsul-context: webhook registered → ${webhookUrl}`)
   } else {
-    logger.warn(`anchor-context: webhook registration failed (${res.status}) — change events won't invalidate cache`)
+    logger.warn(`dsul-context: webhook registration failed (${res.status}) — change events won't invalidate cache`)
   }
 }
 
@@ -43,35 +43,35 @@ export async function registerChatUrl(
   logger: { info: (s: string) => void; warn: (s: string) => void }
 ): Promise<void> {
   try {
-    const res = await fetch(`${cfg.anchorUrl}/api/agent/register`, {
+    const res = await fetch(`${cfg.dsulUrl}/api/agent/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
       body: JSON.stringify({
-        pluginId: 'anchor-context',
+        pluginId: 'dsul-context',
         chatUrl,
         agentId,
       }),
     })
     if (res.ok) {
-      logger.info(`anchor-context: chat URL registered → ${chatUrl}`)
+      logger.info(`dsul-context: chat URL registered → ${chatUrl}`)
     } else {
-      logger.warn(`anchor-context: chat URL registration failed (${res.status})`)
+      logger.warn(`dsul-context: chat URL registration failed (${res.status})`)
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Unknown error'
-    logger.warn(`anchor-context: chat URL registration error — ${msg}`)
+    logger.warn(`dsul-context: chat URL registration error — ${msg}`)
   }
 }
 
-export async function deregisterFromAnchor(
+export async function deregisterFromDsul(
   cfg: PluginConfig,
   logger: { warn: (s: string) => void }
 ): Promise<void> {
-  await fetch(`${cfg.anchorUrl}/api/agent/register`, {
+  await fetch(`${cfg.dsulUrl}/api/agent/register`, {
     method: 'DELETE',
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
-    body: JSON.stringify({ pluginId: 'anchor-context' }),
-  }).catch((err: Error) => logger.warn(`anchor-context: deregister failed — ${err.message}`))
+    body: JSON.stringify({ pluginId: 'dsul-context' }),
+  }).catch((err: Error) => logger.warn(`dsul-context: deregister failed — ${err.message}`))
 }
 
 /** Read full body from a Node IncomingMessage */
@@ -91,7 +91,7 @@ export async function parseWebhookBody(
   const body = await readBody(req)
   let eventName = 'unknown'
   try {
-    const parsed = AnchorChangeEventSchema.safeParse(JSON.parse(body))
+    const parsed = DsulChangeEventSchema.safeParse(JSON.parse(body))
     if (parsed.success) eventName = parsed.data.event
   } catch { /* ignore parse errors */ }
   return { body, eventName }

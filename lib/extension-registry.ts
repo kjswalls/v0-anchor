@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 /**
- * The official extensions catalog — Anchor's declarative "plugin" surface.
+ * The official extensions catalog — dsul's declarative "plugin" surface.
  *
  * An extension is optional, first-party, extended functionality a user toggles
  * per-account in Settings → Extensions. This registry is the manifest list the
@@ -41,11 +41,11 @@ export interface ExtensionManifest {
 }
 
 /**
- * Ideas, not peripherals (Tier 0) — the first two entries that gate what Anchor
+ * Ideas, not peripherals (Tier 0) — the first two entries that gate what dsul
  * MEANS rather than what it TOUCHES.
  *
  * Everything else in this catalog is a peripheral: a heatmap, a burst of
- * confetti, six ways to reach out of the app. "The Weight of Anchor" found the
+ * confetti, six ways to reach out of the app. "The Weight of dsul" found the
  * registry was gating only those, so a brand-new account arrived holding the
  * entire conceptual model — goals, programs, routines, two rituals and a
  * twelve-section console — on day one. These two are the first half of the
@@ -84,7 +84,7 @@ export const EXT_ORGANIZE = 'organize';
  * and every flame, streak count and reset control disappears, while the counter
  * itself keeps moving — reminders and stakes read `counters.streak`, not this,
  * so a streak-at-risk call still rings and a Beeminder datapoint still posts.
- * What stops is only what Anchor SHOWS you — the same browser-only asymmetry the
+ * What stops is only what dsul SHOWS you — the same browser-only asymmetry the
  * goals gates make (see lib/extension-gates.ts).
  */
 export const EXT_STREAKS = 'streaks';
@@ -143,7 +143,7 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     category: 'planning',
     // Defaults ON since the console was made approachable (2026-08-28): a warm
     // welcome per section, a silhouette per rail row, inline creation, and an
-    // Overview that greets a first open. The "Weight of Anchor" verdict was that
+    // Overview that greets a first open. The "Weight of dsul" verdict was that
     // it arrived as twelve sections of weight; once it stopped being that, the
     // reason to hide it went too. The fallback is per-read, so this reaches every
     // account with no saved toggle — existing and new alike. Goals below stays
@@ -221,7 +221,7 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     // device that seems to collect and does not is worse than none, because you
     // keep trusting it — so the one sentence everyone reads has to say it.
     description:
-      'Records what each miss costs, payable to a cause you can’t stand. Anchor keeps the ledger — it cannot take payment.',
+      'Records what each miss costs, payable to a cause you can’t stand. dsul keeps the ledger — it cannot take payment.',
     icon: HandCoins,
     category: 'habits',
     defaultEnabled: false,

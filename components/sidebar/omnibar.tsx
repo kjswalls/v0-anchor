@@ -40,7 +40,7 @@ import {
   recentRows,
   resolveLabel,
   RECENT_HEADING,
-  type Command as AnchorCommand,
+  type Command as DsulCommand,
   type CommandArgOption,
   type CommandEntityOption,
   type CommandRow,
@@ -155,7 +155,7 @@ export function Omnibar({
   const [open, setOpen] = useState(isLauncher);
   const [focused, setFocused] = useState(false);
   /** Set once a command needing an argument is picked — the "chip" state. */
-  const [activeCommand, setActiveCommand] = useState<AnchorCommand | null>(null);
+  const [activeCommand, setActiveCommand] = useState<DsulCommand | null>(null);
   const [isMac, setIsMac] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -413,7 +413,7 @@ export function Omnibar({
     if (ui.activeDialog?.type === 'launcher') ui.closeDialog();
   };
 
-  const runCommand = (command: AnchorCommand, arg?: string) => {
+  const runCommand = (command: DsulCommand, arg?: string) => {
     if (!isAvailable(command, ctx)) return;
 
     // Needs a value and doesn't have one yet — chip it and wait.

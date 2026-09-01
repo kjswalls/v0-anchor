@@ -18,7 +18,7 @@ The table already existed twice over, in the sense that matters:
   record, `keys.shortcuts`, whose `write()` opened that dialog. The rail advertised a
   pane; the pane advertised a button; the button opened a modal.
 
-So the bindings were the only part of Anchor's configuration that search could not find,
+So the bindings were the only part of dsul's configuration that search could not find,
 that `?focus=` could not deep-link, that had no per-row reset and no modified marker, and
 that you could only look at from inside something summoned. Every one of those is
 machinery the settings surface already has and hands to any record that asks.

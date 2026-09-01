@@ -1,35 +1,49 @@
-# v0-anchor
+# dsul
 
-This is a [Next.js](https://nextjs.org) project bootstrapped with [v0](https://v0.app).
+**Do Stuff Unlimited** — a personal planning PWA. A day/week schedule grid, a
+braindump sidebar, recurring habits, an end-of-day review, reminders that reach
+out on their own, and an AI assistant ("Beacon").
 
-## Built with v0
+Next.js App Router + Supabase, deployed on Vercel.
 
-This repository is linked to a [v0](https://v0.app) project. You can continue developing by visiting the link below -- start new chats to make changes, and v0 will push commits directly to this repo. Every merge to `main` will automatically deploy.
-
-[Continue working on v0 →](https://v0.app/chat/projects/prj_2QhGFnySqj2i7D8jJSDsosGKUSWs)
-
-## Getting Started
-
-First, run the development server:
+## Getting started
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+vercel env pull .env.local   # .env.local is gitignored and Vercel-generated
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+E2E tests need a separate `.env.test` — see `.env.test.example`.
 
-## Learn More
+## Commands
 
-To learn more, take a look at the following resources:
+```bash
+pnpm dev            # next dev --webpack
+pnpm build          # next build --webpack
+pnpm lint           # eslint .
+pnpm test           # vitest run  (unit)
+pnpm e2e            # playwright test
+pnpm db:list        # supabase migration list
+pnpm db:push        # supabase db push
+pnpm db:new <name>  # supabase migration new
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-- [v0 Documentation](https://v0.app/docs) - learn about v0 and how to use it.
+## Layout
 
-<a href="https://v0.app/chat/api/kiro/clone/kjswalls/v0-anchor" alt="Open in Kiro"><img src="https://pdgvvgmkdvyeydso.public.blob.vercel-storage.com/open%20in%20kiro.svg?sanitize=true" /></a>
+pnpm workspace, Node 24.
+
+| Path                | What it is                                                        |
+| ------------------- | ----------------------------------------------------------------- |
+| `app/`              | Routes — one main page plus `api/` routes                          |
+| `components/`       | The UI (`views/`, `shell/`, `planner/`, `sidebar/`, `mobile/`, …)  |
+| `lib/`              | Stores, registries, and domain logic                               |
+| `packages/types`    | `@dsul/types` — shared Zod schemas; its `dist/` is committed       |
+| `openclaw-plugin/`  | `@dsul/openclaw-context` — brings your plan into an AI conversation |
+| `supabase/`         | Migrations — the single source of truth for the schema             |
+| `memory/plans/`     | Longer-running design docs                                         |
+
+Architecture notes, conventions, and the gotchas worth knowing before editing
+live in [CLAUDE.md](CLAUDE.md).

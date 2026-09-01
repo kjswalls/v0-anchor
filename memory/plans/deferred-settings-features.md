@@ -12,7 +12,7 @@ row is gone for good, and what's left is a small cleanup rather than a feature. 
 stays here because the reasoning is worth more than the row was.
 
 **Filing:** `gh` 2.97.0 is installed but not authenticated, so nothing has been filed yet.
-Once `gh auth login` is done against `kjswalls/v0-anchor`, each `##` section below **except
+Once `gh auth login` is done against `kjswalls/dsul`, each `##` section below **except
 Default view** is one issue (heading = title, body = everything under it).
 
 Suggested order, most-load-bearing first: the EOD cron (a shipped feature that has never once
@@ -187,7 +187,7 @@ settings survived until the next time you looked at a week.
 
 ### The decision (2026-08-12)
 
-**Option (a): last-used wins.** Anchor opens where you left off, the setting is gone for good,
+**Option (a): last-used wins.** dsul opens where you left off, the setting is gone for good,
 and the mechanism stays exactly as it is — which is what Things and Notion Calendar do.
 
 The important part: **the behaviour is already correct, and `default_view` is load-bearing.**

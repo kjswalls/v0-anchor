@@ -20,14 +20,14 @@ const sourceSerif = Source_Serif_4({
 })
 
 export const metadata: Metadata = {
-  title: 'Anchor — ADHD-Friendly Daily Planning',
+  title: 'dsul — Do Stuff Unlimited',
   description: 'A calm, minimal daily planner designed for neurodivergent minds. Plan your day with gentle structure.',
   generator: 'v0.app',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Anchor',
+    title: 'dsul',
   },
   icons: {
     icon: [
@@ -79,6 +79,23 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} ${sourceSerif.variable} font-sans antialiased`}>
+        {/* One-time key migration — dsul-* → dsul-* (the "dsul" rename).
+            MUST stay above the palette script and ahead of all hydration: an
+            unstamped browser is an ORPHANED browser to lib/local-state.ts, so
+            if `dsul-local-state-owner` were absent on the first load after the
+            rename every store below it would be CLEARED as someone else's.
+            Renaming the whole prefix in one pre-paint pass is what keeps the
+            palette, the rebindings, the filters and every Beacon transcript.
+            Prefix-wide (not a key list) so the per-item chat threads
+            (`dsul-item-chat-<id>`) travel with the fixed keys; an existing
+            dsul-* value always wins, so a second run is a no-op. Safe to delete
+            once every browser has loaded the app once after the rename. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{var M=function(s){var k=[],i,n,v;for(i=0;i<s.length;i++){n=s.key(i);if(n&&n.lastIndexOf('dsul-',0)===0)k.push(n)}for(i=0;i<k.length;i++){v=s.getItem(k[i]);n='dsul-'+k[i].slice(7);if(v!==null&&s.getItem(n)===null)s.setItem(n,v);s.removeItem(k[i])}};M(localStorage);M(sessionStorage)}catch(e){}",
+          }}
+        />
         {/* Palette pre-hydration: stamp <html data-theme> from the raw
             localStorage key before first paint, the way next-themes pre-applies
             the .dark class — without this a non-default palette flashes the
@@ -93,7 +110,7 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "try{if(/[?&]reset-theme\\b/.test(location.search)){localStorage.removeItem('anchor-palette');sessionStorage.setItem('anchor-palette-reset','1')}else{var p=localStorage.getItem('anchor-palette');if(p&&p!=='default'&&/^[a-z][a-z0-9-]{0,31}$/.test(p)){document.documentElement.dataset.theme=p}}}catch(e){}",
+              "try{if(/[?&]reset-theme\\b/.test(location.search)){localStorage.removeItem('dsul-palette');sessionStorage.setItem('dsul-palette-reset','1')}else{var p=localStorage.getItem('dsul-palette');if(p&&p!=='default'&&/^[a-z][a-z0-9-]{0,31}$/.test(p)){document.documentElement.dataset.theme=p}}}catch(e){}",
           }}
         />
         {/* No `disableTransitionOnChange`: it injected `transition: none` across

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { GoalCreateSchema, GoalUpdateSchema } from '@anchor-app/types';
+import { GoalCreateSchema, GoalUpdateSchema } from '@dsul/types';
 import { resolveGoalStateWrite, roleStillValid } from '@/lib/goals';
 import type { Goal, Item } from '@/lib/planner-types';
 
