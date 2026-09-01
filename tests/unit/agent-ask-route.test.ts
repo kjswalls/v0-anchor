@@ -49,7 +49,7 @@ vi.mock('@/lib/supabase-service', () => ({
 
 import { POST } from '@/app/api/agent/items/[id]/ask/route';
 
-const ask = (body: unknown, auth = 'Bearer anchor_key', id = 'item-1') =>
+const ask = (body: unknown, auth = 'Bearer dsul_key', id = 'item-1') =>
   POST(
     new Request(`http://localhost/api/agent/items/${id}/ask`, {
       method: 'POST',

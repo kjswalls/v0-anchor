@@ -80,7 +80,7 @@ function fallbackPane(path: string | undefined): PaneId {
 }
 
 /* ── The one modal this page opens by name, deferred ───────────────────────
-   Reached only from a row the user clicks: Anchor → Send feedback. Deferring it
+   Reached only from a row the user clicks: dsul → Send feedback. Deferring it
    takes weight off this route's first load — measured across the PR that
    introduced the split at 40.6 kB gzip for the two modals that were deferred
    together, spent on surfaces most visits never open.
@@ -142,7 +142,7 @@ function SettingsSkeleton({ userId }: { userId: string | null }) {
           className="hover:text-foreground inline-flex items-center gap-1 transition-colors"
         >
           <ChevronLeft className="size-3.5" aria-hidden />
-          Anchor
+          dsul
         </Link>
         <span aria-hidden>/</span>
         <span className="text-foreground font-medium">Settings</span>
@@ -184,7 +184,7 @@ function SettingsSkeleton({ userId }: { userId: string | null }) {
       {stuck && (
         <div className="flex gap-2">
           <Button asChild variant="outline" size="sm">
-            <Link href="/">Open Anchor</Link>
+            <Link href="/">Open dsul</Link>
           </Button>
           {!userId && (
             <Button asChild variant="outline" size="sm">
@@ -313,7 +313,7 @@ export default function SettingsPage() {
   // commit on blur by comparing their draft against the last RENDERED value —
   // so a stale value prop silently drops the next edit. JSON.stringify rather
   // than a '|' join because systemPrompt is free text and can contain the
-  // separator. No new exposure: it is already plaintext in anchor-ai-settings.
+  // separator. No new exposure: it is already plaintext in dsul-ai-settings.
   const aiTick = useAISettingsStore((s) =>
     JSON.stringify([s.provider, s.model, s.systemPrompt, s.apiKey])
   );

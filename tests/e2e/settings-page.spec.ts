@@ -191,7 +191,7 @@ test.describe('Settings page', () => {
 
   test('the breadcrumb returns to the planner', async ({ page }) => {
     await gotoSettings(page, 'day');
-    await page.getByRole('link', { name: 'Anchor' }).click();
+    await page.getByRole('link', { name: 'dsul' }).click();
     await expect(page.getByTestId('view-root')).toBeAttached({ timeout: 20_000 });
   });
 });

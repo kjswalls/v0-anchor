@@ -14,7 +14,7 @@ export const CHANNEL_TIMEOUT_MS = 8000
  * The Home Assistant base URL is typed by the user into their own settings, so
  * the ordinary SSRF framing ("untrusted input") does not quite fit: someone who
  * can write that config already holds the session. What they do NOT already
- * hold is the ability to make ANCHOR'S SERVER issue requests from inside the
+ * hold is the ability to make DSUL'S SERVER issue requests from inside the
  * hosting provider's network — and that is a real escalation, because cloud
  * metadata endpoints answer to anything that can reach them.
  *

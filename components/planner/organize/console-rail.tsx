@@ -65,7 +65,7 @@ export type ConsoleSection =
  *     route back. ⌘Z is session-scoped and fifty deep; it is not the answer.
  *     Gating the bin because of the room it happens to stand in is gating by
  *     HOUSING rather than by MEANING, which is the exact mistake "The Weight of
- *     Anchor" exists to correct — and the rail already says so, pinning trash
+ *     dsul" exists to correct — and the rail already says so, pinning trash
  *     below a rule as a lifecycle surface rather than a peer of either group.
  *
  * So with both extensions off the console still opens, holding one row: Trash.

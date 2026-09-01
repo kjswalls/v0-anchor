@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { buildAnchorContext } from '@/lib/ai-context';
+import { buildDsulContext } from '@/lib/ai-context';
 import type { Item, Program, Routine } from '@/lib/planner-types';
 
 /**
@@ -32,7 +32,7 @@ const build = (over: {
   routines?: Routine[];
   programs?: Program[];
 }) =>
-  buildAnchorContext({
+  buildDsulContext({
     projects: [],
     userTimezone: TZ,
     ...over,
@@ -141,7 +141,7 @@ describe('the Paused section', () => {
     // omits the section SILENTLY — so filtering here would leave Beacon blind
     // to the very item the conversation is about, with no error to notice.
     const items = [task('t1', 'Gym', { pausedAt: '2026-07-01T00:00:00Z' })];
-    const out = buildAnchorContext({
+    const out = buildDsulContext({
       items,
       projects: [],
       userTimezone: TZ,

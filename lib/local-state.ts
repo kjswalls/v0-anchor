@@ -16,7 +16,7 @@ import { useViewStore } from './view-store';
  *
  * ── THE PROBLEM ─────────────────────────────────────────────────────────────
  * Ten separate things persist to localStorage under BROWSER-GLOBAL keys —
- * `anchor-ai-settings`, `anchor-view`, `planner-storage`, `anchor-chat-history`
+ * `dsul-ai-settings`, `dsul-view`, `planner-storage`, `dsul-chat-history`
  * and the rest. None of them carries an account. On a shared browser they hold
  * whoever signed in last, so the next person to sign in inherits them: their
  * canvas filters name someone else's projects, the palette's "Recent" group
@@ -52,7 +52,7 @@ import { useViewStore } from './view-store';
  *
  * Cases 3 and 4 are unreachable from memory: after a reload the app has no idea
  * who wrote the blob on disk. So this module writes that down.
- * `anchor-local-state-owner` names the account whose state is currently on
+ * `dsul-local-state-owner` names the account whose state is currently on
  * disk; every established session compares itself against it and clears on a
  * mismatch. That is the same move morning-store makes with
  * `settingsHydratedUserId` — an explicit "whose is this?" field instead of
@@ -77,8 +77,8 @@ import { useViewStore } from './view-store';
  *
  * ── FAIL CLOSED, BUT NOT INDISCRIMINATELY ───────────────────────────────────
  * No stamp means nothing on disk records who wrote it. Every existing install
- * is in that state on its first load after this ships, and neither `anchor-view`
- * nor `anchor-ai-settings` has ANY server copy — no `saveSettings` call, no
+ * is in that state on its first load after this ships, and neither `dsul-view`
+ * nor `dsul-ai-settings` has ANY server copy — no `saveSettings` call, no
  * supabase reference in either file — so a blanket clear there is permanent,
  * unrecoverable loss of things the user authored.
  *
@@ -100,26 +100,26 @@ import { useViewStore } from './view-store';
  *   planner-storage        all 13 INERT — density, view mode, grouping axis,
  *                          sort/visibility toggles, week start, clock format.
  *                          Enum and boolean throughout; none is free text.
- *   anchor-view            canvasFilters / braindumpFilters DISCLOSIVE (they
+ *   dsul-view            canvasFilters / braindumpFilters DISCLOSIVE (they
  *                          hold `project:`/`group:` refs, tag names and goal ids
  *                          lifted from the account's own containers). The other
  *                          13 INERT. `adoptedLegacy` never cleared at all.
- *   anchor-ai-settings     all DISCLOSIVE — apiKey is a credential,
+ *   dsul-ai-settings     all DISCLOSIVE — apiKey is a credential,
  *                          systemPrompt and assistantName are text the user
  *                          wrote, and provider/model name the paid vendor
  *                          account behind the key (and are incoherent without
  *                          it).
- *   anchor-morning-store   all DISCLOSIVE — the check TIME is the hour this
+ *   dsul-morning-store   all DISCLOSIVE — the check TIME is the hour this
  *                          person gets up, the dismissal is a date they acted
  *                          on, the auto-age policy drives an unattended
  *                          mutation, and a receipt carries row TITLES.
- *   anchor-eod-store       all DISCLOSIVE — same reasons, at the other end of
+ *   dsul-eod-store       all DISCLOSIVE — same reasons, at the other end of
  *                          the day.
- *   anchor-sidebar-settings  leftSidebarHoverEnabled INERT. Width and
+ *   dsul-sidebar-settings  leftSidebarHoverEnabled INERT. Width and
  *                          open/collapsed chrome never cleared at all.
- *   anchor-keyboard-shortcuts  overrides INERT — an id→keys map, no free text,
+ *   dsul-keyboard-shortcuts  overrides INERT — an id→keys map, no free text,
  *                          and there is no server copy to restore it from.
- *   anchor-command-usage   DISCLOSIVE — "Recent" renders the previous person's
+ *   dsul-command-usage   DISCLOSIVE — "Recent" renders the previous person's
  *                          last actions as labels.
  *   chat transcripts       DISCLOSIVE, obviously and entirely.
  *   sweep-grace            DISCLOSIVE — keyed by the previous account's row ids.
@@ -140,7 +140,7 @@ import { useViewStore } from './view-store';
  * /api/reminders/secrets answering which keys are set and never what they are —
  * and the Beacon key should move there under its own ticket.
  */
-export const LOCAL_STATE_OWNER_KEY = 'anchor-local-state-owner';
+export const LOCAL_STATE_OWNER_KEY = 'dsul-local-state-owner';
 
 /**
  * 'all' — we KNOW the user changed. 'disclosive' — we do not know whose this
@@ -198,7 +198,7 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
     clear: ({ scope }) => usePlannerStore.getState().clearUserScopedState(scope),
   },
   {
-    key: 'anchor-view',
+    key: 'dsul-view',
     keeps: ['adoptedLegacy'],
     inert: [
       'scope',
@@ -225,37 +225,37 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
     clear: ({ scope }) => useViewStore.getState().clearUserScopedState(scope),
   },
   {
-    key: 'anchor-ai-settings',
+    key: 'dsul-ai-settings',
     keeps: [],
     inert: [],
     clear: () => useAISettingsStore.getState().clearUserScopedState(),
   },
   {
-    key: 'anchor-morning-store',
+    key: 'dsul-morning-store',
     keeps: [],
     inert: [],
     clear: ({ incomingUserId }) => useMorningStore.getState().clearUserScopedState(incomingUserId),
   },
   {
-    key: 'anchor-eod-store',
+    key: 'dsul-eod-store',
     keeps: [],
     inert: [],
     clear: () => useEODStore.getState().clearUserScopedState(),
   },
   {
-    key: 'anchor-sidebar-settings',
+    key: 'dsul-sidebar-settings',
     keeps: ['leftSidebarOpen', 'chatExpanded', 'leftSidebarWidth'],
     inert: ['leftSidebarHoverEnabled'],
     clear: ({ scope }) => useSidebarStore.getState().clearUserScopedState(scope),
   },
   {
-    key: 'anchor-keyboard-shortcuts',
+    key: 'dsul-keyboard-shortcuts',
     keeps: [],
     inert: ['overrides'],
     clear: ({ scope }) => useKeyboardShortcutsStore.getState().clearUserScopedState(scope),
   },
   {
-    key: 'anchor-command-usage',
+    key: 'dsul-command-usage',
     keeps: [],
     inert: [],
     clear: () => useCommandUsageStore.getState().clearUserScopedState(),

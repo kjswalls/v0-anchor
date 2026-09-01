@@ -4,13 +4,13 @@ import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { CopyableCommand } from '@/components/docs/copyable-command';
 
 export const metadata: Metadata = {
-  title: 'Connect OpenClaw — Anchor',
+  title: 'Connect OpenClaw — dsul',
   description:
-    'How to connect your own OpenClaw instance to Anchor so your agent knows what is on your plate.',
+    'How to connect your own OpenClaw instance to dsul so your agent knows what is on your plate.',
 };
 
 const PLUGIN_DOCS_URL =
-  'https://github.com/kjswalls/v0-anchor/tree/main/openclaw-plugin#readme';
+  'https://github.com/kjswalls/dsul/tree/main/openclaw-plugin#readme';
 
 function Step({
   n,
@@ -45,16 +45,16 @@ export default function OpenClawDocsPage() {
           className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          Back to Anchor
+          Back to dsul
         </Link>
 
         <header className="space-y-2">
-          <div className="text-3xl">⚓</div>
+          <div className="text-3xl">⚡</div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
             Connect OpenClaw
           </h1>
           <p className="text-sm leading-relaxed text-muted-foreground">
-            If you run your own OpenClaw gateway, the Anchor plugin lets your agent see
+            If you run your own OpenClaw gateway, the dsul plugin lets your agent see
             your tasks and habits from any channel — no copy-pasting your list into chat.
             Five minutes, mostly waiting.
           </p>
@@ -63,14 +63,14 @@ export default function OpenClawDocsPage() {
         <ol className="space-y-6">
           <Step n={1} title="Install the plugin">
             <p>On the machine running your OpenClaw gateway:</p>
-            <CopyableCommand command="openclaw plugins install @anchor-app/anchor-context" />
+            <CopyableCommand command="openclaw plugins install @dsul/openclaw-context" />
           </Step>
 
           <Step n={2} title="Start the setup wizard">
-            <CopyableCommand command="openclaw anchor-context setup" />
+            <CopyableCommand command="openclaw dsul-context setup" />
             <p>
               It prints a device code and a link to this app. Nothing to copy into
-              Anchor by hand — leave the terminal running and open the link.
+              dsul by hand — leave the terminal running and open the link.
             </p>
           </Step>
 
@@ -96,8 +96,8 @@ export default function OpenClawDocsPage() {
               <code className="font-mono text-xs text-foreground">
                 https://your-gateway.ts.net
               </code>
-              . With it, Anchor pushes changes to the plugin the moment they happen, and
-              the chat sidebar in Anchor can talk to your agent.
+              . With it, dsul pushes changes to the plugin the moment they happen, and
+              the chat sidebar in dsul can talk to your agent.
             </p>
             <p>
               Leaving it blank is a perfectly fine choice. That is pull-only mode: the
@@ -106,7 +106,7 @@ export default function OpenClawDocsPage() {
               <span className="text-foreground">Connected · pull-only</span> — still
               connected, still working. You can add{' '}
               <code className="font-mono text-xs text-foreground">publicUrl</code>{' '}
-              to the <code className="font-mono text-xs text-foreground">anchor-context</code>{' '}
+              to the <code className="font-mono text-xs text-foreground">dsul-context</code>{' '}
               config in <code className="font-mono text-xs text-foreground">openclaw.json</code>{' '}
               whenever you like.
             </p>

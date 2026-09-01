@@ -1,7 +1,7 @@
-import type { Task, Habit, Project, HabitGroupType, Item, Routine, Program, Goal } from '@anchor-app/types'
+import type { Task, Habit, Project, HabitGroupType, Item, Routine, Program, Goal } from '@dsul/types'
 
 /** Plugin-internal cache shape */
-export interface AnchorCache {
+export interface DsulCache {
   userId: string
   userTimezone: string
   tasks: Task[]
@@ -29,12 +29,12 @@ export interface AnchorCache {
 
 /** Plugin config (from openclaw.json) */
 export interface PluginConfig {
-  anchorUrl: string
+  dsulUrl: string
   apiKey: string
   publicUrl?: string   // Gateway's public URL (e.g. https://midgar-1b4eaa3.turkey-rockhopper.ts.net)
   webhookSecret?: string
   cacheTtlMs?: number
-  /** OpenClaw agent for Anchor sidebar chat (default: main). */
+  /** OpenClaw agent for dsul sidebar chat (default: main). */
   agentId?: string
   /** Fallback agent id if agentId unset (legacy / alternate key in openclaw.json). */
   id?: string

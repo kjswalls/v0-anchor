@@ -46,7 +46,7 @@ interface SwNotificationOptions extends NotificationOptions {
    *
    * Without it, a replacement over an existing tag lands SILENTLY — per the
    * Notifications spec, replacing suppresses the alert unless renotify is set.
-   * The cue's tag is item-scoped (`anchor-item-<id>`), so yesterday's cue
+   * The cue's tag is item-scoped (`dsul-item-<id>`), so yesterday's cue
    * sitting unread in the shade would silently swallow today's.
    */
   renotify?: boolean;
@@ -69,10 +69,10 @@ self.addEventListener('push', (event) => {
   try {
     payload = event.data.json();
   } catch {
-    payload = { title: 'Anchor', body: event.data.text() };
+    payload = { title: 'dsul', body: event.data.text() };
   }
 
-  const title = payload.title ?? 'Anchor';
+  const title = payload.title ?? 'dsul';
   const options: SwNotificationOptions = {
     body: payload.body ?? '',
     icon: '/icons/icon-192.png',
@@ -101,11 +101,11 @@ self.addEventListener('push', (event) => {
 async function reportActionFailure(itemTitle: string | undefined): Promise<void> {
   await self.registration.showNotification("Couldn't save that", {
     body: itemTitle
-      ? `${itemTitle} is still open — tap to mark it in Anchor.`
-      : 'Tap to mark it in Anchor.',
+      ? `${itemTitle} is still open — tap to mark it in dsul.`
+      : 'Tap to mark it in dsul.',
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',
-    tag: 'anchor-action-failed',
+    tag: 'dsul-action-failed',
     requireInteraction: true,
     data: { url: '/' },
   });
@@ -120,7 +120,7 @@ async function openOrFocus(url: string): Promise<void> {
   for (const client of clientList) {
     if (client.url === target && 'focus' in client) return void client.focus();
   }
-  // Fall back to focusing ANY open Anchor tab and steering it, rather than
+  // Fall back to focusing ANY open dsul tab and steering it, rather than
   // opening a duplicate: the PWA is usually already running.
   for (const client of clientList) {
     if (!('navigate' in client) || !('focus' in client)) continue;

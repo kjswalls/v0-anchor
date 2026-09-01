@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient } from '@/lib/supabase-service'
 
-const ANCHOR_URL = 'https://v0-anchor-plum.vercel.app'
+const DSUL_URL = 'https://do.dsul.app'
 const SESSION_TTL_MS = 15 * 60 * 1000 // 15 minutes
 const MAX_PENDING_SESSIONS_PER_HOUR = 10
 
@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
     }
 
     const sessionId = data.id
-    const connectUrl = `${ANCHOR_URL}/connect?code=${encodeURIComponent(userCode)}`
+    const connectUrl = `${DSUL_URL}/connect?code=${encodeURIComponent(userCode)}`
 
     return NextResponse.json({ sessionId, userCode, connectUrl, expiresAt })
   } catch (err) {

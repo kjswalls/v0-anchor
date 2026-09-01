@@ -17,7 +17,7 @@ const MAX_PAUSED_TITLES = 5
  * `focusItemId` (per-item threads) prepends a focused-item section; the base
  * output without it stays byte-identical — the pinned tests parse that shape.
  */
-export function buildAnchorContext(state: {
+export function buildDsulContext(state: {
   items: Item[]
   projects: Project[]
   focusItemId?: string
@@ -46,7 +46,7 @@ export function buildAnchorContext(state: {
   const todayStr = toDateStr(today, tz)
   const lines: string[] = []
 
-  lines.push('## Anchor Context')
+  lines.push('## dsul Context')
   lines.push(`Date: ${format(today, 'EEEE, MMMM d yyyy')}`)
   lines.push('')
 

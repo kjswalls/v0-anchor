@@ -7,7 +7,7 @@
  * moment two of them compose their own sentence the design decisions below stop
  * being decisions and become whatever each adapter's author felt like.
  *
- * THE COPY CONTRACT. Anchor does not open by telling you what you are behind
+ * THE COPY CONTRACT. dsul does not open by telling you what you are behind
  * on — see the BarCopy note in components/ai/morning-check.tsx, and the
  * "Still waiting" heading in lib/item-registry.ts that was deliberately not
  * called "Overdue". A reminder is the surface most tempted to break that rule

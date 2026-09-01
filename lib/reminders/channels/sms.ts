@@ -5,7 +5,7 @@
  *
  * The middle of the range, and the reason it is worth having alongside push:
  * an SMS lands in the one inbox people still read reflexively, on a device that
- * does not need Anchor installed, with no permission prompt to have accepted
+ * does not need dsul installed, with no permission prompt to have accepted
  * months ago and no service worker to have been evicted. It is what still works
  * on the day push quietly stopped.
  *

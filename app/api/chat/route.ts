@@ -13,7 +13,7 @@ const COMING_SOON_MESSAGE =
   'This provider is coming soon! For now, add an OpenAI API key in Settings → AI Assistant.'
 
 const MOCK_RESPONSE =
-  "Hi! I'm your Anchor AI assistant. (AI not configured — add your OpenAI API key in Settings → AI Assistant to enable me.)"
+  "Hi! I'm your dsul AI assistant. (AI not configured — add your OpenAI API key in Settings → AI Assistant to enable me.)"
 
 function streamText(text: string, encoder: TextEncoder) {
   return new ReadableStream({
@@ -59,7 +59,7 @@ export async function POST(req: NextRequest) {
 
   // ── OpenClaw gateway ───────────────────────────────────────────────────────
   // Proxied here rather than called from the browser: the gateway token is full
-  // operator access and stays server-side. Chunks are translated into Anchor's
+  // operator access and stays server-side. Chunks are translated into dsul's
   // own frames, so the client parser is the same one the OpenAI path feeds.
   if (provider === 'openclaw') {
     try {

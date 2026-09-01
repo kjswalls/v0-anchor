@@ -55,7 +55,7 @@ export default async function globalSetup() {
   const apiKey: string =
     existing?.[0]?.openclaw_api_key ??
     // Same shape the app mints: app/api/agent/apikey/route.ts.
-    `anchor_${randomBytes(32).toString('hex')}`;
+    `dsul_${randomBytes(32).toString('hex')}`;
 
   const settingsRes = await rest('user_settings', {
     method: 'POST',

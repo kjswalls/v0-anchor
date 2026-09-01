@@ -16,7 +16,7 @@ import { dispatch, type ToolResult } from '@/lib/mcp/protocol'
 import { TOOL_DESCRIPTORS, toolByName, type ToolPlan } from '@/lib/mcp/tools'
 
 /**
- * POST /api/mcp — Anchor's planner as a remote MCP server.
+ * POST /api/mcp — dsul's planner as a remote MCP server.
  *
  * One endpoint, JSON-RPC 2.0 in the body, which is MCP's Streamable HTTP
  * transport minus the optional SSE half (nothing here streams, and a tools-only
@@ -34,7 +34,7 @@ import { TOOL_DESCRIPTORS, toolByName, type ToolPlan } from '@/lib/mcp/tools'
  *
  * Tool calls are executed IN-PROCESS against the same handler factories the
  * /api/agent routes are built from — not by re-implementing their rules and not
- * by Anchor calling itself over HTTP. Every validation, refinement and error
+ * by dsul calling itself over HTTP. Every validation, refinement and error
  * string stays in lib/agent-api.ts, so the two protocols can never disagree.
  */
 
@@ -148,7 +148,7 @@ async function toToolResult(
       // that over on failure is the precise outcome the narrowing exists to
       // prevent — a silent, enormous, unasked-for context dump.
       return {
-        content: [{ type: 'text', text: 'Could not summarise the response. Try anchor_get_context.' }],
+        content: [{ type: 'text', text: 'Could not summarise the response. Try dsul_get_context.' }],
         isError: true,
       }
     }
@@ -159,7 +159,7 @@ async function toToolResult(
   // strings on the goal-role predicates), and a JSON-RPC error would deny the
   // model the chance to correct itself.
   return {
-    content: [{ type: 'text', text: `Anchor returned ${res.status}: ${text}` }],
+    content: [{ type: 'text', text: `dsul returned ${res.status}: ${text}` }],
     isError: true,
   }
 }
@@ -239,7 +239,7 @@ export async function POST(req: NextRequest) {
   for (const one of messages) {
     const response = await dispatch(one, {
       tools: TOOL_DESCRIPTORS,
-      serverInfo: { name: 'anchor', version: '1' },
+      serverInfo: { name: 'dsul', version: '1' },
       callTool: async (name, args) => {
         const tool = toolByName(name)
         if (!tool) return { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true }

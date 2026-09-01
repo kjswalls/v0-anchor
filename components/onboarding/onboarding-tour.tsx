@@ -429,7 +429,7 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
             <div className="relative">
               <Image
                 src="/icons/icon-192.png"
-                alt="Anchor"
+                alt="dsul"
                 width={80}
                 height={80}
                 className="rounded-2xl shadow-lg"
@@ -437,7 +437,7 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
             </div>
 
             <div className="space-y-2">
-              <h1 className="text-2xl font-semibold text-foreground">Welcome to Anchor ⚓</h1>
+              <h1 className="text-2xl font-semibold text-foreground">Welcome to dsul ⚡</h1>
               <p className="text-muted-foreground text-sm leading-relaxed">
                 Your calm space to plan the day.
                 <br />

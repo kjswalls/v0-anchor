@@ -44,7 +44,7 @@ export const pushChannel: NudgeChannel = {
       // Collapse on the item (or on the day, for a multi-item last call) so a
       // re-delivery REPLACES rather than stacks. A shade with four copies of
       // the same cue is how someone learns to swipe the whole app away.
-      tag: nudge.itemId ? `anchor-item-${nudge.itemId}` : `anchor-${nudge.kind}-${nudge.dateStr}`,
+      tag: nudge.itemId ? `dsul-item-${nudge.itemId}` : `dsul-${nudge.kind}-${nudge.dateStr}`,
       actions: actionable
         ? [
             { action: ACTION_DONE, title: 'Done' },

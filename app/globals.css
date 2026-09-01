@@ -4,12 +4,12 @@
 @custom-variant dark (&:is(.dark *));
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Anchor design tokens — redesign token layer (see design/redesign/)
+   dsul design tokens — redesign token layer (see design/redesign/)
 
    Structure:
      1. Raw ramps        — primitives; never referenced by components
      2. Surfaces         — elevation scale (backdrop → canvas → card → well)
-     3. Semantic colors  — shadcn aliases + Anchor domain tokens
+     3. Semantic colors  — shadcn aliases + dsul domain tokens
      4. Type / radius / shadow / motion
    Light values derive from the Figma mockups; dark from the navy reference
    (design/redesign/darkModeColorReference.png) with the lime accent retained.
@@ -87,7 +87,7 @@
      notch stronger so a latched selection reads a touch above a passing hover. */
   --row-selected: oklch(0.22 0.012 272 / 9%);
 
-  /* ── 3b. Anchor semantics ────────────────────────────────────────────── */
+  /* ── 3b. dsul semantics ────────────────────────────────────────────── */
   /* The plane every modal stands on — dialogs, alert dialogs, mobile sheets.
      Deliberately NOT --card. Card is the top of the ramp (dark 0.278L), sized
      for pills and popovers; a 460px surface up there reads as a lamp rather
@@ -558,7 +558,7 @@
   --color-modal: var(--modal);
   --color-scrim: var(--scrim);
 
-  /* Anchor semantics */
+  /* dsul semantics */
   --color-success: var(--success);
   --color-success-foreground: var(--success-foreground);
   --color-warning: var(--warning);

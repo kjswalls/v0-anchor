@@ -1,6 +1,7 @@
 {
-  "name": "Anchor — ADHD-Friendly Daily Planning",
-  "short_name": "Anchor",
+  "name": "dsul — Do Stuff Unlimited",
+  "short_name": "dsul",
+  "id": "/",
   "description": "A calm, minimal daily planner designed for neurodivergent minds.",
   "start_url": "/",
   "display": "standalone",

@@ -37,7 +37,7 @@ export const STAKE_SETTINGS: ChannelSettingsSpec[] = [
         key: 'amount',
         label: 'Per miss',
         placeholder: '10',
-        description: 'What one missed habit costs. Anchor records it — it cannot take payment.',
+        description: 'What one missed habit costs. dsul records it — it cannot take payment.',
         keywords: ['cost', 'price', 'how much', 'amount'],
       },
       { key: 'currency', label: 'Currency', placeholder: 'USD', keywords: ['gbp', 'eur', 'usd', 'money'] },

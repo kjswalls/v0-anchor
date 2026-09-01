@@ -68,7 +68,7 @@ test.describe('Sidebar resize', () => {
   test.beforeEach(async ({ page }) => {
     await loginTestUser(page);
     // Every context starts from globalSetup's storageState, which carries no
-    // anchor-sidebar-settings record — so the column is at its default. Assert
+    // dsul-sidebar-settings record — so the column is at its default. Assert
     // it, because every width below is relative to this.
     await expect.poll(() => columnWidth(page)).toBe(DEFAULT_W);
   });

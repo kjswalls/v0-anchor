@@ -87,7 +87,7 @@ describe('theme palettes — CSS contract', () => {
 
 describe('theme palettes — pre-hydration script contract', () => {
   it('the layout inline script reads the exported storage key', () => {
-    expect(PALETTE_STORAGE_KEY).toBe('anchor-palette');
+    expect(PALETTE_STORAGE_KEY).toBe('dsul-palette');
     expect(layoutTsx).toContain(`localStorage.getItem('${PALETTE_STORAGE_KEY}')`);
   });
 

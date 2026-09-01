@@ -7,7 +7,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
  * The whole surface hangs on one link that is easy to get wrong: the question
  * the user READS comes from `item.aiResult`, and the options come from an
  * `agent_question` event. Nothing structural ties them together —
- * `anchor_report_progress` can set `aiResult` and writes no event at all — so
+ * `dsul_report_progress` can set `aiResult` and writes no event at all — so
  * "newest question event" is not the same as "the question on screen". Offering
  * the wrong buttons is worse than offering none: the text is sent back verbatim
  * as the answer, so a tap files a reply to a question that is not being asked.
@@ -119,7 +119,7 @@ describe('options that belong to a different question', () => {
     /**
      * The sequence that breaks a naive "newest event wins": the agent asks with
      * options, the user does not answer, and the agent asks again through
-     * `anchor_report_progress` — which sets `aiResult` and writes NO event. The
+     * `dsul_report_progress` — which sets `aiResult` and writes NO event. The
      * panel would show the new question above the old question's buttons, and a
      * tap would file "Dana Reyes" as the answer to "what's the invoice number".
      */

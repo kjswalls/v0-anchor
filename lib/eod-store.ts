@@ -99,7 +99,7 @@ export const useEODStore = create<EODStore>()(
       },
     }),
     {
-      name: 'anchor-eod-store',
+      name: 'dsul-eod-store',
       onRehydrateStorage: () => (state) => {
         state?.setHasHydrated(true);
       },

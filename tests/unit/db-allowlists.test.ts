@@ -4,7 +4,7 @@ vi.mock('@/lib/supabase', () => ({ createClient: () => ({}) }));
 vi.mock('@/lib/openclaw-registry', () => ({ notifyPlugins: vi.fn() }));
 
 import { updatesToRow } from '@/lib/db';
-import { TASK_FIELDS, HABIT_FIELDS } from '@anchor-app/types';
+import { TASK_FIELDS, HABIT_FIELDS } from '@dsul/types';
 
 // The updatesToRow allowlists are the ONLY field filter between the app (and
 // the unvalidated agent PATCH bodies) and the items table. They are

@@ -127,7 +127,7 @@ export function sessionCookies(supabaseUrl: string, session: SupabaseSession): C
  * N-copies-to-keep-in-step problem the feature under test was written to end.
  */
 export function seededOwnerState(userId: string): { name: string; value: string } {
-  return { name: 'anchor-local-state-owner', value: userId };
+  return { name: 'dsul-local-state-owner', value: userId };
 }
 
 /**
@@ -153,7 +153,7 @@ export function seededLocalStorage(userId: string): Array<{ name: string; value:
  */
 export function seededViewState(): { name: string; value: string } {
   return {
-    name: 'anchor-view',
+    name: 'dsul-view',
     value: JSON.stringify({
       version: 1,
       state: {

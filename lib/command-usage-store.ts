@@ -57,7 +57,7 @@ export const useCommandUsageStore = create<CommandUsageStore>()(
 
       clearUserScopedState: () => set({ usage: {} }),
     }),
-    { name: 'anchor-command-usage', version: 1 }
+    { name: 'dsul-command-usage', version: 1 }
   )
 );
 

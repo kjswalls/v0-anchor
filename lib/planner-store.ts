@@ -95,7 +95,7 @@ import {
   ROUTINE_FIELDS,
   PROGRAM_FIELDS,
   GOAL_FIELDS,
-} from '@anchor-app/types';
+} from '@dsul/types';
 import { saveSettings } from './settings-service';
 import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
 import { accentColorForName } from './accent-colors';

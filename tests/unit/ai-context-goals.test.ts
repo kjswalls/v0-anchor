@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { buildAnchorContext } from '@/lib/ai-context';
+import { buildDsulContext } from '@/lib/ai-context';
 import type { Goal, Item, Program } from '@/lib/planner-types';
 
 /**
@@ -39,7 +39,7 @@ const goal = (over: Partial<Goal> = {}): Goal =>
   }) as Goal;
 
 const build = (over: { items: Item[]; goals?: Goal[]; programs?: Program[]; focusItemId?: string }) =>
-  buildAnchorContext({ projects: [], userTimezone: TZ, ...over });
+  buildDsulContext({ projects: [], userTimezone: TZ, ...over });
 
 describe('the Long-term goals section', () => {
   beforeEach(() => {

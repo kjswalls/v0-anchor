@@ -82,7 +82,7 @@ import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useViewStore } from '@/lib/view-store';
 import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
 import { enableGoalsAndOrganize } from './support/extensions';
-import type { Goal, Routine, Program } from '@anchor-app/types';
+import type { Goal, Routine, Program } from '@dsul/types';
 
 /**
  * jsdom implements neither PointerEvent nor pointer capture, and Radix's menus

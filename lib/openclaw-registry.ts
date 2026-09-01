@@ -1,5 +1,5 @@
 /**
- * Where Anchor POSTs change events, and how it finds them.
+ * Where dsul POSTs change events, and how it finds them.
  *
  * Registrations live in `plugin_registrations` (migration 042). They used to
  * live in an in-process Map, with a comment saying "in production this would
@@ -306,11 +306,11 @@ export function clearRegistrationCache(): void {
  *   { event, userId, data, timestamp }
  *
  * HMAC signature (if secret is set):
- *   X-Anchor-Signature: sha256=<hex>
+ *   X-Dsul-Signature: sha256=<hex>
  */
 export async function notifyPlugins(
   userId: string,
-  event: AnchorEvent,
+  event: DsulEvent,
   data: unknown
 ): Promise<void> {
   const payload = JSON.stringify({
@@ -344,7 +344,7 @@ async function sendWebhook(reg: PluginRegistration, payload: string): Promise<vo
   // Sign the payload if a secret is configured
   if (reg.secret) {
     const sig = await hmacSha256(reg.secret, payload)
-    headers['X-Anchor-Signature'] = `sha256=${sig}`
+    headers['X-Dsul-Signature'] = `sha256=${sig}`
   }
 
   try {
@@ -380,7 +380,7 @@ async function hmacSha256(secret: string, data: string): Promise<string> {
  * deployed plugin build that registered for it, with nothing logged. The
  * container writes in lib/db.ts emit both names for that reason.
  */
-export type AnchorEvent =
+export type DsulEvent =
   | 'tasks.updated'
   | 'habits.updated'
   | 'projects.updated'

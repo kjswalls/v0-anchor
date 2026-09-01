@@ -87,7 +87,7 @@ import type { Goal, GroupBy } from './planner-types';
  *   OpenClaw plugin `safeParse`s and throws on (CLAUDE.md, "Legacy projections
  *   are permanent"), so a per-account toggle must not be able to change its
  *   shape mid-session. These gates are BROWSER-ONLY, and the asymmetry is the
- *   design: what stops is what Anchor shows you, not what your own agent may do
+ *   design: what stops is what dsul shows you, not what your own agent may do
  *   with your own data.
  *
  * ── THE ONE PLACE THE TWO MEET ──────────────────────────────────────────────

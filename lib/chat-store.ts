@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { usePlannerStore } from './planner-store';
 import { useAISettingsStore } from './ai-settings-store';
-import { buildAnchorContext } from './ai-context';
+import { buildDsulContext } from './ai-context';
 import { goalsEnabled } from './extension-gates';
 import { buildBeaconSystemPrompt } from './beacon-system-prompt';
 import { stripReasoningTags } from './chat-utils';
@@ -27,7 +27,7 @@ export interface ChatMessage {
 }
 
 const HISTORY_TTL_MS = 24 * 60 * 60 * 1000;
-const ITEM_HISTORY_PREFIX = 'anchor-item-chat-';
+const ITEM_HISTORY_PREFIX = 'dsul-item-chat-';
 
 /**
  * Per-thread transcript cap. localStorage is ~5MB for the WHOLE origin and
@@ -55,12 +55,12 @@ interface ChatStore {
   /** OpenClaw connection info (fetched when the provider is openclaw). */
   openclawChatUrl: string | null;
   openclawAgentIdDisplay: string | null;
-  openclawAnchorApiKey: string | null;
+  openclawDsulApiKey: string | null;
   /**
    * True once a gateway URL *and* token are stored server-side. Selects the
    * transport: gateway chat is proxied through /api/chat (durable sessions,
    * operator token never in the browser), and only accounts that have not set
-   * one up still POST at the plugin's /plugins/anchor/chat.
+   * one up still POST at the plugin's /plugins/dsul/chat.
    */
   openclawGatewayConfigured: boolean;
 
@@ -145,7 +145,7 @@ export function createChatStore(config: ChatThreadConfig) {
       hydrated: false,
       openclawChatUrl: null,
       openclawAgentIdDisplay: null,
-      openclawAnchorApiKey: null,
+      openclawDsulApiKey: null,
       openclawGatewayConfigured: false,
 
       hydrate: () => {
@@ -174,7 +174,7 @@ export function createChatStore(config: ChatThreadConfig) {
           set({
             openclawChatUrl: null,
             openclawAgentIdDisplay: null,
-            openclawAnchorApiKey: null,
+            openclawDsulApiKey: null,
             openclawGatewayConfigured: false,
           });
           return;
@@ -202,11 +202,11 @@ export function createChatStore(config: ChatThreadConfig) {
             set({
               openclawChatUrl: chatData.chatUrl ?? null,
               openclawAgentIdDisplay: chatData.agentId ?? null,
-              openclawAnchorApiKey: chatData.anchorApiKey ?? null,
+              openclawDsulApiKey: chatData.dsulApiKey ?? null,
             })
           )
           .catch(() =>
-            set({ openclawChatUrl: null, openclawAgentIdDisplay: null, openclawAnchorApiKey: null })
+            set({ openclawChatUrl: null, openclawAgentIdDisplay: null, openclawDsulApiKey: null })
           );
       },
 
@@ -242,10 +242,10 @@ export function createChatStore(config: ChatThreadConfig) {
         try {
           const { items, projects, itemTypes, routines, programs, goals, userTimezone } =
             usePlannerStore.getState();
-          const context = buildAnchorContext({
+          const context = buildDsulContext({
             items, projects, routines, programs,
             // Beacon is told about goals only while the user has the idea
-            // switched on. `buildAnchorContext` already renders nothing for an
+            // switched on. `buildDsulContext` already renders nothing for an
             // empty list, so this removes a LINE from the context rather than
             // changing its shape — the byte-pinned no-goal output is what an
             // account with Goals off now gets. Nothing is written either way.
@@ -269,12 +269,12 @@ export function createChatStore(config: ChatThreadConfig) {
           // Gateway transport rides the shared /api/chat path below — one
           // client code path for every tier, translation done server-side.
           if (provider === 'openclaw' && !get().openclawGatewayConfigured) {
-            const { openclawChatUrl, openclawAnchorApiKey } = get();
+            const { openclawChatUrl, openclawDsulApiKey } = get();
             if (!openclawChatUrl) {
               patchLastAssistant(() => ({
                 role: 'assistant',
                 content:
-                  'OpenClaw not connected yet — run `openclaw anchor-context setup` and set publicUrl in openclaw.json.',
+                  'OpenClaw not connected yet — run `openclaw dsul-context setup` and set publicUrl in openclaw.json.',
                 timestamp: Date.now(),
               }));
               set({ isLoading: false });
@@ -289,7 +289,7 @@ export function createChatStore(config: ChatThreadConfig) {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
-                  ...(openclawAnchorApiKey ? { Authorization: `Bearer ${openclawAnchorApiKey}` } : {}),
+                  ...(openclawDsulApiKey ? { Authorization: `Bearer ${openclawDsulApiKey}` } : {}),
                 },
                 signal: controller.signal,
                 body: JSON.stringify({ message: trimmed, sessionKey, context }),
@@ -388,8 +388,8 @@ export type ChatStoreHook = ReturnType<typeof createChatStore>;
 
 /** The global Beacon conversation — the pre-factory singleton, unchanged. */
 export const useChatStore = createChatStore({
-  historyKey: 'anchor-chat-history',
-  sessionKey: 'anchor-chat',
+  historyKey: 'dsul-chat-history',
+  sessionKey: 'dsul-chat',
 });
 
 // Per-item threads, created lazily and cached for hook identity — a component
@@ -401,8 +401,8 @@ export function itemChatStore(itemId: string): ChatStoreHook {
   let store = itemChatStores.get(itemId);
   if (!store) {
     store = createChatStore({
-      historyKey: `anchor-item-chat-${itemId}`,
-      sessionKey: `anchor-item-${itemId}`,
+      historyKey: `dsul-item-chat-${itemId}`,
+      sessionKey: `dsul-item-${itemId}`,
       focusItemId: itemId,
     });
     itemChatStores.set(itemId, store);
@@ -427,8 +427,8 @@ function forEachItemThreadKey(fn: (key: string) => void) {
  * per-item thread, in memory and on disk.
  *
  * The most sensitive thing in this app's localStorage after the Beacon API key,
- * and the one Kirby's original report did not name: `anchor-chat-history` and
- * every `anchor-item-chat-<id>` hold the VERBATIM conversation, question and
+ * and the one Kirby's original report did not name: `dsul-chat-history` and
+ * every `dsul-item-chat-<id>` hold the VERBATIM conversation, question and
  * answer, under browser-global keys. The 24h TTL is a quota measure, not a
  * privacy one — it is not a sign-out, and it does not fire for a thread nobody
  * reopens until the boot sweep below happens to reach it.

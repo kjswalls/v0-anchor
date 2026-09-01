@@ -20,14 +20,14 @@ const sourceSerif = Source_Serif_4({
 })
 
 export const metadata: Metadata = {
-  title: 'Anchor — ADHD-Friendly Daily Planning',
+  title: 'dsul — Do Stuff Unlimited',
   description: 'A calm, minimal daily planner designed for neurodivergent minds. Plan your day with gentle structure.',
   generator: 'v0.app',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Anchor',
+    title: 'dsul',
   },
   icons: {
     icon: [
@@ -79,6 +79,31 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.variable} ${sourceSerif.variable} font-sans antialiased`}>
+        {/* One-time key migration — anchor-* → dsul-* (the Anchor→dsul rename).
+            MUST stay above the palette script and ahead of all hydration: an
+            unstamped browser is an ORPHANED browser to lib/local-state.ts, so
+            if `dsul-local-state-owner` were absent on the first load after the
+            rename every store below it would be CLEARED as someone else's.
+            Renaming the whole prefix in one pre-paint pass is what keeps the
+            palette, the rebindings, the filters and every Beacon transcript.
+            Prefix-wide (not a key list) so the per-item chat threads
+            (`anchor-item-chat-<id>`) travel with the fixed keys; an existing
+            dsul-* value always wins, so a second run is a no-op. The owner
+            stamp moves FIRST and every key is moved under its own try: a
+            storage quota error partway through must not be the thing that
+            leaves the browser unstamped, and one failed write must cost only
+            its own key rather than every key after it. (That key is not
+            reliably recoverable on the next load — its store will have written
+            a fresh dsul-* default by then, and an existing value wins — so the
+            stamp going first is what keeps the failure to one store.) Safe to
+            delete once every browser has loaded the app once after the
+            rename. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{var P='anchor-',Q='dsul-',O=P+'local-state-owner',M=function(s){var k=[],i,n,v;for(i=0;i<s.length;i++){n=s.key(i);if(n&&n.lastIndexOf(P,0)===0)k.push(n)}k.sort(function(a,b){return a===O?-1:b===O?1:0});for(i=0;i<k.length;i++){try{v=s.getItem(k[i]);n=Q+k[i].slice(P.length);if(v!==null&&s.getItem(n)===null)s.setItem(n,v);s.removeItem(k[i])}catch(e){}}};try{M(localStorage)}catch(e){}try{M(sessionStorage)}catch(e){}}catch(e){}",
+          }}
+        />
         {/* Palette pre-hydration: stamp <html data-theme> from the raw
             localStorage key before first paint, the way next-themes pre-applies
             the .dark class — without this a non-default palette flashes the
@@ -93,7 +118,7 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "try{if(/[?&]reset-theme\\b/.test(location.search)){localStorage.removeItem('anchor-palette');sessionStorage.setItem('anchor-palette-reset','1')}else{var p=localStorage.getItem('anchor-palette');if(p&&p!=='default'&&/^[a-z][a-z0-9-]{0,31}$/.test(p)){document.documentElement.dataset.theme=p}}}catch(e){}",
+              "try{if(/[?&]reset-theme\\b/.test(location.search)){localStorage.removeItem('dsul-palette');sessionStorage.setItem('dsul-palette-reset','1')}else{var p=localStorage.getItem('dsul-palette');if(p&&p!=='default'&&/^[a-z][a-z0-9-]{0,31}$/.test(p)){document.documentElement.dataset.theme=p}}}catch(e){}",
           }}
         />
         {/* No `disableTransitionOnChange`: it injected `transition: none` across

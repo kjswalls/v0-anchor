@@ -350,7 +350,7 @@ describe('the typewriter reveal', () => {
     expect(screen.queryByTestId('notice-shimmer')).toBeNull();
   });
 
-  it('simply appears under Anchor’s own animations toggle', () => {
+  it('simply appears under dsul’s own animations toggle', () => {
     matchReducedMotion(false);
     document.documentElement.setAttribute('data-reduce-motion', 'true');
     render(<TypewriterText revealKey="a">Today’s review is waiting</TypewriterText>);

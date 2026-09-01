@@ -565,7 +565,7 @@ tasks and the streak count for habits — one column, two units, scannable as ne
 Unit: `tests/unit/*` (recurrence, day-items, search-parser, handle-drag-end, commands,
 grid-range). E2E (needs migrated DB + running app): dnd, recurring, undo-redo, smoke,
 view-matrix, omnibar, settings, eod-review. Plugin smoke: `GET /api/agent/context` parses
-with the **old** published `AnchorContextResponseSchema`. Every `lib/dnd/CONTRACT.md`
+with the **old** published `DsulContextResponseSchema`. Every `lib/dnd/CONTRACT.md`
 change lands with its e2e spec in the same commit.
 
 ## Supabase access + applying the migration

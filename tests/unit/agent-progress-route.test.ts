@@ -48,7 +48,7 @@ vi.mock('@/lib/supabase-service', () => ({
 
 import { POST } from '@/app/api/agent/items/[id]/progress/route';
 
-const report = (body: unknown, auth = 'Bearer anchor_key') =>
+const report = (body: unknown, auth = 'Bearer dsul_key') =>
   POST(
     new Request('http://localhost/api/agent/items/item-1/progress', {
       method: 'POST',

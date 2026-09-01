@@ -124,7 +124,7 @@ export const useSidebarStore = create<SidebarState>()(
       setLeftSidebarWidth: (px) => set({ leftSidebarWidth: clampSidebarWidth(px) }),
     }),
     {
-      name: 'anchor-sidebar-settings',
+      name: 'dsul-sidebar-settings',
       // Not bumped for leftSidebarWidth: persist shallow-merges over the initial
       // state, so a v2 record without the key keeps the default and needs no
       // migration step.

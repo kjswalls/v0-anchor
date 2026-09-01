@@ -95,18 +95,18 @@ vi.mock('@/app/api/agent/context/route', () => ({
 // authenticate independently, which their own suites cover.
 vi.mock('@/lib/supabase-service', () => ({
   createServiceClient: vi.fn(() => ({})),
-  resolveUserIdFromApiKey: vi.fn(async (key: string) => (key === 'anchor_testkey' ? 'user-1' : null)),
+  resolveUserIdFromApiKey: vi.fn(async (key: string) => (key === 'dsul_testkey' ? 'user-1' : null)),
 }));
 
 import { POST } from '@/app/api/mcp/route';
 import { NextRequest } from 'next/server';
 
-const AUTH = 'Bearer anchor_testkey';
+const AUTH = 'Bearer dsul_testkey';
 
 function rpc(body: unknown, auth: string | null = AUTH): NextRequest {
   const headers = new Headers({ 'content-type': 'application/json' });
   if (auth) headers.set('authorization', auth);
-  return new NextRequest('https://anchor.test/api/mcp', {
+  return new NextRequest('https://dsul.test/api/mcp', {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
@@ -136,21 +136,21 @@ describe('auth', () => {
   });
 
   it('forwards the caller\'s bearer token to the agent handler', async () => {
-    await POST(call('anchor_get_context'));
+    await POST(call('dsul_get_context'));
     expect(calls[0].auth).toBe(AUTH);
   });
 });
 
 describe('dispatch to agent handlers', () => {
   it('routes get_context to the context GET, with no body', async () => {
-    const res = await POST(call('anchor_get_context'));
+    const res = await POST(call('dsul_get_context'));
     expect(res.status).toBe(200);
     expect(calls[0]).toMatchObject({ handler: 'context', method: 'GET' });
     expect(calls[0].body).toBeUndefined();
   });
 
   it('routes a create to the create handler with the JSON body intact', async () => {
-    await POST(call('anchor_create_task', { title: 'Book dentist', priority: 'high' }));
+    await POST(call('dsul_create_task', { title: 'Book dentist', priority: 'high' }));
     expect(calls[0]).toMatchObject({
       handler: 'create:task',
       method: 'POST',
@@ -159,7 +159,7 @@ describe('dispatch to agent handlers', () => {
   });
 
   it('routes an update to PATCH and passes the id as a route param', async () => {
-    await POST(call('anchor_update_task', { id: 'task-42', priority: 'low' }));
+    await POST(call('dsul_update_task', { id: 'task-42', priority: 'low' }));
     expect(calls[0]).toMatchObject({
       handler: 'patch:task',
       method: 'PATCH',
@@ -169,26 +169,26 @@ describe('dispatch to agent handlers', () => {
   });
 
   it('routes a delete to DELETE with the id', async () => {
-    await POST(call('anchor_delete_habit', { id: 'h-9' }));
+    await POST(call('dsul_delete_habit', { id: 'h-9' }));
     expect(calls[0]).toMatchObject({ handler: 'delete:habit', method: 'DELETE', id: 'h-9' });
   });
 
   it('routes each collection kind to its own handler', async () => {
-    await POST(call('anchor_create_collection', { kind: 'goal', name: 'Run a 10k' }));
-    await POST(call('anchor_update_collection', { kind: 'program', id: 'p1', state: 'active' }));
-    await POST(call('anchor_delete_collection', { kind: 'routine', id: 'r1' }));
+    await POST(call('dsul_create_collection', { kind: 'goal', name: 'Run a 10k' }));
+    await POST(call('dsul_update_collection', { kind: 'program', id: 'p1', state: 'active' }));
+    await POST(call('dsul_delete_collection', { kind: 'routine', id: 'r1' }));
     expect(calls.map((c) => c.handler)).toEqual(['create:goal', 'patch:program', 'delete:routine']);
   });
 
   it('builds an absolute URL on the request origin', async () => {
-    await POST(call('anchor_update_task', { id: 'abc' }));
-    expect(calls[0].url).toBe('https://anchor.test/api/agent/tasks/abc');
+    await POST(call('dsul_update_task', { id: 'abc' }));
+    expect(calls[0].url).toBe('https://dsul.test/api/agent/tasks/abc');
   });
 });
 
 describe('tool-level failures stay inside a 200', () => {
   it('returns isError for a refused argument rather than a protocol error', async () => {
-    const res = await POST(call('anchor_create_task', {}));
+    const res = await POST(call('dsul_create_task', {}));
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.result.isError).toBe(true);
@@ -197,7 +197,7 @@ describe('tool-level failures stay inside a 200', () => {
   });
 
   it('does not mark a successful agent write as an error', async () => {
-    const res = await POST(call('anchor_create_task', { title: 'x' }));
+    const res = await POST(call('dsul_create_task', { title: 'x' }));
     const body = await res.json();
     expect(body.result.isError).toBeUndefined();
     expect(body.result.content[0].text).toContain('create:task');
@@ -238,7 +238,7 @@ describe('JSON-RPC transport rules', () => {
   it('refuses an oversized batch rather than executing it', async () => {
     const many = Array.from({ length: 200 }, (_, i) => ({
       jsonrpc: '2.0', id: i, method: 'tools/call',
-      params: { name: 'anchor_get_context' },
+      params: { name: 'dsul_get_context' },
     }));
     const res = await POST(rpc(many));
     expect(res.status).toBe(400);
@@ -249,7 +249,7 @@ describe('JSON-RPC transport rules', () => {
     // Without an id there is nothing to report failure to, so a fire-and-forget
     // write is worse than the protocol violation.
     const res = await POST(
-      rpc({ jsonrpc: '2.0', method: 'tools/call', params: { name: 'anchor_create_task', arguments: { title: 'x' } } })
+      rpc({ jsonrpc: '2.0', method: 'tools/call', params: { name: 'dsul_create_task', arguments: { title: 'x' } } })
     );
     expect(res.status).toBe(202);
     expect(calls).toHaveLength(0);
@@ -263,7 +263,7 @@ describe('JSON-RPC transport rules', () => {
   });
 
   it('returns a parse error for a malformed body', async () => {
-    const req = new NextRequest('https://anchor.test/api/mcp', {
+    const req = new NextRequest('https://dsul.test/api/mcp', {
       method: 'POST',
       headers: new Headers({ 'content-type': 'application/json', authorization: AUTH }),
       body: '{not json',
@@ -277,13 +277,13 @@ describe('JSON-RPC transport rules', () => {
     const res = await POST(rpc({ jsonrpc: '2.0', id: 1, method: 'tools/list' }));
     const body = await res.json();
     expect(body.result.tools.length).toBeGreaterThan(5);
-    expect(body.result.tools.map((t: { name: string }) => t.name)).toContain('anchor_get_context');
+    expect(body.result.tools.map((t: { name: string }) => t.name)).toContain('dsul_get_context');
   });
 });
 
 describe('the delegation loop, end to end through the route', () => {
   it('narrows the whole planner down to just the assigned work', async () => {
-    const res = await POST(call('anchor_my_work'));
+    const res = await POST(call('dsul_my_work'));
     const body = await res.json();
     const payload = JSON.parse(body.result.content[0].text);
 
@@ -294,18 +294,18 @@ describe('the delegation loop, end to end through the route', () => {
   });
 
   it('still reads through the ordinary context endpoint', async () => {
-    await POST(call('anchor_my_work'));
+    await POST(call('dsul_my_work'));
     expect(calls[0]).toMatchObject({ handler: 'context', method: 'GET' });
   });
 
   it('reads an item\'s activity, which is where a blocked answer arrives', async () => {
-    const res = await POST(call('anchor_item_activity', { id: 'a' }));
+    const res = await POST(call('dsul_item_activity', { id: 'a' }));
     expect(calls[0]).toMatchObject({ handler: 'events', method: 'GET', id: 'a' });
     expect((await res.json()).result.content[0].text).toContain('King St');
   });
 
   it('refuses a traversal in an activity id too', async () => {
-    const res = await POST(call('anchor_item_activity', { id: '../../context' }));
+    const res = await POST(call('dsul_item_activity', { id: '../../context' }));
     expect((await res.json()).result.isError).toBe(true);
     expect(calls).toHaveLength(0);
   });
@@ -314,7 +314,7 @@ describe('the delegation loop, end to end through the route', () => {
     // The generic task PATCH verified only account ownership — no assignee
     // check and no precondition — so a late report from a run the user had
     // already superseded landed on top of the work that replaced it.
-    await POST(call('anchor_report_progress', { id: 'a', status: 'working' }));
+    await POST(call('dsul_report_progress', { id: 'a', status: 'working' }));
     expect(calls[0]).toMatchObject({
       handler: 'progress',
       method: 'POST',
@@ -325,7 +325,7 @@ describe('the delegation loop, end to end through the route', () => {
 
   it('carries the precondition through to the handler', async () => {
     await POST(
-      call('anchor_report_progress', {
+      call('dsul_report_progress', {
         id: 'a',
         status: 'done',
         lastSeenAt: '2026-08-26T10:00:00.000Z',
@@ -336,7 +336,7 @@ describe('the delegation loop, end to end through the route', () => {
 
   it('refuses a traversal in a progress id', async () => {
     const res = await POST(
-      call('anchor_report_progress', { id: '../../context', status: 'done' })
+      call('dsul_report_progress', { id: '../../context', status: 'done' })
     );
     expect((await res.json()).result.isError).toBe(true);
     expect(calls).toHaveLength(0);
@@ -344,7 +344,7 @@ describe('the delegation loop, end to end through the route', () => {
 
   it('routes a question with options to its own handler', async () => {
     await POST(
-      call('anchor_ask_user', {
+      call('dsul_ask_user', {
         id: 'a',
         question: 'Which Dana?',
         options: ['Dana Reyes', 'Dana Whitfield'],
@@ -361,32 +361,32 @@ describe('the delegation loop, end to end through the route', () => {
   it('refuses a traversal in an ask id', async () => {
     // Dispatch reads the RAW path while proxyRequest normalises it, so a
     // traversal would make the two disagree about what is being addressed.
-    const res = await POST(call('anchor_ask_user', { id: '../../context', question: 'hi' }));
+    const res = await POST(call('dsul_ask_user', { id: '../../context', question: 'hi' }));
     expect((await res.json()).result.isError).toBe(true);
     expect(calls).toHaveLength(0);
   });
 
   it('forwards the caller auth to the ask handler, like every other route', async () => {
-    await POST(call('anchor_ask_user', { id: 'a', question: 'Which one?' }));
-    expect(calls[0].auth).toBe('Bearer anchor_testkey');
+    await POST(call('dsul_ask_user', { id: 'a', question: 'Which one?' }));
+    expect(calls[0].auth).toBe('Bearer dsul_testkey');
   });
 });
 
 describe('path safety', () => {
   it('refuses a traversal in an id rather than dispatching it anywhere', async () => {
-    const res = await POST(call('anchor_update_task', { id: '../../context' }));
+    const res = await POST(call('dsul_update_task', { id: '../../context' }));
     expect((await res.json()).result.isError).toBe(true);
     expect(calls).toHaveLength(0);
   });
 
   it('refuses a percent-encoded traversal too', async () => {
-    const res = await POST(call('anchor_delete_task', { id: '%2e%2e%2fcontext' }));
+    const res = await POST(call('dsul_delete_task', { id: '%2e%2e%2fcontext' }));
     expect((await res.json()).result.isError).toBe(true);
     expect(calls).toHaveLength(0);
   });
 
   it('still accepts an ordinary uuid-shaped id', async () => {
-    await POST(call('anchor_update_task', { id: '3f1a2b6c-0000-4000-8000-abcdefabcdef' }));
+    await POST(call('dsul_update_task', { id: '3f1a2b6c-0000-4000-8000-abcdefabcdef' }));
     expect(calls[0]).toMatchObject({ handler: 'patch:task' });
   });
 });

@@ -67,7 +67,7 @@ Not filed, recorded here only:
 - **§3.4 plugin write tools** — fixed but never run against a live gateway, and
   worthless on npm until republished. Both are yours; the details, plus the
   publish-order hazard from #149, are in a comment on **#134**.
-- **#73** — recommend closing; `anchor-workspace` is accurate for a workspace root.
+- **#73** — recommend closing; `dsul-workspace` is accurate for a workspace root.
   Left open since you never confirmed.
 - **`tsc` is not clean on main** and so can't be a gate. Four pre-existing clusters:
   `app/sw.ts` typings, `duration` on the Habit union (#188), `ItemTypeConfig.accent`
@@ -159,14 +159,14 @@ it's a land-grab on a small namespace. Happy to move it to `meta+shift+v` or sim
 
 ### 3.4 ⚠️ The OpenClaw plugin's write tools have never worked
 Typing `api: any` (issue #145) surfaced this. The agent loop calls
-`execute(toolCallId, params, …)`, but all six Anchor tools declared
+`execute(toolCallId, params, …)`, but all six dsul tools declared
 `execute(params)` — so every write tool was reading its fields off the tool-call-ID
-*string*. `anchor_create_task` would POST a body with no title; `anchor_delete_task`
+*string*. `dsul_create_task` would POST a body with no title; `dsul_delete_task`
 would DELETE `/api/agent/tasks/undefined`.
 
 Confirmed against the compiled agent loop, and against OpenClaw's own bundled
 feishu extension and its shipped plugin docs, which both use
-`execute(_toolCallId, params)`. `anchor_get_context` was unaffected — it takes no
+`execute(_toolCallId, params)`. `dsul_get_context` was unaffected — it takes no
 params, which is exactly why "reading works, Beacon can't create anything" would
 have looked like a different problem.
 
@@ -199,7 +199,7 @@ quirk in the new guide, but the honest fix is a status that distinguishes
 "authorized, pull-only" from "never connected".
 
 ### 3.8 Smaller ones
-- **#73** (`package.json` name → `anchor`): it's currently `anchor-workspace`, which
+- **#73** (`package.json` name → `anchor`): it's currently `dsul-workspace`, which
   arguably already satisfies the issue and better describes a workspace root.
   Rename anyway, or close?
 - **#181 adjacent:** braindump's "hide completed" filter reads scalar `status` for

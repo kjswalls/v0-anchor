@@ -11,7 +11,7 @@ import { makeGoalCreateHandler } from '@/lib/agent-api'
  *
  * Auth: Bearer <openclaw_api_key> only — no cookie auth.
  *
- * Body: validated against GoalCreateSchema (@anchor-app/types). `name` is
+ * Body: validated against GoalCreateSchema (@dsul/types). `name` is
  * required; `state` defaults to 'active'. Goals never suppress, so there is no
  * pause verb — `paused`/`pausedUntil` are refused with a pointer, and
  * `achievedAt` is derived from `state`.

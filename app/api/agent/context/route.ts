@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import type { HabitItem, TaskItem } from '@anchor-app/types'
+import type { HabitItem, TaskItem } from '@dsul/types'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
 import { fetchItems, fetchProjects, fetchRoutines, fetchPrograms, toLegacyTask, toLegacyHabit, fetchGoals } from '@/lib/db'
@@ -10,7 +10,7 @@ import { toDateStr } from '@/lib/recurrence'
  * GET /api/agent/context
  *
  * Returns the authenticated user's current tasks, habits, projects, and habit
- * groups. Used by the OpenClaw Anchor plugin to seed its local context cache.
+ * groups. Used by the OpenClaw dsul plugin to seed its local context cache.
  *
  * `habitGroups[]` is a PROJECTION of `projects[]` since migration 039 collapsed
  * the two CLASSIFY kinds — see the response below.
@@ -109,7 +109,7 @@ export async function GET(req: NextRequest) {
     /**
      * THE SAME CONTAINERS, UNDER THE OTHER NAME (migration 039).
      *
-     * `AnchorContextResponseSchema.habitGroups` is a REQUIRED array and the
+     * `DsulContextResponseSchema.habitGroups` is a REQUIRED array and the
      * plugin `safeParse`s the whole response, throwing on drift — so omitting
      * this key would brick every deployed build's cached context on its next
      * fetch, not degrade it. There is one container kind now, so the honest

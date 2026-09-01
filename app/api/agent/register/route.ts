@@ -7,18 +7,18 @@ import { assertSafeOutboundUrl } from '@/lib/openclaw-gateway'
  * POST /api/agent/register
  *
  * Called on OpenClaw plugin startup. Registers the plugin's webhook URL so
- * Anchor pushes change events when data mutates. Also accepts optional chatUrl
- * (plugin endpoint URL, e.g. …/plugins/anchor/chat) for sidebar chat.
+ * dsul pushes change events when data mutates. Also accepts optional chatUrl
+ * (plugin endpoint URL, e.g. …/plugins/dsul/chat) for sidebar chat.
  *
  * Auth: Bearer <openclaw_api_key>  — userId resolved from the key automatically.
  *
  * Body:
  *   {
- *     pluginId:    string     // e.g. "anchor-context"
- *     webhookUrl?: string     // where Anchor should POST change events (optional if chatUrl only)
+ *     pluginId:    string     // e.g. "dsul-context"
+ *     webhookUrl?: string     // where dsul should POST change events (optional if chatUrl only)
  *     secret?:     string     // HMAC secret for payload verification (optional)
  *     events?:     string[]   // e.g. ["tasks.updated", "habits.updated"]
- *     chatUrl?:    string     // e.g. https://<gateway>/plugins/anchor/chat
+ *     chatUrl?:    string     // e.g. https://<gateway>/plugins/dsul/chat
  *     agentId?:    string     // OpenClaw agent (default main)
  *   }
  */
@@ -79,7 +79,7 @@ export async function POST(req: NextRequest) {
 
   // Register webhook if provided
   if (hasWebhook) {
-    // Anchor POSTs the user's item data to this URL on every mutation, from
+    // dsul POSTs the user's item data to this URL on every mutation, from
     // now until they revoke it. `assertSafeOutboundUrl` is the same guard the
     // gateway URL gets, minus the TLS requirement — a plugin listener on the
     // tailnet is ordinarily plain http, and that tunnel is already encrypted.

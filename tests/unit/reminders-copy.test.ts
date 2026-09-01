@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { formatCueTime, streakPhrase, reminderCopy, lastCallCopy } from '@/lib/reminders/copy';
 import type { ReminderCandidate } from '@/lib/reminders/due';
-import type { Item } from '@anchor-app/types';
+import type { Item } from '@dsul/types';
 
 const habit = (over: Partial<Item> = {}): Item => ({
   type: 'habit', id: 'h', title: 'Vitamins', project: 'G', streak: 0, status: 'pending',

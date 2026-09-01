@@ -3,8 +3,8 @@ import { createClient } from '@/lib/supabase-server'
 
 /**
  * GET /api/agent/chat-url
- * Returns the stored openclaw_chat_url, agentId, and anchorApiKey for the current authenticated user.
- * The anchorApiKey is fetched server-side so it is never hardcoded in the client.
+ * Returns the stored openclaw_chat_url, agentId, and dsulApiKey for the current authenticated user.
+ * The dsulApiKey is fetched server-side so it is never hardcoded in the client.
  */
 export async function GET() {
   try {
@@ -23,7 +23,7 @@ export async function GET() {
     return NextResponse.json({
       chatUrl: data?.openclaw_chat_url ?? null,
       agentId: data?.openclaw_agent_id ?? null,
-      anchorApiKey: data?.openclaw_api_key ?? null,
+      dsulApiKey: data?.openclaw_api_key ?? null,
     })
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Internal server error'

@@ -722,7 +722,7 @@ found an **app-level data race no lens caught**, because no lens ran the app.
   silently tests another branch. All four derive from `BASE_URL` now (`E2E_BASE_URL` to
   override). The worst was `global-setup`'s storageState **origin**: a mismatch is not an
   error, the localStorage seed just never applies.
-- The dedicated e2e user is `a2afc7e7` / `anchor-e2e@anchor.test`, confirmed separate from
+- The dedicated e2e user is `a2afc7e7` / `dsul-e2e@dsul.test`, confirmed separate from
   the personal account, and owns **zero habit groups** — which is why `removeHabitGroup`'s
   `'Personal'` fallback fires there.
 
@@ -775,7 +775,7 @@ correct and is not.**
    reverts wrong**. `diffItem` (`planner-store.ts:576`) iterates
    `getItemTypeConfig(...).fields`, which is `Object.keys(taskShape)`, so a field outside
    the shape never enters an undo patch: undo would send the *old name* back and leave the
-   id pointing at the new container. Then `pnpm --filter @anchor-app/types build` with
+   id pointing at the new container. Then `pnpm --filter @dsul/types build` with
    `dist/` committed **in the same commit** — CI fails on drift.
 4. **The deploy window is real.** Vercel builds on push; `db:push` is manual. The app must
    omit the id columns from every insert row until something actually sets them (the

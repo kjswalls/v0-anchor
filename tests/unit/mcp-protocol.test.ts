@@ -15,8 +15,8 @@ import {
  */
 
 const deps = (overrides: Partial<DispatchDeps> = {}): DispatchDeps => ({
-  tools: [{ name: 'anchor_ping', description: 'd', inputSchema: { type: 'object' } }],
-  serverInfo: { name: 'anchor', version: '1' },
+  tools: [{ name: 'dsul_ping', description: 'd', inputSchema: { type: 'object' } }],
+  serverInfo: { name: 'dsul', version: '1' },
   callTool: vi.fn(async () => ({ content: [{ type: 'text' as const, text: 'ok' }] })),
   ...overrides,
 });
@@ -37,7 +37,7 @@ describe('initialize', () => {
       result: {
         protocolVersion: MCP_PROTOCOL_VERSION,
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'anchor' },
+        serverInfo: { name: 'dsul' },
       },
     });
   });
@@ -90,17 +90,17 @@ describe('tools/call', () => {
   it('calls through and returns the content', async () => {
     const callTool = vi.fn(async () => ({ content: [{ type: 'text' as const, text: 'done' }] }));
     const res = await dispatch(
-      req('tools/call', { name: 'anchor_ping', arguments: { a: 1 } }),
+      req('tools/call', { name: 'dsul_ping', arguments: { a: 1 } }),
       deps({ callTool })
     );
-    expect(callTool).toHaveBeenCalledWith('anchor_ping', { a: 1 });
+    expect(callTool).toHaveBeenCalledWith('dsul_ping', { a: 1 });
     expect(res).toMatchObject({ result: { content: [{ type: 'text', text: 'done' }] } });
   });
 
   it('defaults missing arguments to an empty object', async () => {
     const callTool = vi.fn(async () => ({ content: [{ type: 'text' as const, text: '' }] }));
-    await dispatch(req('tools/call', { name: 'anchor_ping' }), deps({ callTool }));
-    expect(callTool).toHaveBeenCalledWith('anchor_ping', {});
+    await dispatch(req('tools/call', { name: 'dsul_ping' }), deps({ callTool }));
+    expect(callTool).toHaveBeenCalledWith('dsul_ping', {});
   });
 
   it('rejects an unknown tool as invalid params', async () => {
@@ -110,7 +110,7 @@ describe('tools/call', () => {
 
   it('rejects non-object arguments', async () => {
     const res = await dispatch(
-      req('tools/call', { name: 'anchor_ping', arguments: [1, 2] }),
+      req('tools/call', { name: 'dsul_ping', arguments: [1, 2] }),
       deps()
     );
     expect((res as { error: { code: number } }).error.code).toBe(RpcError.INVALID_PARAMS);
@@ -123,7 +123,7 @@ describe('tools/call', () => {
       throw new Error('database on fire');
     });
     const res = await dispatch(
-      req('tools/call', { name: 'anchor_ping' }),
+      req('tools/call', { name: 'dsul_ping' }),
       deps({ callTool })
     );
     expect(res).toMatchObject({

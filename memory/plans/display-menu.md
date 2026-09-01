@@ -32,14 +32,14 @@ references belong to one account with **zero `habit_groups` rows**, because thos
 have only ever existed as a client-side constant. The type error and the backfill miss
 are one bug seen from two ends; Phase 6 of that plan is where it resolves.
 
-Full spec, with the menu and the schedule lanes rendered at true size in Anchor's own
+Full spec, with the menu and the schedule lanes rendered at true size in dsul's own
 tokens: <https://claude.ai/code/artifact/2de4b068-d090-4f72-9ff4-2109c0e8a848>
 
 ---
 
 ## What is actually wrong today
 
-Anchor answers "what am I looking at" in four unrelated places — a type dropdown, a filter
+dsul answers "what am I looking at" in four unrelated places — a type dropdown, a filter
 popover, a group-by reachable only from the command palette, and a sort that does not
 exist. Verified against `a1c03c2`:
 
@@ -403,7 +403,7 @@ Phases 0–2 are pure correctness and are worth landing even if the redesign sto
   disagree on two of three: 🧘/💚 Wellness, 🏠/⭐ Personal. It takes `groupKey`
   (`RowGroup.key`, which carries the namespace) now. **Why it went unnoticed:** a stored
   EMOJI is not an icon token, so `resolveCategoryIcon` falls through to the name-derived
-  icon either way — only a *picked* `icon:Anchor` ever reached the wrong heading. Any
+  icon either way — only a *picked* `icon:dsul` ever reached the wrong heading. Any
   test of this has to pick an icon explicitly or it asserts nothing.
 - **A fold applied on BOTH sides needs a fixture that differs on both.**
   `cleanupOrphanedReferences` folds building its set of live names and folds again

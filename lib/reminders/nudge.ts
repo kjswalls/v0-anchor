@@ -30,7 +30,7 @@ export interface Nudge {
   title: string
   /** The supporting line. May be empty. */
   body: string
-  /** Deep link into Anchor for a channel that can carry one. */
+  /** Deep link into dsul for a channel that can carry one. */
   url: string
   /** The user's local day this nudge is about, yyyy-MM-dd. */
   dateStr: string

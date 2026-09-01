@@ -121,7 +121,7 @@ export default function ItemPage() {
         </p>
         <div className="flex gap-2">
           <Button asChild variant="outline" size="sm">
-            <Link href="/">Open Anchor</Link>
+            <Link href="/">Open dsul</Link>
           </Button>
           {!userId && (
             <Button asChild variant="outline" size="sm">
@@ -167,7 +167,7 @@ export default function ItemPage() {
           className="hover:text-foreground inline-flex items-center gap-1 transition-colors"
         >
           <ChevronLeft className="size-3.5" />
-          Anchor
+          dsul
         </Link>
         <span>/</span>
         <span className="text-foreground inline-flex items-center gap-1.5 font-medium">

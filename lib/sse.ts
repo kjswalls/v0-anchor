@@ -1,5 +1,5 @@
 /**
- * Anchor's chat wire format, in one place.
+ * dsul's chat wire format, in one place.
  *
  * Every chat transport speaks the same frames — `data: {"content":"…"}`, an
  * optional `data: {"error":"…"}`, terminated by `data: [DONE]` — so the client
@@ -74,12 +74,12 @@ export async function* parseSseFrames(
   }
 }
 
-/** Server side: encode one Anchor frame. */
+/** Server side: encode one dsul frame. */
 export function sseFrame(frame: SseFrame): string {
   return `data: ${JSON.stringify(frame)}\n\n`
 }
 
-/** Server side: the terminator every Anchor SSE response ends with. */
+/** Server side: the terminator every dsul SSE response ends with. */
 export const SSE_DONE = 'data: [DONE]\n\n'
 
 export const SSE_HEADERS = {

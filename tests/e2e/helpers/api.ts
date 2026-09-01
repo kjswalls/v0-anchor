@@ -5,7 +5,7 @@ import { BASE_URL, SETUP_ARTIFACT, TEST_TITLE_PREFIX } from './env';
 /**
  * Fixtures created through the agent API.
  *
- * The /api/agent/* routes authenticate with Bearer <anchor_api_key> (stored in
+ * The /api/agent/* routes authenticate with Bearer <dsul_api_key> (stored in
  * user_settings.openclaw_api_key). That key is resolved ONCE in globalSetup and
  * read from disk here.
  *

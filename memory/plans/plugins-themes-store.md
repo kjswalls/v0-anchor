@@ -1,4 +1,4 @@
-# Plugins, Themes & the Store — extensibility across Anchor (and future apps)
+# Plugins, Themes & the Store — extensibility across dsul (and future apps)
 
 **Status (2026-08-12): Projects A and B have v1 implementations in the working
 tree** (curated preset palettes + the official-extensions framework — see the
@@ -21,7 +21,7 @@ defer those two costs until demand proves they're worth paying.
 ## The three questions, answered
 
 1. **What kind of solution is this?** Three separable projects on different clocks:
-   (a) an in-app theme system (weeks, all value accrues to Anchor even if no store
+   (a) an in-app theme system (weeks, all value accrues to dsul even if no store
    ever exists), (b) an in-app plugin system (mostly *already built* if "plugin" is
    scoped to declarative config + the agent API; a money-pit if it means sandboxed
    third-party JS), and (c) a store, which at v1 is **a GitHub repo with CI, not a
@@ -43,7 +43,7 @@ defer those two costs until demand proves they're worth paying.
 3. **Is it too big?** As one project, yes. As the three projects above built in
    demand order, no. The trap (named explicitly by the critique) is building the
    marketplace before the audience: a store's success everywhere we studied followed
-   app popularity, never created it. Build the parts that make Anchor better today
+   app popularity, never created it. Build the parts that make dsul better today
    (themes, registry config, API hardening); gate the store parts on a real
    community existing.
 
@@ -115,14 +115,14 @@ defer those two costs until demand proves they're worth paying.
 
 ### Theming readiness (codebase sweep)
 
-Anchor is **unusually theme-ready** — the color-refactor sprint most apps would need
+dsul is **unusually theme-ready** — the color-refactor sprint most apps would need
 does not exist here:
 
 - Tailwind v4 CSS-first (no `tailwind.config.*`; everything in
   [app/globals.css](../../app/globals.css), ~1262 lines) with a disciplined
   three-layer token system: raw ramps (`--paper-*`, `--ink-*`, `--lime-*`,
   `--honey-*`, `--coral-*`) → surfaces (`--surface-0..3`, `--canvas`) → full shadcn
-  aliases plus Anchor domain tokens (~90 color properties per mode, fully restated
+  aliases plus dsul domain tokens (~90 color properties per mode, fully restated
   in `:root` and `.dark`).
 - **Zero hardcoded Tailwind palette utilities repo-wide** — 747 token-class usages
   across 74 component files; the only literals are deliberate (destructive
@@ -155,7 +155,7 @@ does not exist here:
 ### Plugin extension points (codebase sweep), ranked easiest → hardest
 
 1. **External agent-API consumer — works today, zero new code.** The OpenClaw plugin
-   is complete prior art: RFC-8628-style device flow issuing an `anchor_` key,
+   is complete prior art: RFC-8628-style device flow issuing an `dsul_` key,
    Zod-validated `schemaVersion: 4` context contract, CRUD routes, HMAC-signed
    webhooks, drift-throwing `safeParse` in the client. This *is* the official plugin
    surface; a second consumer needs nothing built.
@@ -235,7 +235,7 @@ Other load-bearing facts:
   to *this plugin's* storage, not the store); a manifest declares intent up front
   (Figma's `networkAccess.allowedDomains` is the model: default `"none"`,
   undeclared domains CSP-blocked, declarations shown to users at install and
-  reviewers at review). Note Anchor-specific: RLS is per-user, so any plugin
+  reviewers at review). Note dsul-specific: RLS is per-user, so any plugin
   running as the user inherits the user's full data reach unless every read/write
   is mediated through capabilities.
 - **CSS is an active exploit surface, and VS Code vs Obsidian is the exact A/B
@@ -245,7 +245,7 @@ Other load-bearing facts:
   so script blockers never fire. VS Code themes are JSON assigning values to a
   **fixed registered palette** — a theme literally cannot emit a selector or URL.
   Obsidian themes are arbitrary CSS and pay with a permanent attack surface plus a
-  no-auto-update policy. Anchor's token-JSON theme shape (Project A) is the VS Code
+  no-auto-update policy. dsul's token-JSON theme shape (Project A) is the VS Code
   side of this test by construction: strict value grammar (color/length/number/
   enumerated keywords), reject `url()`, `image-set`, `@import`, selectors,
   `content`.
@@ -334,8 +334,8 @@ until/unless tier (c) exists.
    a live serverless bug *and* it doubles as the plugin manifest + per-user
    enable/disable store — the toggle UX Kirby asked for rides this table.
 2. **Wake `item_types.config`** one capability at a time (safe first:
-   `allowedFrequencies`, `braindumpEligible`, `defaultBlockMinutes`) — Anchor
-   features for Anchor users, independent of any store.
+   `allowedFrequencies`, `braindumpEligible`, `defaultBlockMinutes`) — dsul
+   features for dsul users, independent of any store.
 3. **Defer per-plugin hashed/scoped API keys until a second real consumer exists** —
    and when migrating off the plaintext single key, dual-read the old key through a
    deprecation window with a coordinated OpenClaw npm release, or the drift-throwing
@@ -354,7 +354,7 @@ until/unless tier (c) exists.
 
 ### Project C — the store/registry (BUILD WHEN DEMAND SHOWS)
 
-Trigger: a real community around Anchor, or a second app actually shipping. Not
+Trigger: a real community around dsul, or a second app actually shipping. Not
 before.
 
 1. One public GitHub registry repo shared across all apps. Index entries:
@@ -376,7 +376,7 @@ before.
 6. **No published review SLA** (or an embarrassingly large one you can keep) — the
    silent-queue reputation damage is the documented failure mode.
 7. Store UI cost is real even though hosting is ~$0: browse/detail/install/toggle
-   built per app — and twice in Anchor (desktop + mobile shells). Budget it.
+   built per app — and twice in dsul (desktop + mobile shells). Budget it.
 8. Legal scaffolding before opening submissions: license grant on submission (right
    to redistribute/patch/fork abandoned items), takedown process, store ToS.
 9. Data lifecycle policy: what disable/uninstall/blocklist does to
@@ -461,7 +461,7 @@ extensions), built together on `feat/programs-routines`:**
   into dark). Presets override paper/ink ramps + ground-hued literals only; the
   lime triad is deliberately not restated. Catalog in lib/theme-palettes.ts,
   active slug in lib/palette-store.ts (no persist — raw localStorage key
-  `anchor-palette` written by the single DOM-writer effect in
+  `dsul-palette` written by the single DOM-writer effect in
   supabase-provider). Pre-hydration inline script in layout.tsx (next-themes
   pattern) with `?reset-theme` as the always-readable escape hatch. Server truth
   `user_settings.theme_palette` (migration 025), started in

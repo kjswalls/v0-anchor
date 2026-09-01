@@ -326,7 +326,7 @@ table as ONE set. Four rules, each closing a found defect:
   `rejectInvertedRange` precedent) — every derived helper compares these LEXICALLY
   against `toDateStr` output, so a sloppy date doesn't error, it lands on the wrong
   side of every comparison forever.
-- `AnchorContextResponseSchema`: optional `goals[]`, schemaVersion 5 (Phase 4;
+- `DsulContextResponseSchema`: optional `goals[]`, schemaVersion 5 (Phase 4;
   extend the version-meaning comment chain).
 - **No item-shape changes.** TASK_FIELDS/HABIT_FIELDS untouched; db.ts item
   allowlists untouched; the OpenClaw plugin parses today's payloads unchanged until
@@ -540,7 +540,7 @@ table as ONE set. Four rules, each closing a found defect:
   **The cron re-list was correct, and that was worth checking.** 032–035 landed
   out-of-band while this branch was in flight, so the live `purge-deleted-items`
   body was read back one more time immediately before applying. Those four
-  versions added two SEPARATE jobs (`anchor-reminders`, `anchor-eod-notify`) and
+  versions added two SEPARATE jobs (`dsul-reminders`, `dsul-eod-notify`) and
   never touched the purge job, so the eight DELETEs this file re-lists still
   matched the live body exactly. Post-apply the job is jobid 7, active, `0 0 * * *`,
   with nine DELETEs — the eight plus goals — and the `item_events` 180-day line
@@ -980,7 +980,7 @@ table as ONE set. Four rules, each closing a found defect:
   ignores its own error. There is no agent restore verb for a soft-deleted goal.
   A subtask can still hold plain membership: dropping it would be a REMOVAL, not
   a demotion, and removing membership the user did not ask to remove is a bigger
-  promise than this rule makes. **And the published `@anchor-app/types` may be
+  promise than this rule makes. **And the published `@dsul/types` may be
   far behind `src` — the plugin's `workspace:*` resolves to whatever was last
   released, so the plugin-smoke gate ("context parses with the OLD published
   schema") is still unmet and needs the actual tarball, not a simulated omit.**
@@ -1252,7 +1252,7 @@ ordering IS deterministic despite two roles carrying a null `sort_order`, becaus
 `createGoal` really does validate before inserting and its compensating hard
 delete matches `createRoutine`; composite-FK ordering within the file is correct;
 the cron DELETE list drops nothing 024 purged; the index set covers every query
-db.ts issues; no external contract moved (`AnchorContextResponseSchema`,
+db.ts issues; no external contract moved (`DsulContextResponseSchema`,
 `TaskSchema`/`HabitSchema`, both FIELDS lists and the plugin's payload are
 byte-identical); no goal leaks into filters, grouping, the scope rail, search,
 commands, the console or trash — verified by grep AND by the fact that every

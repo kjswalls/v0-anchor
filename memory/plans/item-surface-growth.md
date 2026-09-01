@@ -34,7 +34,7 @@ adapters — growth is a presentation, not a fork.
    `packages/types` first, *optional*, then its committed dist is rebuilt (the OpenClaw
    plugin safeParses and throws on drift; CI gates dist-matches-src). New webhook event
    names silently never deliver — agent progress rides `tasks.updated` or extends the
-   plugin registration *and* `AnchorChangeEventSchema` in lockstep.
+   plugin registration *and* `DsulChangeEventSchema` in lockstep.
 7. **The layout is a registry question too (locked 2026-08-27, Phase 10).** Which
    container bands exist, their order and their labels are derived from
    `CONTAINER_KINDS` — role for the order and the gating, kind for the noun. A band
@@ -83,9 +83,9 @@ adapters — growth is a presentation, not a fork.
       and the app refetches.
 - [x] **Phase 5 — Per-item threads** (shipped 2026-07-29, client-persisted).
       chat-store is now a factory: `itemChatStore(id)` gives each item its own transcript
-      (`anchor-item-chat-<id>`, 24h TTL) and OpenClaw sessionKey (`anchor-item-<id>` —
+      (`dsul-item-chat-<id>`, 24h TTL) and OpenClaw sessionKey (`dsul-item-<id>` —
       the plugin passes client sessionKeys through verbatim, zero plugin changes).
-      `buildAnchorContext` gained `focusItemId` (a "### Focused item" section; base
+      `buildDsulContext` gained `focusItemId` (a "### Focused item" section; base
       output byte-identical). Server-side thread persistence deliberately deferred.
 - [x] **Phase 6 — The page** (shipped 2026-07-29). `/item/[id]`: client route, static
       chips + ItemDetailSections | ItemThread columns, Edit opens a locally-mounted

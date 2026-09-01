@@ -12,7 +12,7 @@ import { resolveDrop, type DropCommand, type DropContext } from '@/lib/dnd/handl
  * Kirby: "I don't think we need to be able to drag Rows on mobile." Read as
  * REORDER — the reading the ticket carried — the removal turned out to be a
  * removal of nothing:
- * Anchor has no drag-to-reorder on any platform. `planner-store.reorderTasks`
+ * dsul has no drag-to-reorder on any platform. `planner-store.reorderTasks`
  * exists and has zero call sites; `@dnd-kit/sortable` is in package.json and is
  * imported nowhere; the only reorder UI in the product is the Organize console's
  * up/down buttons (`components/planner/organize/member-list.tsx`), which are

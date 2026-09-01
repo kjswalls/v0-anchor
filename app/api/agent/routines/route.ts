@@ -8,7 +8,7 @@ import { makeContainerCreateHandler } from '@/lib/agent-api'
  *
  * Auth: Bearer <openclaw_api_key> only — no cookie auth.
  *
- * Body: validated against RoutineCreateSchema (@anchor-app/types). `name` is
+ * Body: validated against RoutineCreateSchema (@dsul/types). `name` is
  * required; `itemIds` must reference the caller's own live, collectible items.
  * Pausing is expressed as `paused` / `pausedUntil`, never as raw columns.
  *

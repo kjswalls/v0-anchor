@@ -131,7 +131,7 @@ export type DisplaySurface = 'canvas' | 'braindump';
 /* ── the row idiom ──────────────────────────────────────────────────────────
  *
  * 32px rows at 12px. Today's filter rows are 11px at 23px — the smallest type
- * and tightest rows anywhere in Anchor, in the panel holding the most control
+ * and tightest rows anywhere in dsul, in the panel holding the most control
  * types. shadcn's own item is `py-1.5 text-sm`, hence the overrides.
  */
 const ROW = 'h-8 gap-2 rounded-[5px] px-2 text-xs';

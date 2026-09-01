@@ -13,7 +13,7 @@ import {
   type ScanRow,
 } from '@/lib/reminders/due';
 import type { ActivationContext } from '@/lib/active';
-import type { Item, Program, Routine } from '@anchor-app/types';
+import type { Item, Program, Routine } from '@dsul/types';
 
 const TZ = 'America/New_York';
 const ctx: ActivationContext = { userTimezone: TZ };

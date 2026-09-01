@@ -1,7 +1,7 @@
 /**
  * stakes/partner.ts — tell a person.
  *
- * Posts a short daily digest to a webhook the user gives Anchor: a Slack or
+ * Posts a short daily digest to a webhook the user gives dsul: a Slack or
  * Discord channel shared with a friend, a coach, a group chat bridge.
  *
  * The mechanism is EXPECTATION, not exposure. Someone knowing the digest is

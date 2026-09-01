@@ -58,7 +58,7 @@ describe('assertSafeUrl', () => {
     expect(() => assertSafeUrl('http://10.0.0.5:8123')).not.toThrow();
   });
 
-  // The actual escalation this guard exists for: making Anchor's own server
+  // The actual escalation this guard exists for: making dsul's own server
   // issue requests from inside the hosting provider's network.
   it('refuses loopback and link-local, where the metadata services answer', () => {
     expect(() => assertSafeUrl('http://169.254.169.254/latest/meta-data/')).toThrow();

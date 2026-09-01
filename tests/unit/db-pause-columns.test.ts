@@ -25,7 +25,7 @@ vi.mock('@/lib/supabase', () => ({
 vi.mock('@/lib/openclaw-registry', () => ({ notifyPlugins: vi.fn() }));
 
 import { createItem } from '@/lib/db';
-import type { Item } from '@anchor-app/types';
+import type { Item } from '@dsul/types';
 
 const itemsRow = () => inserts.find((i) => i.table === 'items')!.payload;
 

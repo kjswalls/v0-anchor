@@ -643,7 +643,7 @@ export const STATIC_COMMANDS: Command[] = [
   {
     id: 'view.scopeDay',
     label: 'Switch to Day view',
-    description: 'Also becomes the view Anchor opens on',
+    description: 'Also becomes the view dsul opens on',
     group: 'view',
     icon: Sun,
     keywords: 'day scope today single',
@@ -657,7 +657,7 @@ export const STATIC_COMMANDS: Command[] = [
   {
     id: 'view.scopeWeek',
     label: 'Switch to Week view',
-    description: 'Also becomes the view Anchor opens on',
+    description: 'Also becomes the view dsul opens on',
     group: 'view',
     icon: CalendarDays,
     keywords: 'week scope seven days',

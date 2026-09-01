@@ -9,7 +9,7 @@
  * easing. A whole-screen instant repaint is exactly what a page load looks like.
  *
  * The naive fix — just dropping `disableTransitionOnChange` — is worse, not
- * better: Anchor's transitions are property-scoped by convention
+ * better: dsul's transitions are property-scoped by convention
  * (`transition-[box-shadow,background-color]`, never `transition-all`), so most
  * elements have no background-colour transition at all. Some would animate,
  * most would snap, and the screen would come apart in pieces.
@@ -38,7 +38,7 @@ export function applyThemeChange(apply: () => void): void {
 
   const root = document.documentElement;
   // Two vetoes, same as every other motion surface: the OS preference AND
-  // Anchor's own animations toggle (data-reduce-motion, stamped by
+  // dsul's own animations toggle (data-reduce-motion, stamped by
   // supabase-provider). Both take the instant path.
   const reduced =
     window.matchMedia('(prefers-reduced-motion: reduce)').matches ||

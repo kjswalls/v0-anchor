@@ -530,7 +530,7 @@ function makeAddDraft(type: string, seed: AddSeed): ItemDraft {
     repeatDays: [],
     repeatMonthDay: 1,
     timesPerDay: '1',
-    // Off by default. A reminder is a thing Anchor does to you unprompted, so
+    // Off by default. A reminder is a thing dsul does to you unprompted, so
     // it is opted into per item rather than seeded on for every new one.
     reminderTime: '',
     reminderAnchor: '',

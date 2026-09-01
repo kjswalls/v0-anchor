@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildCustomTypeConfig, getItemTypeConfig, hydrateCustomTypes } from '@/lib/item-registry';
-import type { ItemTypeDef } from '@anchor-app/types';
+import type { ItemTypeDef } from '@dsul/types';
 
 /**
  * Custom types are project-shaped, and the registry has to say so.

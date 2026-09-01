@@ -68,9 +68,9 @@ export async function POST(req: NextRequest) {
     let apiKey = existing?.openclaw_api_key ?? null
 
     if (!apiKey) {
-      // Generate a new key: "anchor_" + 32 random hex bytes
+      // Generate a new key: "dsul_" + 32 random hex bytes
       const raw = crypto.getRandomValues(new Uint8Array(32))
-      apiKey = 'anchor_' + Array.from(raw).map((b) => b.toString(16).padStart(2, '0')).join('')
+      apiKey = 'dsul_' + Array.from(raw).map((b) => b.toString(16).padStart(2, '0')).join('')
 
       // Store in user_settings
       const { error: upsertErr } = await service

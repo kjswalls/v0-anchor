@@ -205,7 +205,7 @@ const BEACON_RELAY_DARK = [
   'oklch(0.72 0.09 190)',
 ] as const;
 
-/** Honey is the agent's hue everywhere in Anchor (--ai tokens). */
+/** Honey is the agent's hue everywhere in dsul (--ai tokens). */
 function AgentSection({ item }: { item: Item }) {
   const { items, updateTask } = usePlannerStore();
   const provider = useAISettingsStore((s) => s.provider);
@@ -421,7 +421,7 @@ function AgentReply({ item }: { item: TaskItem }) {
    *    that window filed A's answer against B and re-queued B unanswered.
    *
    * 2. MATCH THE QUESTION, not just "the newest event". The question the user
-   *    reads comes from `aiResult`, which `anchor_report_progress` can also
+   *    reads comes from `aiResult`, which `dsul_report_progress` can also
    *    set — and that path writes no `agent_question` event. So an agent that
    *    asked with options, then asked again through the old tool, left the new
    *    question on screen above the OLD question's buttons. Comparing the

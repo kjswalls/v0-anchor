@@ -153,7 +153,7 @@ export default defineConfig({
     // the source of the 30s timeouts / "WebServer aborted" flakiness. A prod
     // build is fully precompiled, so responses are fast and stable (and it's
     // what real users hit). Locally, keep the dev server for fast iteration.
-    // pnpm, not npm: this is a pnpm workspace and `@anchor-app/types` is a
+    // pnpm, not npm: this is a pnpm workspace and `@dsul/types` is a
     // `workspace:*` dependency that npm cannot resolve.
     // The port comes from BASE_URL so the server started and the server tested
     // cannot drift — see tests/e2e/helpers/env.ts on why that matters in a

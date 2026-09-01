@@ -10,7 +10,7 @@
  * a hit, a miss, or NEITHER — a skip is neither. That is not a technicality: a
  * skip is the user saying "not this one, deliberately", and charging for it
  * would make the honest gesture the expensive one and teach people to just let
- * things lapse silently instead. Anchor already treats a skip as a discharged
+ * things lapse silently instead. dsul already treats a skip as a discharged
  * obligation everywhere else (isOpenLoopOn); money must not be the exception.
  */
 

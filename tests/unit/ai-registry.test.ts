@@ -43,7 +43,7 @@ describe('resolveAICapabilities', () => {
 
   it('never offers delegation on the assistant tier', () => {
     // Faking background work on a bare completions API would mean rebuilding a
-    // tool loop and a task queue inside Anchor — explicitly not the plan.
+    // tool loop and a task queue inside dsul — explicitly not the plan.
     const caps = resolveAICapabilities('openai', 'connected');
     expect(caps.canPropose).toBe(true);
     expect(caps.canDelegate).toBe(false);

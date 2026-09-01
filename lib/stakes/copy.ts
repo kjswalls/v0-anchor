@@ -71,7 +71,7 @@ export function pledgeSummary(
 export function partnerDigest(outcome: DayOutcome, who: string | null): string {
   const done = outcome.hits.map((i) => i.title)
   const open = outcome.misses.map((i) => i.title)
-  const subject = who ? `${who}'s` : 'Anchor'
+  const subject = who ? `${who}'s` : 'dsul'
   const lines = [`${subject} ${outcome.dateStr}: ${done.length}/${done.length + open.length} done.`]
   if (done.length > 0) lines.push(`Done — ${nameList(done)}.`)
   if (open.length > 0) lines.push(`Not done — ${nameList(open)}.`)

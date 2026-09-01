@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
 import { updateItem } from '@/lib/db'
 import { getItemTypeConfig } from '@/lib/item-registry'
-import { AiStatusSchema } from '@anchor-app/types'
+import { AiStatusSchema } from '@dsul/types'
 
 /**
  * POST /api/agent/items/:id/progress — a worker says where it has got to.
@@ -102,7 +102,7 @@ export async function POST(
           {
             error:
               'That item has changed since you last read it — someone else has taken it or ' +
-              'the user has stepped in. Re-read it with anchor_my_work before reporting.',
+              'the user has stepped in. Re-read it with dsul_my_work before reporting.',
             currentStatusAt: owner.ai_status_at ?? null,
           },
           { status: 409 }

@@ -13,7 +13,7 @@ interface OnboardingChatProps {
 
 const QUESTIONS = [
   "What should I call you?",
-  "What kind of work or projects do you focus on in Anchor?",
+  "What kind of work or projects do you focus on in dsul?",
   "Any goals you are working toward right now?",
 ]
 

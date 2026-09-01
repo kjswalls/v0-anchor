@@ -91,7 +91,7 @@ function seedUserAState(owner: string | null) {
     canvasFilters: { ...useViewStore.getState().canvasFilters, containers: ['project:A Private'] },
   });
   localStorage.setItem(
-    'anchor-chat-history',
+    'dsul-chat-history',
     JSON.stringify({
       messages: [{ role: 'user', content: 'A private question' }],
       savedAt: Date.now(),
@@ -104,7 +104,7 @@ function seedUserAState(owner: string | null) {
 function expectUserAStateGone() {
   expect(useAISettingsStore.getState().apiKey).toBe('');
   expect(useViewStore.getState().canvasFilters.containers).toEqual([]);
-  expect(localStorage.getItem('anchor-chat-history')).toBeNull();
+  expect(localStorage.getItem('dsul-chat-history')).toBeNull();
   expect(JSON.stringify(localStorage)).not.toContain(SECRET);
   expect(JSON.stringify(localStorage)).not.toContain('A Private');
 }
@@ -199,7 +199,7 @@ describe('every path into "the current user changed"', () => {
 
     expect(useAISettingsStore.getState().apiKey).toBe(SECRET);
     expect(useViewStore.getState().canvasFilters.containers).toEqual(['project:A Private']);
-    expect(localStorage.getItem('anchor-chat-history')).not.toBeNull();
+    expect(localStorage.getItem('dsul-chat-history')).not.toBeNull();
     expect(localStateOwner()).toBe(USER_A);
   });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { Item } from '@anchor-app/types';
+import type { Item } from '@dsul/types';
 
 /* ── Mocks ────────────────────────────────────────────────────────────────── */
 

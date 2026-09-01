@@ -445,7 +445,7 @@ function GoalDetail({
           /* Shuts the console on the way out. These two links are the console's
              own EXITS, and they leave the route that mounts it — so without
              this the dialog slot stays armed at a console that no longer
-             exists, and the breadcrumb back to Anchor springs it open unasked.
+             exists, and the breadcrumb back to dsul springs it open unasked.
              That is the same stale-slot ambush lib/console-door.ts exists to
              end, arriving from the other direction.
 

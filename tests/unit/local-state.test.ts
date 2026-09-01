@@ -27,7 +27,7 @@ import { seededLocalStorage } from '../e2e/helpers/session';
  *
  * Everything in lib/*-store.ts that persists does so under a BROWSER-GLOBAL
  * localStorage key, so on a shared browser the next person to sign in inherits
- * the last person's. The sharp end is `anchor-ai-settings.apiKey` — a
+ * the last person's. The sharp end is `dsul-ai-settings.apiKey` — a
  * credential the inheriting user can read out of devtools and edit through the
  * settings UI — but it is not the only end, and the drift scans at the bottom
  * of this file exist because a hand-kept list of eight stores is a list that
@@ -47,13 +47,13 @@ type AnyStore = { setState: (partial: Record<string, unknown>) => void };
  */
 const STORES: Record<string, AnyStore> = {
   'planner-storage': usePlannerStore as unknown as AnyStore,
-  'anchor-view': useViewStore as unknown as AnyStore,
-  'anchor-ai-settings': useAISettingsStore as unknown as AnyStore,
-  'anchor-morning-store': useMorningStore as unknown as AnyStore,
-  'anchor-eod-store': useEODStore as unknown as AnyStore,
-  'anchor-sidebar-settings': useSidebarStore as unknown as AnyStore,
-  'anchor-keyboard-shortcuts': useKeyboardShortcutsStore as unknown as AnyStore,
-  'anchor-command-usage': useCommandUsageStore as unknown as AnyStore,
+  'dsul-view': useViewStore as unknown as AnyStore,
+  'dsul-ai-settings': useAISettingsStore as unknown as AnyStore,
+  'dsul-morning-store': useMorningStore as unknown as AnyStore,
+  'dsul-eod-store': useEODStore as unknown as AnyStore,
+  'dsul-sidebar-settings': useSidebarStore as unknown as AnyStore,
+  'dsul-keyboard-shortcuts': useKeyboardShortcutsStore as unknown as AnyStore,
+  'dsul-command-usage': useCommandUsageStore as unknown as AnyStore,
 };
 
 /** The `state` half of a zustand persist envelope. */
@@ -95,7 +95,7 @@ beforeEach(() => {
   clearUserScopedLocalState();
 });
 
-describe('the credential — anchor-ai-settings.apiKey', () => {
+describe('the credential — dsul-ai-settings.apiKey', () => {
   it('is gone from memory and from disk after the user changes', () => {
     useAISettingsStore.setState({
       provider: 'anthropic',
@@ -104,12 +104,12 @@ describe('the credential — anchor-ai-settings.apiKey', () => {
       assistantName: "A's Beacon",
       systemPrompt: 'A private prompt about A',
     });
-    expect(persistedState('anchor-ai-settings').apiKey).toBe('sk-ant-user-a-secret');
+    expect(persistedState('dsul-ai-settings').apiKey).toBe('sk-ant-user-a-secret');
 
     clearUserScopedLocalState();
 
     expect(useAISettingsStore.getState().apiKey).toBe('');
-    expect(persistedState('anchor-ai-settings')).toMatchObject({
+    expect(persistedState('dsul-ai-settings')).toMatchObject({
       provider: 'openclaw',
       apiKey: '',
       assistantName: 'Beacon',
@@ -153,7 +153,7 @@ describe('Beacon transcripts', () => {
   it('drops the global thread and every item thread, opened this session or not', () => {
     useChatStore.setState({ messages: [{ role: 'user', content: 'A private question' }] });
     localStorage.setItem(
-      'anchor-chat-history',
+      'dsul-chat-history',
       JSON.stringify({
         messages: [{ role: 'user', content: 'A private question' }],
         savedAt: Date.now(),
@@ -162,7 +162,7 @@ describe('Beacon transcripts', () => {
     // One thread instantiated this session…
     itemChatStore('item-1').setState({ messages: [{ role: 'assistant', content: 'about item 1' }] });
     localStorage.setItem(
-      'anchor-item-chat-item-1',
+      'dsul-item-chat-item-1',
       JSON.stringify({
         messages: [{ role: 'assistant', content: 'about item 1' }],
         savedAt: Date.now(),
@@ -170,15 +170,15 @@ describe('Beacon transcripts', () => {
     );
     // …and one that exists only on disk, which clearing the live stores misses.
     localStorage.setItem(
-      'anchor-item-chat-item-2',
+      'dsul-item-chat-item-2',
       JSON.stringify({ messages: [{ role: 'user', content: 'about item 2' }], savedAt: Date.now() })
     );
 
     clearUserScopedLocalState();
 
-    expect(localStorage.getItem('anchor-chat-history')).toBeNull();
-    expect(localStorage.getItem('anchor-item-chat-item-1')).toBeNull();
-    expect(localStorage.getItem('anchor-item-chat-item-2')).toBeNull();
+    expect(localStorage.getItem('dsul-chat-history')).toBeNull();
+    expect(localStorage.getItem('dsul-item-chat-item-1')).toBeNull();
+    expect(localStorage.getItem('dsul-item-chat-item-2')).toBeNull();
     expect(useChatStore.getState().messages).toEqual([]);
     expect(itemChatStore('item-1').getState().messages).toEqual([]);
   });
@@ -269,7 +269,7 @@ describe('another tab adopting a new user (case 5)', () => {
     expect(useAISettingsStore.getState().apiKey).toBe('');
     expect(adoptLocalState(USER_B)).toBe(false);
     useAISettingsStore.setState({ model: 'gpt-4o' });
-    expect(persistedState('anchor-ai-settings').apiKey).toBe('');
+    expect(persistedState('dsul-ai-settings').apiKey).toBe('');
   });
 
   it('ignores storage events for every other key', () => {
@@ -277,7 +277,7 @@ describe('another tab adopting a new user (case 5)', () => {
     useAISettingsStore.setState({ apiKey: 'sk-ant-user-a-secret' });
 
     window.dispatchEvent(
-      new StorageEvent('storage', { key: 'anchor-view', newValue: '{"state":{}}' })
+      new StorageEvent('storage', { key: 'dsul-view', newValue: '{"state":{}}' })
     );
 
     expect(useAISettingsStore.getState().apiKey).toBe('sk-ant-user-a-secret');
@@ -366,7 +366,7 @@ describe('an unstamped browser drops the disclosive and spares the inert', () =>
     useMorningStore.setState({ morningCheckTime: '05:15' });
     useEODStore.setState({ lastEodReviewDate: '2026-08-25' });
     localStorage.setItem(
-      'anchor-chat-history',
+      'dsul-chat-history',
       JSON.stringify({ messages: [{ role: 'user', content: 'private' }], savedAt: Date.now() })
     );
     recordReleased(['item-of-user-a'], '2026-08-26');
@@ -379,12 +379,12 @@ describe('an unstamped browser drops the disclosive and spares the inert', () =>
     expect(useCommandUsageStore.getState().usage).toEqual({});
     expect(useMorningStore.getState().morningCheckTime).toBe('08:00');
     expect(useEODStore.getState().lastEodReviewDate).toBeNull();
-    expect(localStorage.getItem('anchor-chat-history')).toBeNull();
+    expect(localStorage.getItem('dsul-chat-history')).toBeNull();
     expect(releasedOn('item-of-user-a')).toBeUndefined();
   });
 
   it('spares what could not describe anyone — and has no server copy to restore it', () => {
-    // Neither anchor-view nor anchor-keyboard-shortcuts calls saveSettings, so
+    // Neither dsul-view nor dsul-keyboard-shortcuts calls saveSettings, so
     // a blanket clear here is permanent loss for every existing install, on the
     // one load where all we know is that nobody has stamped this browser yet.
     useViewStore.setState({
@@ -515,12 +515,12 @@ describe('the e2e fixture arrives owned, not orphaned', () => {
   it('provokes no clear when the seeded account signs in', () => {
     applyFixture();
     // The fixture's own view seed, as global-setup writes it.
-    const seededView = JSON.parse(localStorage.getItem('anchor-view')!);
+    const seededView = JSON.parse(localStorage.getItem('dsul-view')!);
 
     expect(adoptLocalState(FIXTURE_USER)).toBe(false);
 
     // Byte-identical: not merely "the fields survived", but "nothing ran".
-    expect(JSON.parse(localStorage.getItem('anchor-view')!)).toEqual(seededView);
+    expect(JSON.parse(localStorage.getItem('dsul-view')!)).toEqual(seededView);
     expect(seededView.state.adoptedLegacy).toBe(true);
   });
 
@@ -584,14 +584,14 @@ describe('nothing persists per-user state outside the registry', () => {
 
   /** Every file that calls zustand's persist(), and the registry key it owns. */
   const PERSISTED_STORE_FILES: Record<string, string> = {
-    'lib/ai-settings-store.ts': 'anchor-ai-settings',
-    'lib/command-usage-store.ts': 'anchor-command-usage',
-    'lib/eod-store.ts': 'anchor-eod-store',
-    'lib/keyboard-shortcuts-store.ts': 'anchor-keyboard-shortcuts',
-    'lib/morning-store.ts': 'anchor-morning-store',
+    'lib/ai-settings-store.ts': 'dsul-ai-settings',
+    'lib/command-usage-store.ts': 'dsul-command-usage',
+    'lib/eod-store.ts': 'dsul-eod-store',
+    'lib/keyboard-shortcuts-store.ts': 'dsul-keyboard-shortcuts',
+    'lib/morning-store.ts': 'dsul-morning-store',
     'lib/planner-store.ts': 'planner-storage',
-    'lib/sidebar-store.ts': 'anchor-sidebar-settings',
-    'lib/view-store.ts': 'anchor-view',
+    'lib/sidebar-store.ts': 'dsul-sidebar-settings',
+    'lib/view-store.ts': 'dsul-view',
   };
 
   it('every persist() in the app belongs to a registered store', () => {
@@ -631,7 +631,7 @@ describe('nothing persists per-user state outside the registry', () => {
       // consumed by supabase-provider on the very next hydrate, and it says
       // nothing about anyone.
       'app/layout.tsx',
-      // `anchor-settings-advanced:<pane>`, sessionStorage: whether one settings
+      // `dsul-settings-advanced:<pane>`, sessionStorage: whether one settings
       // pane's advanced disclosure is folded open. Scoped to the tab and dies
       // with it, a boolean per pane, and inert by the classification in
       // lib/local-state.ts — so it is not in the registry, deliberately.

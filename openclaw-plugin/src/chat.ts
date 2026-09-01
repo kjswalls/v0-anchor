@@ -3,7 +3,7 @@ import type { PluginConfig } from "./plugin-types.js";
 import type { PluginRuntime } from "openclaw/plugin-sdk";
 import { readBody } from "./webhook.js";
 
-const SESSION_KEY_PREFIX = "anchor-chat";
+const SESSION_KEY_PREFIX = "dsul-chat";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -74,19 +74,19 @@ export async function handleChatRequest(
   };
 
   try {
-    logger.info(`anchor-context: chat turn — session ${sessionKey}`);
+    logger.info(`dsul-context: chat turn — session ${sessionKey}`);
 
     const { runId } = await runtime.subagent.run({
       sessionKey,
       message,
-      idempotencyKey: `anchor-chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      idempotencyKey: `dsul-chat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       ...(extraContext ? { extraSystemPrompt: extraContext } : {}),
     });
 
     const result = await runtime.subagent.waitForRun({ runId, timeoutMs: 120_000 });
 
     if (result.status === "error") {
-      logger.warn(`anchor-context: chat run errored — ${result.error ?? "unknown"}`);
+      logger.warn(`dsul-context: chat run errored — ${result.error ?? "unknown"}`);
       send({ error: result.error ?? "Agent run failed" });
       return;
     }
@@ -122,7 +122,7 @@ export async function handleChatRequest(
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Unknown error";
-    logger.error(`anchor-context: chat handler error — ${msg}`);
+    logger.error(`dsul-context: chat handler error — ${msg}`);
     send({ error: msg });
   } finally {
     // Safety net: never leave the socket open if some path above returned

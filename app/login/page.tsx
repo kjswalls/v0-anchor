@@ -3,7 +3,7 @@
 import { useLayoutEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
-import { Anchor, MailCheck } from 'lucide-react';
+import { Zap, MailCheck } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 // Restored after the parallax-hero pass dropped it: lib/relay-config.ts still
 // declares an `auth` flag, so ungating this surface left that entry dead while
@@ -213,19 +213,19 @@ function LoginPageInner() {
           ref={columnRef}
           className="w-full max-w-xs space-y-7 duration-700 animate-in fade-in fill-mode-both motion-reduce:animate-none"
         >
-          {/* Identity. A drawn mark rather than the ⚓ emoji: emoji are painted
+          {/* Identity. A drawn mark rather than the ⚡ emoji: emoji are painted
               by the OS, so the logo was a different glyph on every machine, it
               never sat on the type's baseline, and a colour font can't take the
               accent. --success-text is the lime's -text role — it flips bright
               on navy and deep on paper, so one class reads in both themes
               (see the -text note in globals.css). */}
           <div className="flex items-center gap-2">
-            <Anchor
+            <Zap
               className="size-[18px] shrink-0 text-success-text"
               strokeWidth={1.75}
               aria-hidden
             />
-            <span className="text-[13px] font-medium tracking-[0.02em]">ANCHOR</span>
+            <span className="text-[13px] font-medium tracking-[0.02em]">DSUL</span>
           </div>
 
           {sent ? (

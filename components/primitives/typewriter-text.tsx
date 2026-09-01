@@ -16,7 +16,7 @@ import { cn } from '@/lib/utils';
  *
  * TWO MOTION VETOES, the same pair every animated surface in this app honours
  * (lib/theme-transition.ts, lib/completion-confetti.ts, relay-field.tsx): the OS
- * `prefers-reduced-motion` AND Anchor's own animations toggle, which stamps
+ * `prefers-reduced-motion` AND dsul's own animations toggle, which stamps
  * `[data-reduce-motion]` on <html>. Under either the text simply appears — no
  * clip, no sheen, no class that CSS then has to undo.
  *

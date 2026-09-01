@@ -37,7 +37,7 @@ import { cn } from '@/lib/utils';
  * READ-ONLY, and that is the design. stake_events grants the owner SELECT and
  * nothing else (migration 034) — a ledger the subject can edit is not a ledger.
  * There is no "mark as paid" here for the same reason there is no payment rail:
- * Anchor records what a day concluded and says so plainly. Settling up happens
+ * dsul records what a day concluded and says so plainly. Settling up happens
  * where the money is.
  */
 
@@ -91,7 +91,7 @@ export default function LedgerPage() {
       <nav className="text-muted-foreground flex items-center gap-1.5 text-xs">
         <Link href="/" className="hover:text-foreground inline-flex items-center gap-1 transition-colors">
           <ChevronLeft className="size-3.5" />
-          Anchor
+          dsul
         </Link>
         <span>/</span>
         <span className="text-foreground font-medium">Ledger</span>
@@ -101,7 +101,7 @@ export default function LedgerPage() {
         <h1 className="text-foreground text-2xl font-semibold tracking-tight">Ledger</h1>
         <p className="text-muted-foreground max-w-prose text-sm leading-relaxed">
           What your settled days came to. Every row here was written by the nightly
-          settlement — <span className="text-foreground">Anchor keeps the record and cannot take
+          settlement — <span className="text-foreground">dsul keeps the record and cannot take
           payment</span>, so squaring up happens wherever you agreed it would.
         </p>
       </header>

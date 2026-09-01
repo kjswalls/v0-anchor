@@ -1,7 +1,7 @@
 # Habit Reminders — getting a habit actually done, not merely recorded
 
-**Goal:** close the gap between "the habit exists in Anchor" and "the habit happened".
-Anchor could already reach a device — migration 009's push subscriptions, the eod-notify
+**Goal:** close the gap between "the habit exists in dsul" and "the habit happened".
+dsul could already reach a device — migration 009's push subscriptions, the eod-notify
 cron — but only ever for one moment a day: the end-of-day review, which fires *after* the
 day is decided. This adds the moments that can still change it.
 
@@ -184,7 +184,7 @@ Every one is off by default and gated on a `user_extensions` slug.
 Where the evidence says the power actually is, once attention is not the bottleneck.
 
 - **`beeminder`** — datapoints per completion; a miss costs real money on their rail.
-- **`pledge`** — an anti-charity commitment ledger. **Anchor does not move money**; it
+- **`pledge`** — an anti-charity commitment ledger. **dsul does not move money**; it
   records what is owed and tells you (and optionally a witness). Stated plainly in the UI.
 - **`accountability-partner`** — a digest to a person who is expecting it. The mechanism is
   "someone is waiting", not volume.

@@ -9,7 +9,7 @@
  * its never-dim contract lives in the base theme blocks.
  *
  * 'default' is the absence of a stamp: applying it removes data-theme so the
- * bare :root / .dark blocks answer. This is Anchor's shipped look, so it never
+ * bare :root / .dark blocks answer. This is dsul's shipped look, so it never
  * needs its own CSS block.
  */
 
@@ -30,7 +30,7 @@ export interface ThemePaletteDef {
 export const THEME_PALETTES: ThemePaletteDef[] = [
   {
     value: 'default',
-    label: 'Anchor',
+    label: 'dsul',
     description: 'Warm paper and cool ink — the shipped look.',
     themeColor: { light: '#fbfaf9', dark: '#0e1014' },
   },
@@ -61,7 +61,7 @@ export const DEFAULT_PALETTE: ThemePalette = 'default';
  * Stored as a bare string (not a zustand blob) so that script stays a
  * three-line try/catch. `?reset-theme` in the URL clears it before first paint.
  */
-export const PALETTE_STORAGE_KEY = 'anchor-palette';
+export const PALETTE_STORAGE_KEY = 'dsul-palette';
 
 export function isThemePalette(value: unknown): value is ThemePalette {
   return (

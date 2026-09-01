@@ -8,7 +8,7 @@ import { makeContainerCreateHandler } from '@/lib/agent-api'
  *
  * Auth: Bearer <openclaw_api_key> only — no cookie auth.
  *
- * Body: validated against ProgramCreateSchema (@anchor-app/types). `name` is
+ * Body: validated against ProgramCreateSchema (@dsul/types). `name` is
  * required; `state` defaults to 'auto', which with no range means "always on".
  * `startsOn`/`endsOn` are INCLUSIVE and read only while the state is 'auto'.
  *

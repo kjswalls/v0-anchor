@@ -238,7 +238,7 @@ cursor.
 
 Read the action column above as a set: it assigns a bucket, a day, a time, a project
 block, or it unschedules. Not one of the five `DropCommand` kinds writes `items.order`.
-Anchor has no drag-to-reorder — on touch, on a mouse, anywhere. `planner-store.reorderTasks`
+dsul has no drag-to-reorder — on touch, on a mouse, anywhere. `planner-store.reorderTasks`
 exists with zero call sites, `@dnd-kit/sortable` is a dependency imported nowhere, and the
 only reorder UI in the product is the Organize console's up/down buttons
 (`components/planner/organize/member-list.tsx`, "Buttons, not drag").
