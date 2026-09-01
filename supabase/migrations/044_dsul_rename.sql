@@ -91,8 +91,29 @@ end$$;
 -- Only now that nothing schedules it. Signature must match 035's exactly.
 drop function if exists public.anchor_tick(text);
 
+-- ─── Live rows that carry the old names ──────────────────────────────────────
+-- The OpenClaw plugin registers itself on startup, so both of these are
+-- REWRITTEN by the next `openclaw dsul-context setup` / plugin start. They are
+-- cleaned up here so that, in the window before that happens, the app is not
+-- still POSTing change events at a gateway path (`/plugins/anchor/*`) the
+-- renamed plugin no longer serves — a webhook that fails silently every time an
+-- item changes.
+
+-- One registration per (user, plugin_id), so the old id is simply a stale row:
+-- deleting it costs a re-register, which startup does anyway.
+delete from public.plugin_registrations where plugin_id = 'anchor-context';
+
+-- Same story for the sidebar chat URL: /api/agent/register rewrites it, and a
+-- null here just means "no gateway chat until the plugin next registers".
+update public.user_settings
+   set openclaw_chat_url = null
+ where openclaw_chat_url like '%/plugins/anchor/%';
+
 -- ─── Catalog comments that named the old package ─────────────────────────────
 -- 019 stored this on the table itself, so the old scope name is live in the
 -- catalog rather than only in a migration file.
 comment on table items is
   'Unified task/habit/… items. type discriminates; kind-specific columns are nullable; per-type requiredness lives in @dsul/types ItemSchema.';
+
+comment on table public.plugin_registrations is
+  'Where dsul POSTs change events. Service-role only: rows carry the HMAC signing secret.';

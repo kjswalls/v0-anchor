@@ -40,7 +40,6 @@ function migrate(local: MemoryStorage, session: MemoryStorage) {
   g.localStorage = local;
   g.sessionStorage = session;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval
     new Function(JSON.parse(`"${match![1]}"`))();
   } finally {
     g.localStorage = prevLocal;
@@ -113,6 +112,31 @@ describe('the anchor- → dsul- storage migration in app/layout.tsx', () => {
     const local = new MemoryStorage({ 'anchor-view': 'OLD', 'dsul-view': 'NEW' });
     migrate(local, new MemoryStorage());
     expect(local.snapshot()).toEqual({ 'dsul-view': 'NEW' });
+  });
+
+  it('moves the owner stamp first, so a quota failure cannot orphan the browser', () => {
+    // The failure this guards: a setItem that throws partway through used to
+    // abandon the whole pass. If the stamp had not moved yet, the next render
+    // read the browser as someone else's and cleared it.
+    class FailAfter extends MemoryStorage {
+      constructor(init: Record<string, string>, private budget: number) { super(init); }
+      setItem(k: string, v: string) {
+        if (this.budget-- <= 0) throw new DOMException('quota', 'QuotaExceededError');
+        super.setItem(k, v);
+      }
+    }
+    const local = new FailAfter({
+      'anchor-item-chat-big': 'x'.repeat(64),
+      'anchor-view': '{"scope":"day"}',
+      'anchor-local-state-owner': 'user-123',
+    }, 1); // only ONE write succeeds
+
+    migrate(local, new MemoryStorage());
+
+    // The stamp is the write that got the budget.
+    expect(local.getItem('dsul-local-state-owner')).toBe('user-123');
+    // And a key whose write failed keeps its old copy, so the next load retries.
+    expect(local.getItem('anchor-view')).toBe('{"scope":"day"}');
   });
 
   it('leaves a fresh browser and every unrelated key alone', () => {

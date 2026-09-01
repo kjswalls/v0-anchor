@@ -150,7 +150,7 @@ parses, so both tiers share one client code path and the operator token never re
 browser. A stable session key per thread gives every item thread durable gateway-side
 memory under the no-TTL default.
 
-*This also closes a live security gap:* today the browser holds an dsul API key and POSTs
+*This also closes a live security gap:* today the browser holds a dsul API key and POSTs
 directly to the gateway ([lib/chat-store.ts](../../lib/chat-store.ts),
 [app/api/agent/chat-url/route.ts](../../app/api/agent/chat-url/route.ts)). After this, the
 browser talks only to dsul.
@@ -788,7 +788,7 @@ Known gaps, none of them blocking a first run:
 infrastructure: it would sit on an unvalidated Phase 1. Phase 3 is this document, the
 capability-registry seam that lets a hosted tier slot in as one config row, and an honest
 statement of what a hosted tier actually needs before it is a product: server-held provider
-keys with per-user cost accounting and rate limits, an dsul-operated agent runtime
+keys with per-user cost accounting and rate limits, a dsul-operated agent runtime
 (nobody else's gateway to lean on), abuse controls, and a support answer for "the agent did
 something I didn't want". That is a business, not a sprint — the market read is that it is
 also the only path off the power-user tier.

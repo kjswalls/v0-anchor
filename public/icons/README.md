@@ -1,6 +1,11 @@
-# dsul PWA Icons
+# dsul PWA icons
 
-Drop the following files here (exported from Photoshop/Midjourney logo):
+The mark is the lucide `Zap` glyph in `--lime-ink` on a `--lime-solid` ground —
+the same lockup as the login wordmark (`app/login/page.tsx`).
+
+These are **maskable** (`purpose: "any maskable"` in `public/manifest.json`), so
+the ground fills the whole square and the glyph sits inside the centre 80%; the
+OS applies its own corner mask. Do not pre-round the corners.
 
 | File | Size | Purpose |
 |------|------|---------|
@@ -11,4 +16,5 @@ Drop the following files here (exported from Photoshop/Midjourney logo):
 | `icon-512.png` | 512×512 | Android splash screen (manifest) ✅ required |
 | `icon-1024.png`| 1024×1024 | Future App Store submission 📦 optional |
 
-All files should be square PNGs with a transparent or solid background.
+Referenced from `app/layout.tsx` (`metadata.icons`) and `public/manifest.json`.
+Replacing them is a drop-in: keep the filenames and sizes.

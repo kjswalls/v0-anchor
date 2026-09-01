@@ -88,12 +88,16 @@ export default function RootLayout({
             palette, the rebindings, the filters and every Beacon transcript.
             Prefix-wide (not a key list) so the per-item chat threads
             (`anchor-item-chat-<id>`) travel with the fixed keys; an existing
-            dsul-* value always wins, so a second run is a no-op. Safe to delete
-            once every browser has loaded the app once after the rename. */}
+            dsul-* value always wins, so a second run is a no-op. The owner
+            stamp moves FIRST and every key is moved under its own try: a
+            storage quota error partway through must not be the thing that
+            leaves the browser unstamped, and a key whose write failed keeps its
+            old copy so the next load retries it. Safe to delete once every
+            browser has loaded the app once after the rename. */}
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "try{var P='anchor-',Q='dsul-',M=function(s){var k=[],i,n,v;for(i=0;i<s.length;i++){n=s.key(i);if(n&&n.lastIndexOf(P,0)===0)k.push(n)}for(i=0;i<k.length;i++){v=s.getItem(k[i]);n=Q+k[i].slice(P.length);if(v!==null&&s.getItem(n)===null)s.setItem(n,v);s.removeItem(k[i])}};M(localStorage);M(sessionStorage)}catch(e){}",
+              "try{var P='anchor-',Q='dsul-',O=P+'local-state-owner',M=function(s){var k=[],i,n,v;for(i=0;i<s.length;i++){n=s.key(i);if(n&&n.lastIndexOf(P,0)===0)k.push(n)}k.sort(function(a,b){return a===O?-1:b===O?1:0});for(i=0;i<k.length;i++){try{v=s.getItem(k[i]);n=Q+k[i].slice(P.length);if(v!==null&&s.getItem(n)===null)s.setItem(n,v);s.removeItem(k[i])}catch(e){}}};try{M(localStorage)}catch(e){}try{M(sessionStorage)}catch(e){}}catch(e){}",
           }}
         />
         {/* Palette pre-hydration: stamp <html data-theme> from the raw

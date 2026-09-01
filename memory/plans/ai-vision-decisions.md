@@ -126,13 +126,13 @@ Full detail in [ai-vision.md](ai-vision.md#unverified-assumptions-test-these-fir
    custom headers, which is exactly the shape this server needs:
 
    ```bash
-   openclaw mcp add anchor \
+   openclaw mcp add dsul \
      --url https://<dsul-host>/api/mcp \
      --transport streamable-http
    # then add the header through the scoped config editor or config:
-   #   mcp.servers.anchor.headers.Authorization = "Bearer dsul_<key>"
+   #   mcp.servers.dsul.headers.Authorization = "Bearer dsul_<key>"
    #   (keep the key out of config literals — use the secret mechanism)
-   openclaw mcp doctor anchor --probe
+   openclaw mcp doctor dsul --probe
    ```
 
    `doctor --probe` is the real proof: the docs are explicit that saving a definition proves

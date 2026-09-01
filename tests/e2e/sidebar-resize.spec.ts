@@ -230,7 +230,7 @@ test.describe('Sidebar resize', () => {
     });
 
     test('the track stays concentric with the grip', async ({ page }) => {
-      // The hairline appears on hover and runs through the grip. dsul the two
+      // The hairline appears on hover and runs through the grip. Anchor the two
       // to different x and the grip reads as hanging off the line rather than
       // threaded onto it — invisible at rest, obvious the moment you hover.
       const bar = (await sash(page).boundingBox())!;

@@ -113,7 +113,7 @@ Config lives in `openclaw.json` under `plugins.entries.dsul-context.config.dsul-
 ## Requirements
 
 - OpenClaw ≥ 2026.0.0
-- An dsul account with the OpenClaw API enabled
+- A dsul account with the OpenClaw API enabled
 
 ## License
 

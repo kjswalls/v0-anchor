@@ -25,7 +25,7 @@ the taxonomy**, and it got worse.
 
 ```
 /settings              → redirects to /settings/day
-/settings/[pane]       → day · look · rituals · beacon · keyboard · anchor
+/settings/[pane]       → day · look · rituals · beacon · keyboard · dsul
 /settings/look?focus=look.buckets   → deep-links one control
 ```
 

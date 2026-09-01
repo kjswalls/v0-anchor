@@ -247,7 +247,7 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
     `${step}-${desktopSubStep}-${mobileSubStep}`
   );
 
-  // dsul a card just outside the spotlight target, computed from its live
+  // Anchor a card just outside the spotlight target, computed from its live
   // rect — replaces hardcoded left/right offsets that broke when the sidebar
   // width changed. Falls back to null (callers keep a static class) if no rect.
   const cardAnchor = (side: 'left' | 'right') => {
